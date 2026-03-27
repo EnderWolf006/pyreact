@@ -1,0 +1,427 @@
+{
+    "buttonBase@common.button": {
+        "$control_alpha": 1,
+        "$default_texture": "textures/netease/common/button/default",
+        "$hover_texture": "textures/netease/common/button/hover",
+        "$is_new_nine_slice": true,
+        "$nine_slice_buttom": 0,
+        "$nine_slice_left": 0,
+        "$nine_slice_right": 0,
+        "$nine_slice_top": 0,
+        "$nineslice_size": [
+            0,
+            0,
+            0,
+            0
+        ],
+        "$pressed_button_name": "%NukkitStackUI.OnClickBt",
+        "$pressed_texture": "textures/netease/common/button/pressed",
+        "$texture_layer": 2,
+        "alpha": 1,
+        "anchor_from": "top_left",
+        "anchor_to": "top_left",
+        "bindings": [
+            {
+                "binding_collection_name": "",
+                "binding_condition": "always_when_visible",
+                "binding_type": "collection_details"
+            }
+        ],
+        "button_mappings": [
+            {
+                "from_button_id": "button.menu_select",
+                "mapping_type": "pressed",
+                "to_button_id": "$pressed_button_name"
+            },
+            {
+                "from_button_id": "button.menu_ok",
+                "mapping_type": "focused",
+                "to_button_id": "$pressed_button_name"
+            },
+            {
+                "from_button_id": "button.menu_left",
+                "input_mode_condition": "gamepad_and_not_gaze",
+                "mapping_type": "pressed",
+                "to_button_id": "$pressed_button_name"
+            },
+            {
+                "from_button_id": "button.menu_right",
+                "input_mode_condition": "gamepad_and_not_gaze",
+                "mapping_type": "pressed",
+                "to_button_id": "$pressed_button_name"
+            }
+        ],
+        "clip_offset": [
+            0,
+            0
+        ],
+        "clips_children": false,
+        "controls": [
+            {
+                "default@PyreactBase.default": {}
+            },
+            {
+                "hover@PyreactBase.hover": {}
+            },
+            {
+                "pressed@PyreactBase.pressed": {}
+            }
+        ],
+        "draggable": "not_draggable",
+        "enabled": true,
+        "is_handle_button_move_event": false,
+        "layer": 0,
+        "max_size": [
+            0,
+            0
+        ],
+        "min_size": [
+            0,
+            0
+        ],
+        "offset": [
+            0,
+            0
+        ],
+        "priority": 0,
+        "propagate_alpha": false,
+        "size": [
+            100,
+            50
+        ],
+        "visible": true
+    },
+    "default": {
+        "type": "image",
+        "layer": "$texture_layer",
+        "alpha": "$control_alpha",
+        "is_new_nine_slice": "$is_new_nine_slice",
+        "nine_slice_buttom": "$nine_slice_buttom",
+        "nine_slice_left": "$nine_slice_left",
+        "nine_slice_right": "$nine_slice_right",
+        "nine_slice_top": "$nine_slice_top",
+        "nineslice_size": "$nineslice_size",
+        "texture": "$default_texture"
+    },
+    "edit_box_background_default": {
+        "type": "image",
+        "is_new_nine_slice": "$is_new_nine_slice",
+        "nine_slice_buttom": "$nine_slice_buttom",
+        "nine_slice_left": "$nine_slice_left",
+        "nine_slice_right": "$nine_slice_right",
+        "nine_slice_top": "$nine_slice_top",
+        "nineslice_size": "$nineslice_size",
+        "texture": "$edit_box_default_texture"
+    },
+    "edit_box_background_hover": {
+        "type": "image",
+        "is_new_nine_slice": "$is_new_nine_slice",
+        "nine_slice_buttom": "$nine_slice_buttom",
+        "nine_slice_left": "$nine_slice_left",
+        "nine_slice_right": "$nine_slice_right",
+        "nine_slice_top": "$nine_slice_top",
+        "nineslice_size": "$nineslice_size",
+        "texture": "$edit_box_hover_texture"
+    },
+    "hover": {
+        "type": "image",
+        "layer": "$texture_layer",
+        "alpha": "$control_alpha",
+        "is_new_nine_slice": "$is_new_nine_slice",
+        "nine_slice_buttom": "$nine_slice_buttom",
+        "nine_slice_left": "$nine_slice_left",
+        "nine_slice_right": "$nine_slice_right",
+        "nine_slice_top": "$nine_slice_top",
+        "nineslice_size": "$nineslice_size",
+        "texture": "$hover_texture"
+    },
+    "imageBase": {
+        "type": "image",
+        "anchor_from": "top_left",
+        "anchor_to": "top_left",
+        "offset": [
+            0,
+            0
+        ],
+        "size": [
+            100,
+            100
+        ],
+        "min_size": [
+            0,
+            0
+        ],
+        "max_size": [
+            0,
+            0
+        ],
+        "priority": 0,
+        "layer": 1,
+        "alpha": 1.0,
+        "propagate_alpha": false,
+        "clip_offset": [
+            0,
+            0
+        ],
+        "clips_children": false,
+        "visible": true,
+        "enabled": true,
+        "clip_direction": "left",
+        "clip_ratio": 0.0,
+        "fill": false,
+        "grayscale": false,
+        "is_new_nine_slice": true,
+        "keep_ratio": false,
+        "nine_slice_buttom": 0,
+        "nine_slice_left": 0,
+        "nine_slice_right": 0,
+        "nine_slice_top": 0,
+        "nineslice_size": [
+            0,
+            0,
+            0,
+            0
+        ],
+        "texture": "",
+        "uv": [
+            0,
+            0
+        ],
+        "uv_size": [
+            0,
+            0
+        ]
+    },
+    "inputBase@common.text_edit_box": {
+        "$edit_box_default_texture": "textures/ui/edit_box_indent",
+        "$edit_box_hover_texture": "textures/ui/edit_box_indent_hover",
+        "$font_scale_factor": 1,
+        "$is_new_nine_slice": false,
+        "$nine_slice_buttom": 0,
+        "$nine_slice_left": 0,
+        "$nine_slice_right": 0,
+        "$nine_slice_top": 0,
+        "$nineslice_size": [
+            0,
+            0,
+            0,
+            0
+        ],
+        "$place_holder_text": "请输入...",
+        "$place_holder_text_color": [
+            0.5,
+            0.5,
+            0.5
+        ],
+        "$text_background_default": "PyreactBase.edit_box_background_default",
+        "$text_background_hover": "PyreactBase.edit_box_background_hover",
+        "$text_box_name": "%PyreactBase.message_text_edit_box0",
+        "$text_box_text_color": [
+            1,
+            1,
+            1
+        ],
+        "$text_edit_box_content_binding_name": "#PyreactBase.message_content_text_edit_box0",
+        "alpha": 1,
+        "clip_offset": [
+            0,
+            0
+        ],
+        "clips_children": false,
+        "draggable": "not_draggable",
+        "enabled": true,
+        "enabled_newline": false,
+        "layer": 1,
+        "max_length": 512,
+        "max_size": [
+            0,
+            0
+        ],
+        "min_size": [
+            0,
+            0
+        ],
+        "offset": [
+            0,
+            0
+        ],
+        "priority": 0,
+        "propagate_alpha": true,
+        "size": [
+            300,
+            27
+        ],
+        "visible": true
+    },
+    "itemBase": {
+        "type": "custom",
+        "renderer": "inventory_item_renderer",
+        "anchor_from": "top_left",
+        "anchor_to": "top_left",
+        "offset": [
+            0,
+            0
+        ],
+        "size": [
+            100,
+            100
+        ],
+        "min_size": [
+            0,
+            0
+        ],
+        "max_size": [
+            0,
+            0
+        ],
+        "priority": 0,
+        "layer": 4,
+        "alpha": 1.0,
+        "propagate_alpha": false,
+        "clip_offset": [
+            0,
+            0
+        ],
+        "clips_children": false,
+        "visible": true,
+        "enabled": true,
+        "property_bag": {
+            "#item_id_aux": 131072
+        }
+    },
+    "namespace": "PyreactBase",
+    "panelBase": {
+        "type": "panel",
+        "anchor_from": "top_left",
+        "anchor_to": "top_left",
+        "offset": [
+            0,
+            0
+        ],
+        "size": [
+            100,
+            100
+        ],
+        "min_size": [
+            0,
+            0
+        ],
+        "max_size": [
+            0,
+            0
+        ],
+        "priority": 0,
+        "layer": 1,
+        "alpha": 1.0,
+        "propagate_alpha": false,
+        "clip_offset": [
+            0,
+            0
+        ],
+        "clips_children": false,
+        "visible": true,
+        "enabled": true
+    },
+    "panel0": {
+        "type": "panel"
+    },
+    "paperDollBase": {
+        "type": "custom",
+        "renderer": "netease_paper_doll_renderer",
+        "anchor_from": "top_left",
+        "anchor_to": "top_left",
+        "offset": [
+            0,
+            0
+        ],
+        "size": [
+            100,
+            100
+        ],
+        "layer": 1000,
+        "alpha": 1.0,
+        "visible": true,
+        "init_rot_y": 60.0,
+        "rotation": "none",
+        "screen_scale": 1.0
+    },
+    "pressed": {
+        "type": "image",
+        "layer": "$texture_layer",
+        "alpha": "$control_alpha",
+        "is_new_nine_slice": "$is_new_nine_slice",
+        "nine_slice_buttom": "$nine_slice_buttom",
+        "nine_slice_left": "$nine_slice_left",
+        "nine_slice_right": "$nine_slice_right",
+        "nine_slice_top": "$nine_slice_top",
+        "nineslice_size": "$nineslice_size",
+        "texture": "$pressed_texture"
+    },
+    "scrollBase@common.scrolling_panel": {
+        "$scrolling_content": "PyreactBase.scroll_content_panel",
+        "$show_background": false,
+        "$scroll_view_name": "scroll_view",
+        "$scroll_size": [
+            2,
+            "100%"
+        ],
+        "$scroll_track_image_control": "common.empty_panel",
+        "size": [
+            "100%",
+            "100%"
+        ],
+        "anchor_from": "top_left",
+        "anchor_to": "top_left"
+    },
+    "scroll_content_panel": {
+        "type": "panel",
+        "size": [
+            "100%",
+            "100%c"
+        ]
+    },
+    "textBase": {
+        "type": "label",
+        "anchor_from": "top_left",
+        "anchor_to": "top_left",
+        "offset": [
+            0,
+            0
+        ],
+        "size": [
+            "default",
+            "default"
+        ],
+        "min_size": [
+            0,
+            0
+        ],
+        "max_size": [
+            0,
+            0
+        ],
+        "priority": 0,
+        "layer": 5,
+        "alpha": 1.0,
+        "propagate_alpha": false,
+        "clip_offset": [
+            0,
+            0
+        ],
+        "clips_children": false,
+        "visible": true,
+        "enabled": true,
+        "color": [
+            1,
+            1,
+            1
+        ],
+        "font_scale_factor": 1.0,
+        "font_size": "normal",
+        "font_type": "unicode",
+        "line_padding": 0.0,
+        "shadow": false,
+        "text": "Hello World!",
+        "text_alignment": "center"
+    }
+}
