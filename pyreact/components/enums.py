@@ -21,12 +21,13 @@ class FlexDirection(object):
 
 
 class FontSize(object):
-    # NetEase UI runtime uses font size as a scale factor.
-    # (Passed to native SetTextFontSize(scale))
-    small = 0.5
-    normal = 1.0
-    large = 2.0
-    extraLarge = 4.0
+    # Usage-side fontSize is logical text size.
+    # Runtime converts it to NetEase native SetTextFontSize(scale)
+    # with 16 fontSize == 1.0 scale.
+    small = 8
+    normal = 16
+    large = 32
+    extraLarge = 64
 
 
 class Position(object):

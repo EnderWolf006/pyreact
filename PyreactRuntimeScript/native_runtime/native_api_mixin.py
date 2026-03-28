@@ -11,6 +11,8 @@ except NameError:
 
 
 class RuntimeNativeApiMixin(object):
+    _TEXT_FONT_SIZE_BASE = 16.0
+
     def _ensure_measure_label(self):
         measure_path = self._root_path + "/" + self._MEASURE_LABEL_NAME
         self._measure_label_path = measure_path
@@ -98,7 +100,7 @@ class RuntimeNativeApiMixin(object):
             width = 0.0
             height = 0.0
 
-        font_scale = self._parse_text_font_size(style.get("fontSize") if isinstance(style, dict) else None)
+        font_scale = self._parse_text_font_scale(style.get("fontSize") if isinstance(style, dict) else None)
         if font_scale is None or font_scale <= 0.0:
             font_scale = 1.0
         if width > 0.0 and (width / font_scale) < 4.0:
@@ -199,7 +201,7 @@ class RuntimeNativeApiMixin(object):
         if line_padding is not None:
             self._safe_set_text_line_padding(path, line_padding, control)
 
-        text_font_size = self._parse_text_font_size(label_props.get("fontSize"))
+        text_font_size = self._parse_text_font_scale(label_props.get("fontSize"))
         if text_font_size is not None:
             self._safe_set_text_font_size(path, text_font_size, control)
 
@@ -586,6 +588,17 @@ class RuntimeNativeApiMixin(object):
             return float(text_value)
         except Exception:
             return None
+
+    def _parse_text_font_scale(self, value):
+        font_size = self._parse_text_font_size(value)
+        if font_size is None:
+            return None
+
+        base = self._TEXT_FONT_SIZE_BASE
+        if base <= 0.0:
+            return None
+
+        return font_size / base
 
     def _parse_text_alignment(self, value):
         text_value = self._safe_text(value).strip().lower()
