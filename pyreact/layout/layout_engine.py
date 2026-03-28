@@ -54,7 +54,7 @@ class LayoutEngine(object):
             if ch.isalnum() or ch in ("_", "-", "."):
                 out.append(ch)
             else:
-                out.append("_")
+                out.append("_%02x" % ord(ch))
         return "".join(out)
 
     def _extract_props(self, vnode):
