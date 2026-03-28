@@ -31,6 +31,7 @@ from .core import (
 def render_app(
     root,
     bind=None,
+    log_perf=False,
 ):
     if bind is None:
         raise ValueError("native mode requires bind dict")
@@ -70,6 +71,7 @@ def render_app(
         "root_path": root_path,
         "app_fn": root,
         "base_namespace": base_namespace,
+        "log_perf": bool(log_perf),
     })
 
 

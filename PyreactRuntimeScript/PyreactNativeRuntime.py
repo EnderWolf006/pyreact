@@ -31,12 +31,13 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         ButtonState.pressed: "textures/netease/common/button/pressed",
     }
 
-    def __init__(self, app_id, screen_node, root_path, app_fn, base_namespace="PyreactBase"):
+    def __init__(self, app_id, screen_node, root_path, app_fn, base_namespace="PyreactBase", log_perf=False):
         self.app_id = app_id
         self._screen = screen_node
         self._root_path = root_path or "/root"
         self._app_fn = app_fn
         self._base_namespace = self._safe_text(base_namespace) or "PyreactBase"
+        self._log_perf = bool(log_perf)
 
         self._layout_engine = None
         self._text_measurer = None

@@ -1,19 +1,23 @@
 # -*- coding: utf-8 -*-
 
+import time
+
 import mod.client.extraClientApi as clientApi
 
 
 class RuntimeLifecycleMixin(object):
-    def _dbg_render(self, msg):
-        try:
-            if not getattr(self, '_debug_render', False):
-                return
-        except Exception:
+    def _log_render_stage_timings(self, component_ms, build_ms, diff_ms, layout_ms, native_ms):
+        if not getattr(self, '_log_perf', False):
             return
         try:
-            print('=====> PyreactRuntime[render] %s <=====' % (self._safe_text(msg)))
+            print('=====> PyreactRuntime[perf] 1. 组件函数执行: %.3fms <=====' % component_ms)
+            print('=====> PyreactRuntime[perf] 2. 构建VNode树: %.3fms <=====' % build_ms)
+            print('=====> PyreactRuntime[perf] 3. Diff计算: %.3fms <=====' % diff_ms)
+            print('=====> PyreactRuntime[perf] 4. 布局计算: %.3fms <=====' % layout_ms)
+            print('=====> PyreactRuntime[perf] 5. 应用到原生UI: %.3fms <=====' % native_ms)
         except Exception:
             pass
+
     def _init_pyreact_runtime(self):
         from pyreact.layout.layout_engine import LayoutEngine
         from pyreact.renderer.text_measurer import TextMeasurer
@@ -80,8 +84,18 @@ class RuntimeLifecycleMixin(object):
             self._input_callbacks = {}
             self._input_paths = {}
             self._node_refs = {}
+
             element = self._component_instance.render()
+            component_ms = getattr(self._component_instance, 'last_render_duration_ms', 0.0)
+            new_vtree = None
+            build_ms = 0.0
+
             if element is None:
+                diff_start_time = time.time()
+                mutations = self._reconciler.reconcile(self._prev_vtree, None)
+                diff_ms = (time.time() - diff_start_time) * 1000.0
+
+                native_start_time = time.time()
                 self._prev_vtree = None
                 self._prev_shadow_root = None
                 self._input_callbacks = {}
@@ -97,16 +111,27 @@ class RuntimeLifecycleMixin(object):
                 except Exception:
                     pass
                 self._clear_root_children()
+                native_ms = (time.time() - native_start_time) * 1000.0
+                self._log_render_stage_timings(component_ms, build_ms, diff_ms, 0.0, native_ms)
                 return
 
             width, height = self._get_root_size()
-            new_vtree = self._tree_builder.build_tree(element)
-            mutations = self._reconciler.reconcile(self._prev_vtree, new_vtree)
-            shadow_root = self._layout_engine.calculate(element, width, height)
 
+            new_vtree = self._tree_builder.build_tree(element)
+            tree_perf = self._tree_builder.get_last_perf_stats()
+            component_ms += tree_perf.get('component_exec_ms', 0.0)
+            build_ms = tree_perf.get('build_only_ms', 0.0)
+
+            diff_start_time = time.time()
+            mutations = self._reconciler.reconcile(self._prev_vtree, new_vtree)
+            diff_ms = (time.time() - diff_start_time) * 1000.0
+
+            layout_start_time = time.time()
+            shadow_root = self._layout_engine.calculate(new_vtree, width, height)
+            layout_ms = (time.time() - layout_start_time) * 1000.0
+
+            native_start_time = time.time()
             if self._can_apply_incremental(mutations):
-                if getattr(self, '_debug_render', False):
-                    self._dbg_render('incremental mutations=%s' % (len(mutations) if mutations else 0))
                 self._apply_incremental_updates(shadow_root, mutations)
                 self._refresh_button_callbacks(shadow_root)
             else:
@@ -116,7 +141,6 @@ class RuntimeLifecycleMixin(object):
                     for m in muts:
                         t = self._safe_text(getattr(m, 'type_', ''))
                         counts[t] = counts.get(t, 0) + 1
-                    self._dbg_render('FULL rerender -> clear+rebuild, mutations=%s counts=%s' % (len(muts), counts))
                 self._clear_root_children()
                 self._render_children(
                     children=[shadow_root],
@@ -124,6 +148,9 @@ class RuntimeLifecycleMixin(object):
                     parent_abs_x=0.0,
                     parent_abs_y=0.0,
                 )
+            native_ms = (time.time() - native_start_time) * 1000.0
+
+            self._log_render_stage_timings(component_ms, build_ms, diff_ms, layout_ms, native_ms)
 
             self._prev_vtree = new_vtree
             self._prev_shadow_root = shadow_root

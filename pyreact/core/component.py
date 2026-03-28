@@ -1,3 +1,5 @@
+import time
+
 from .fiber import Fiber
 from .hooks import with_current_fiber
 from .hooks import run_effects
@@ -30,6 +32,7 @@ class ComponentInstance(object):
             props=self.props,
             rerender_callback=rerender_callback
         )
+        self.last_render_duration_ms = 0.0
 
     def set_props(self, props):
         self.props = props or {}
@@ -49,6 +52,7 @@ class ComponentInstance(object):
 
         self.fiber.props = self.props
         self.fiber.begin_render()
+        start_time = time.time()
 
         # NOTE: We intentionally do NOT use `sys.setprofile`-based enforcement
         # here, because `sys` is not guaranteed to be available in NetEase
@@ -62,6 +66,7 @@ class ComponentInstance(object):
         self.fiber.finish_render()
         self.fiber.pending_state_update = False
         self.latest_output = output
+        self.last_render_duration_ms = (time.time() - start_time) * 1000.0
         run_effects(self.fiber)
         return output
 

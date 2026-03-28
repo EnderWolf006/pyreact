@@ -338,10 +338,8 @@ def PyreactExampleApp():
                     ),
                     Item(
                         style=Style(width=20, height=20, marginLeft=8),
-                        itemDict={
-                            'newItemName': 'minecraft:diamond_sword',
-                            'newAuxValue': 0,
-                        },
+                        identifier='minecraft:diamond_sword',
+                        aux=0,
                         enchant=True,
                     ),
                     Label(

@@ -49,6 +49,7 @@ class PyreactRuntimeClientSystem(ClientSystem):
         root_path = params.get('root_path') or params.get('root') or '/root'
         app_fn = params.get('app_fn') or params.get('appFn')
         base_namespace = params.get('base_namespace') or params.get('baseNamespace') or 'PyreactBase'
+        log_perf = bool(params.get('log_perf'))
 
         if not app_id or screen is None or not callable(app_fn):
             print('=====> PyreactRuntime MountApp failed: invalid params <=====')
@@ -56,7 +57,7 @@ class PyreactRuntimeClientSystem(ClientSystem):
 
         self.UnmountApp({'app_id': app_id})
 
-        runtime = PyreactNativeRuntime(app_id, screen, root_path, app_fn, base_namespace)
+        runtime = PyreactNativeRuntime(app_id, screen, root_path, app_fn, base_namespace, log_perf=log_perf)
         runtime.mount()
         self._apps[app_id] = runtime
         print('=====> PyreactRuntime MountApp success: %s <=====' % app_id)

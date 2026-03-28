@@ -1,3 +1,5 @@
+import time
+
 try:
     from .vnode import VNode
 except Exception:
@@ -7,9 +9,30 @@ except Exception:
 class TreeBuilder(object):
     def __init__(self):
         self.fiber_map = {}
+        self._perf_stats = None
 
     def build_tree(self, root_element):
-        return self._build_node(root_element, [])
+        start_time = time.time()
+        self._perf_stats = {
+            'component_exec_ms': 0.0,
+        }
+        tree = self._build_node(root_element, [])
+        total_ms = (time.time() - start_time) * 1000.0
+        self._perf_stats['build_total_ms'] = total_ms
+        build_only_ms = total_ms - self._perf_stats.get('component_exec_ms', 0.0)
+        if build_only_ms < 0.0:
+            build_only_ms = 0.0
+        self._perf_stats['build_only_ms'] = build_only_ms
+        return tree
+
+    def get_last_perf_stats(self):
+        if not isinstance(self._perf_stats, dict):
+            return {
+                'component_exec_ms': 0.0,
+                'build_total_ms': 0.0,
+                'build_only_ms': 0.0,
+            }
+        return dict(self._perf_stats)
 
     def _build_node(self, element, path):
         if element is None:
@@ -85,6 +108,7 @@ class TreeBuilder(object):
         return result
 
     def _call_component(self, component_fn, props):
+        start_time = time.time()
         try:
             return component_fn(**props)
         except TypeError:
@@ -92,6 +116,9 @@ class TreeBuilder(object):
                 return component_fn(props)
             except TypeError:
                 return component_fn()
+        finally:
+            if isinstance(self._perf_stats, dict):
+                self._perf_stats['component_exec_ms'] = self._perf_stats.get('component_exec_ms', 0.0) + ((time.time() - start_time) * 1000.0)
 
     def _extract_children(self, props):
         children = props.get('children', [])

@@ -98,6 +98,7 @@ class MyScreen(ScreenNode):
                 'app_id': 'pyreact_counter_demo',
                 'base_namespace': 'PyreactBase',
             },
+            log_perf=False,
         )
 
     def Destroy(self):
@@ -109,6 +110,8 @@ class MyScreen(ScreenNode):
 ## JsonUI 约定
 
 `render_app(..., bind={'root': '/root', ...})` 默认会把控件挂载到一个名为 `root` 的容器节点下。
+
+如需打印每次更新的 5 段性能日志（组件执行 / VNode 构建 / Diff / 布局 / 原生 UI 应用），可传入 `log_perf=True`。
 
 下面是一个最小 Screen JSON（同样可直接参考 `JsonUI/PyreactExample.json`）：
 
