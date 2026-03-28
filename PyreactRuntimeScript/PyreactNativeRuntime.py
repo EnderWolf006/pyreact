@@ -54,6 +54,7 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         self._input_last_values = {}
         self._node_refs = {}
         self._prev_node_refs = {}
+        self._native_common_style_cache = {}
         self._input_edit_bound = False
         self._input_edit_handler_method_name = None
 

@@ -53,6 +53,7 @@ class RuntimeLifecycleMixin(object):
         self._prev_vtree = None
         self._prev_shadow_root = None
         self._measure_label_path = None
+        self._drop_native_common_style_cache()
         self._clear_root_children()
 
     def request_render(self):
@@ -257,6 +258,7 @@ class RuntimeLifecycleMixin(object):
                         self._screen.RemoveChildControl(control)
                     except Exception:
                         pass
+                    self._drop_native_common_style_cache(control_path)
                     control = None
             except Exception:
                 pass
@@ -276,6 +278,7 @@ class RuntimeLifecycleMixin(object):
                 if not control:
                     self._needs_render = True
                     return
+                self._drop_native_common_style_cache(control_path)
             self._safe_set_position(control_path, abs_x - parent_abs_x, abs_y - parent_abs_y, control)
             if node_type != "Label":
                 self._safe_set_size(control_path, width, height, control)
@@ -345,6 +348,7 @@ class RuntimeLifecycleMixin(object):
         self._bind_button_click(button_path, node_id)
 
     def _clear_root_children(self):
+        self._drop_native_common_style_cache()
         try:
             names = self._screen.GetChildrenName(self._root_path) or []
         except Exception:
@@ -385,6 +389,7 @@ class RuntimeLifecycleMixin(object):
             return
 
         node_path = parent_path + "/" + child_name
+        self._drop_native_common_style_cache(node_path)
         layout = getattr(node, "layout", None)
         abs_x = self._to_float(getattr(layout, "x", 0.0), 0.0)
         abs_y = self._to_float(getattr(layout, "y", 0.0), 0.0)

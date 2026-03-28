@@ -62,6 +62,33 @@ class RuntimePropsMixin(object):
             self._apply_input_props(node_path, node_id, props, node_control)
             return
 
+    def _get_native_common_style_cache(self):
+        cache = getattr(self, '_native_common_style_cache', None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._native_common_style_cache = cache
+        return cache
+
+    def _drop_native_common_style_cache(self, path_prefix=None):
+        cache = self._get_native_common_style_cache()
+        if not path_prefix:
+            cache.clear()
+            return
+
+        prefix = self._safe_text(path_prefix)
+        if not prefix:
+            cache.clear()
+            return
+
+        prefix_with_sep = prefix + '/'
+        for cached_path in list(cache.keys()):
+            safe_cached_path = self._safe_text(cached_path)
+            if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
+                try:
+                    del cache[cached_path]
+                except Exception:
+                    pass
+
     def _set_ref_value(self, ref_obj, value):
         if ref_obj is None:
             return
@@ -457,10 +484,20 @@ class RuntimePropsMixin(object):
         if not isinstance(style, dict):
             return
 
+        cache = self._get_native_common_style_cache()
+        cached_style = cache.get(node_path, {})
+        next_cached_style = {}
+
         display = self._safe_text(style.get("display")).strip().lower()
         if display == "none":
-            self._safe_set_visible(node_path, False, node_control)
+            next_cached_style['display'] = display
+            if cached_style.get('display') != display:
+                self._safe_set_visible(node_path, False, node_control)
         elif display:
+            next_cached_style['display'] = display
+            if cached_style.get('display') != display:
+                self._safe_set_visible(node_path, True, node_control)
+        elif 'display' in cached_style:
             self._safe_set_visible(node_path, True, node_control)
 
         opacity = style.get("opacity")
@@ -470,11 +507,22 @@ class RuntimePropsMixin(object):
                 alpha = 0.0
             if alpha > 1.0:
                 alpha = 1.0
-            self._safe_set_alpha(node_path, alpha, node_control)
+            next_cached_style['opacity'] = alpha
+            if cached_style.get('opacity') != alpha:
+                self._safe_set_alpha(node_path, alpha, node_control)
+        elif 'opacity' in cached_style:
+            self._safe_set_alpha(node_path, 1.0, node_control)
 
         layer = style.get("zIndex")
         if layer is not None:
-            self._safe_set_layer(node_path, layer, node_control)
+            layer_value = int(round(self._to_float(layer, 0.0)))
+            next_cached_style['zIndex'] = layer_value
+            if cached_style.get('zIndex') != layer_value:
+                self._safe_set_layer(node_path, layer_value, node_control)
+        elif 'zIndex' in cached_style:
+            self._safe_set_layer(node_path, 0, node_control)
+
+        cache[node_path] = next_cached_style
 
     def _apply_image_style_props(self, node_path, image_props, node_control):
         if not isinstance(image_props, dict):
@@ -563,6 +611,7 @@ class RuntimePropsMixin(object):
                 child_control = self._screen.GetBaseUIControl(child_path)
                 if child_control:
                     self._screen.RemoveChildControl(child_control)
+                    self._drop_native_common_style_cache(child_path)
             except Exception:
                 pass
 
@@ -592,5 +641,6 @@ class RuntimePropsMixin(object):
                 child_control = self._screen.GetBaseUIControl(child_path)
                 if child_control:
                     self._screen.RemoveChildControl(child_control)
+                    self._drop_native_common_style_cache(child_path)
             except Exception:
                 pass
