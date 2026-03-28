@@ -72,13 +72,6 @@ class RuntimePropsMixin(object):
                 pass
             return
 
-        if isinstance(ref_obj, dict):
-            try:
-                ref_obj['current'] = value
-            except Exception:
-                pass
-            return
-
         try:
             setattr(ref_obj, 'current', value)
         except Exception:

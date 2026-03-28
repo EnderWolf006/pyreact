@@ -3,26 +3,7 @@
 import random
 
 import mod.client.extraClientApi as clientApi
-from pyreact import (
-    Component,
-    Panel,
-    Image,
-    Label,
-    Button,
-    Input,
-    Scroll,
-    Style,
-    Color,
-    AlignItems,
-    JustifyContent,
-    FlexDirection,
-    FontSize,
-    Colors,
-    ButtonState,
-    useState,
-    render_app,
-    Position
-)
+from pyreact import *
 
 ScreenNode = clientApi.GetScreenNodeCls()
 ViewBinder = clientApi.GetViewBinderCls()
@@ -65,6 +46,10 @@ def PyreactExampleApp():
     selected_tab, set_selected_tab = useState('all')
     selected_friend, set_selected_friend = useState(0)
     search_text, set_search_text = useState('')
+    scroll_node = useRef(None)
+
+    def scroll_to_top():
+        scroll_node.current.asScrollView().SetScrollViewPercentValue(0)
 
     friends = [
         {'name': '夜雨', 'level': 42, 'status': 'online', 'mode': '排位-四排', 'ping': 32, 'lastSeen': '在线', 'note': '擅长突击位'},
@@ -295,7 +280,7 @@ def PyreactExampleApp():
                 ],
             )
         )
-    # friend_nodes = list(Label(content='Friend {}'.format(random.randint(34256346, 12345234500))) for i in range(50))
+
 
     detail_nodes = []
     if current_friend is not None:
@@ -458,17 +443,40 @@ def PyreactExampleApp():
                                     ),
                                     Input(
                                         key='friends_search_input',
-                                        style=Style(width=280, height=27, marginLeft=10),
+                                        style=Style(height=27, marginLeft=10, flex=1),
                                         value=search_text,
                                         onChange=set_search_text,
                                     ),
                                 ],
                             ),
                             Scroll(
+                                ref=scroll_node,
                                 key='friends_list',
                                 style=Style(marginTop=10, flex=1, width='100%'),
                                 children=friend_nodes,
                             ),
+                            #回到顶部
+                            Button(
+                                key='scroll_top_btn',
+                                style=Style(
+                                    position=Position.absolute,
+                                    bottom=20,
+                                    right=20,
+                                    height=26,
+                                    width=26,
+                                    alignItems=AlignItems.center,
+                                    justifyContent=JustifyContent.center,
+                                    zIndex=100,
+                                ),
+                                buttonBuilder=lambda state: Image(
+                                    style=Style(width='100%', height='100%'),
+                                    color=Color(0xFF2563EB) if state == ButtonState.default else Color(0xFF1D4ED8),
+                                ),
+                                onClick=lambda: scroll_to_top(),
+                                children=[
+                                    Label(color=Colors.white, content='^', fontSize=FontSize.large)
+                                ]
+                            )
                         ],
                     ),
                     Panel(

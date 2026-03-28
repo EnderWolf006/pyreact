@@ -30,10 +30,15 @@ class MemoSlot(HookSlot):
         self.deps = deps
 
 
+class RefObject(object):
+    def __init__(self, current=None):
+        self.current = current
+
+
 class RefSlot(HookSlot):
     def __init__(self, initial_value):
         HookSlot.__init__(self)
-        self.ref = {"current": initial_value}
+        self.ref = RefObject(initial_value)
 
 
 class Fiber(object):
