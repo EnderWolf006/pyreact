@@ -145,6 +145,23 @@ def Label(
 
 
 @Component
+def Item(style=None, identifier=None, aux=None, enchant=None, userData=None, itemDict=None):
+    # type: (object, object, object, object, object, object) -> ComponentNode
+    """Create an Item node backed by inventory_item_renderer."""
+    return _build_node(
+        "Item",
+        {
+            "style": style,
+            "identifier": identifier,
+            "aux": aux,
+            "enchant": enchant,
+            "userData": userData,
+            "itemDict": itemDict,
+        },
+    )
+
+
+@Component
 def Button(style=None, children=None, onClick=None, onLongPress=None, buttonBuilder=None):
     # type: (object, object, object, object, object) -> ComponentNode
     """Create a Button node."""

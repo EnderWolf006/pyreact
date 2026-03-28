@@ -49,6 +49,11 @@ class RuntimePropsMixin(object):
             self._apply_label_native_props_then_text(node_path, label_props, content, node_control)
             return
 
+        if node_type == "Item":
+            item_props = self._resolve_item_props(props)
+            self._apply_item_native_props(node_path, item_props, node_control)
+            return
+
         if node_type == "Button":
             onclick = props.get("onClick")
             if callable(onclick):
@@ -479,6 +484,85 @@ class RuntimePropsMixin(object):
             if isinstance(props, dict) and props.get(key) is not None:
                 label_props[key] = props.get(key)
         return label_props
+
+    def _resolve_item_props(self, props):
+        resolved = {
+            'identifier': None,
+            'aux': None,
+            'enchant': None,
+            'userData': None,
+        }
+        if not isinstance(props, dict):
+            return resolved
+
+        item_dict = props.get('itemDict')
+        if isinstance(item_dict, dict):
+            resolved.update(self._build_item_props_from_dict(item_dict))
+
+        if props.get('identifier') is not None:
+            resolved['identifier'] = props.get('identifier')
+        if props.get('aux') is not None:
+            resolved['aux'] = props.get('aux')
+        if props.get('enchant') is not None:
+            resolved['enchant'] = props.get('enchant')
+        if props.get('userData') is not None:
+            resolved['userData'] = props.get('userData')
+
+        return resolved
+
+    def _build_item_props_from_dict(self, item_dict):
+        resolved = {
+            'identifier': None,
+            'aux': None,
+            'enchant': None,
+            'userData': None,
+        }
+        if not isinstance(item_dict, dict):
+            return resolved
+
+        if item_dict.get('newItemName') is not None:
+            resolved['identifier'] = item_dict.get('newItemName')
+        elif item_dict.get('itemName') is not None:
+            resolved['identifier'] = item_dict.get('itemName')
+
+        if item_dict.get('newAuxValue') is not None:
+            resolved['aux'] = item_dict.get('newAuxValue')
+        elif item_dict.get('auxValue') is not None:
+            resolved['aux'] = item_dict.get('auxValue')
+
+        if item_dict.get('userData') is not None:
+            resolved['userData'] = item_dict.get('userData')
+
+        enchant_data = item_dict.get('enchantData')
+        mod_enchant_data = item_dict.get('modEnchantData')
+        resolved['enchant'] = bool(enchant_data or mod_enchant_data)
+
+        return resolved
+
+    def _apply_item_native_props(self, node_path, item_props, node_control=None):
+        if not isinstance(item_props, dict):
+            return
+
+        identifier = self._safe_text(item_props.get('identifier'))
+        if not identifier:
+            return
+
+        aux_value = item_props.get('aux')
+        if aux_value is None:
+            aux_value = 0
+
+        enchant_flag = item_props.get('enchant')
+        if enchant_flag is None:
+            enchant_flag = False
+
+        self._safe_set_ui_item(
+            node_path,
+            identifier,
+            aux_value,
+            enchant_flag,
+            item_props.get('userData'),
+            node_control,
+        )
 
     def _apply_common_style_props(self, node_path, style, node_control):
         if not isinstance(style, dict):

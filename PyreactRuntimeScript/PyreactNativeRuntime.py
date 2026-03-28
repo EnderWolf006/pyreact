@@ -16,6 +16,7 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         "Panel": "panelBase",
         "Image": "imageBase",
         "Label": "textBase",
+        "Item": "itemBase",
         "Button": "buttonBase",
         "Input": "inputBase",
         "Scroll": "scrollBase",

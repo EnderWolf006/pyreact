@@ -98,6 +98,12 @@ class RuntimeNativeApiMixin(object):
             width = 0.0
             height = 0.0
 
+        font_scale = self._parse_text_font_size(style.get("fontSize") if isinstance(style, dict) else None)
+        if font_scale is None or font_scale <= 0.0:
+            font_scale = 1.0
+        if width > 0.0 and (width / font_scale) < 4.0:
+            width = 4.0 * font_scale
+
         try:
             label_control.SetText("", True)
         except Exception:
@@ -284,6 +290,33 @@ class RuntimeNativeApiMixin(object):
             except Exception:
                 pass
 
+    def _safe_set_ui_item(self, path, identifier, aux_value, is_enchanted=False, user_data=None, control=None):
+        item_name = self._safe_text(identifier)
+        if not item_name:
+            return False
+
+        try:
+            aux_number = int(aux_value)
+        except Exception:
+            aux_number = 0
+
+        enchant_flag = self._to_bool(is_enchanted)
+        payload_user_data = user_data
+        if isinstance(payload_user_data, dict) and not payload_user_data:
+            payload_user_data = None
+
+        item_control = self._to_item_renderer_control(control, path)
+        if item_control and hasattr(item_control, 'SetUiItem'):
+            try:
+                return item_control.SetUiItem(item_name, aux_number, enchant_flag, payload_user_data) is not False
+            except Exception:
+                pass
+
+        try:
+            return self._screen.SetUiItem(path, item_name, aux_number, enchant_flag, payload_user_data) is not False
+        except Exception:
+            return False
+
     def _safe_set_image_adaption_type(self, path, adaption_type, adaption_data=None, control=None):
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "SetImageAdaptionType"):
@@ -321,6 +354,23 @@ class RuntimeNativeApiMixin(object):
             base_control = self._screen.GetBaseUIControl(path)
             if base_control and hasattr(base_control, "asImage"):
                 return base_control.asImage()
+        except Exception:
+            pass
+        return None
+
+    def _to_item_renderer_control(self, control, path):
+        if control and hasattr(control, 'asItemRenderer'):
+            try:
+                item_control = control.asItemRenderer()
+                if item_control:
+                    return item_control
+            except Exception:
+                pass
+
+        try:
+            base_control = self._screen.GetBaseUIControl(path)
+            if base_control and hasattr(base_control, 'asItemRenderer'):
+                return base_control.asItemRenderer()
         except Exception:
             pass
         return None

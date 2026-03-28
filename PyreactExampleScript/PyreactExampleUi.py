@@ -330,6 +330,37 @@ def PyreactExampleApp():
                 content='备注: %s' % current_friend['note'],
             ),
             Panel(
+                style=Style(marginTop=10, flexDirection=FlexDirection.row, alignItems=AlignItems.center),
+                children=[
+                    Label(
+                        color=Color(0xFFF8FAFC),
+                        content='常用武器:',
+                    ),
+                    Item(
+                        style=Style(width=20, height=20, marginLeft=8),
+                        itemDict={
+                            'newItemName': 'minecraft:diamond_sword',
+                            'newAuxValue': 0,
+                        },
+                        enchant=True,
+                    ),
+                    Label(
+                        style=Style(marginLeft=4),
+                        color=Color(0xFFCBD5E1),
+                        content=',',
+                    ),
+                    Item(
+                        style=Style(width=20, height=20, marginLeft=4),
+                        itemDict={
+                            'newItemName': 'minecraft:crossbow',
+                            'newAuxValue': 0,
+                            'enchantData': [(2, 3)]
+                        },
+                        enchant=False,
+                    ),
+                ],
+            ),
+            Panel(
                 style=Style(marginTop=14, flexDirection=FlexDirection.row),
                 children=[
                     Button(
@@ -442,7 +473,7 @@ def PyreactExampleApp():
                                 ),
                                 onClick=lambda: scroll_to_top(),
                                 children=[
-                                    Label(color=Colors.white, content='^', fontSize=FontSize.large)
+                                    Label(color=Colors.white, content='▲', fontSize=FontSize.large)
                                 ]
                             )
                         ],
