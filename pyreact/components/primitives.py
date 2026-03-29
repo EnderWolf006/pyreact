@@ -162,8 +162,8 @@ def Item(style=None, identifier=None, aux=None, enchant=None, userData=None, ite
 
 
 @Component
-def Button(style=None, children=None, onClick=None, onLongPress=None, buttonBuilder=None):
-    # type: (object, object, object, object, object) -> ComponentNode
+def Button(style=None, children=None, onClick=None, buttonBuilder=None):
+    # type: (object, object, object, object) -> ComponentNode
     """Create a Button node."""
     return _build_node(
         "Button",
@@ -171,7 +171,6 @@ def Button(style=None, children=None, onClick=None, onLongPress=None, buttonBuil
             "style": style,
             "children": children,
             "onClick": onClick,
-            "onLongPress": onLongPress,
             "buttonBuilder": buttonBuilder,
         },
         include_children=True,
