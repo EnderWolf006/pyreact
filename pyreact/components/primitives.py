@@ -21,7 +21,7 @@ def _normalize_children(children):
     return [children]
 
 
-def _build_node(node_type, values, include_children=False):
+def _build_node(node_type, values):
     props = {}
     for key, value in values.items():
         if value is None:
@@ -32,7 +32,7 @@ def _build_node(node_type, values, include_children=False):
             value = _normalize_children(value)
         props[key] = value
 
-    if include_children and "children" not in props:
+    if "children" not in props:
         props["children"] = []
 
     node = ComponentNode(node_type, props=props)
@@ -53,8 +53,8 @@ def _build_node(node_type, values, include_children=False):
 
 
 @Component
-def Panel(style=None, children=None, onClick=None):
-    # type: (object, object, object) -> ComponentNode
+def Panel(style=None, children=None):
+    # type: (object, object) -> ComponentNode
     """Create a Panel node.
 
     `children` accepts a single node or a list/tuple of nodes.
@@ -64,9 +64,7 @@ def Panel(style=None, children=None, onClick=None):
         {
             "style": style,
             "children": children,
-            "onClick": onClick,
         },
-        include_children=True,
     )
 
 
@@ -112,17 +110,16 @@ def Image(
             "children": children,
             "onClick": onClick,
         },
-        include_children=True,
     )
 
 
 @Component
 def Label(
     style=None,
+    children=None,
     content=None,
     color=None,
     fontSize=None,
-    font=None,
     textAlign=None,
     linePadding=None,
     shadow=None,
@@ -133,10 +130,10 @@ def Label(
         "Label",
         {
             "style": style,
+            "children": children,
             "content": content,
             "color": color,
             "fontSize": fontSize,
-            "font": font,
             "textAlign": textAlign,
             "linePadding": linePadding,
             "shadow": shadow,
@@ -145,13 +142,14 @@ def Label(
 
 
 @Component
-def Item(style=None, identifier=None, aux=None, enchant=None, userData=None, itemDict=None):
-    # type: (object, object, object, object, object, object) -> ComponentNode
+def Item(style=None, children=None, identifier=None, aux=None, enchant=None, userData=None, itemDict=None):
+    # type: (object, object, object, object, object, object, object) -> ComponentNode
     """Create an Item node backed by inventory_item_renderer."""
     return _build_node(
         "Item",
         {
             "style": style,
+            "children": children,
             "identifier": identifier,
             "aux": aux,
             "enchant": enchant,
@@ -173,18 +171,18 @@ def Button(style=None, children=None, onClick=None, buttonBuilder=None):
             "onClick": onClick,
             "buttonBuilder": buttonBuilder,
         },
-        include_children=True,
     )
 
 
 @Component
-def Input(style=None, value=None, onChange=None, placeholder=None):
-    # type: (object, object, object, object) -> ComponentNode
+def Input(style=None, value=None, onChange=None, placeholder=None, children=None):
+    # type: (object, object, object, object, object) -> ComponentNode
     """Create an Input node."""
     return _build_node(
         "Input",
         {
             "style": style,
+            "children": children,
             "value": value,
             "onChange": onChange,
             "placeholder": placeholder,
@@ -207,5 +205,4 @@ def Scroll(
             "children": children,
             "showScrollbar": showScrollbar,
         },
-        include_children=True,
     )

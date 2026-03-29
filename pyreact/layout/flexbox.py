@@ -328,10 +328,10 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
         cross_size = content_width
 
     # Handle Scroll: children can expand in the scroll direction.
-    if node.node_type == "Scroll":
-        # We assume vertical scroll for now if direction is column.
-        # This allows children to take as much main-axis space as they need.
-        main_size = 1000000.0
+    is_scroll = node.node_type == "Scroll"
+    if is_scroll and measure_pass:
+        # First pass: give children unlimited space to measure their content
+        main_size = 999999.0
 
     items = []
     flow_items = []
@@ -651,6 +651,9 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
         child_width = max(0.0, child_width)
         child_height = max(0.0, child_height)
 
+        if is_scroll:
+            item["child"]._parent_is_scroll = True
+
         compute_layout(
             item["child"],
             child_x,
@@ -748,13 +751,24 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             intrinsic_width = (max_x - x) + padding_right
             intrinsic_height = (max_y - y) + padding_bottom
 
-            node.layout.content_width = max(0.0, intrinsic_width)
-            node.layout.content_height = max(0.0, intrinsic_height)
+            # For Scroll nodes, content size should match children bounds
+            if node.node_type == "Scroll":
+                node.layout.content_width = max(0.0, intrinsic_width)
+                node.layout.content_height = max(0.0, intrinsic_height)
+            else:
+                node.layout.content_width = max(0.0, intrinsic_width)
+                node.layout.content_height = max(0.0, intrinsic_height)
 
             # If node has no explicit size, it shrinks to fit children (except for Label which handles itself).
-            if node.node_type != "Label" and explicit_width is None and explicit_height is None:
-                node.layout.width = max(0.0, intrinsic_width)
-                node.layout.height = max(0.0, intrinsic_height)
-                node._measured_shrunk = True
+            # Scroll children should always shrink to content, never inherit the large measure space
+            if node.node_type != "Label" and node.node_type != "Scroll":
+                parent_is_scroll = hasattr(node, '_parent_is_scroll') and node._parent_is_scroll
+                if explicit_width is None and explicit_height is None:
+                    node.layout.width = max(0.0, intrinsic_width)
+                    node.layout.height = max(0.0, intrinsic_height)
+                    node._measured_shrunk = True
+                elif parent_is_scroll and explicit_height is None:
+                    # Scroll's direct child with no explicit height should fit content
+                    node.layout.height = max(0.0, intrinsic_height)
 
     return node

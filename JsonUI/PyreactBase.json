@@ -1,21 +1,6 @@
 {
     "buttonBase@common.button": {
-        "$control_alpha": 1,
-        "$default_texture": "textures/netease/common/button/default",
-        "$hover_texture": "textures/netease/common/button/hover",
-        "$is_new_nine_slice": true,
-        "$nine_slice_buttom": 0,
-        "$nine_slice_left": 0,
-        "$nine_slice_right": 0,
-        "$nine_slice_top": 0,
-        "$nineslice_size": [
-            0,
-            0,
-            0,
-            0
-        ],
         "$pressed_button_name": "%NukkitStackUI.OnClickBt",
-        "$pressed_texture": "textures/netease/common/button/pressed",
         "$texture_layer": 2,
         "alpha": 1,
         "anchor_from": "top_left",
@@ -58,13 +43,13 @@
         "clips_children": false,
         "controls": [
             {
-                "default@PyreactBase.default": {}
+                "default@PyreactBase.panelBase": {}
             },
             {
-                "hover@PyreactBase.hover": {}
+                "hover@PyreactBase.panelBase": {}
             },
             {
-                "pressed@PyreactBase.pressed": {}
+                "pressed@PyreactBase.panelBase": {}
             }
         ],
         "draggable": "not_draggable",
@@ -91,18 +76,6 @@
         ],
         "visible": true
     },
-    "default": {
-        "type": "image",
-        "layer": "$texture_layer",
-        "alpha": "$control_alpha",
-        "is_new_nine_slice": "$is_new_nine_slice",
-        "nine_slice_buttom": "$nine_slice_buttom",
-        "nine_slice_left": "$nine_slice_left",
-        "nine_slice_right": "$nine_slice_right",
-        "nine_slice_top": "$nine_slice_top",
-        "nineslice_size": "$nineslice_size",
-        "texture": "$default_texture"
-    },
     "edit_box_background_default": {
         "type": "image",
         "is_new_nine_slice": "$is_new_nine_slice",
@@ -122,18 +95,6 @@
         "nine_slice_top": "$nine_slice_top",
         "nineslice_size": "$nineslice_size",
         "texture": "$edit_box_hover_texture"
-    },
-    "hover": {
-        "type": "image",
-        "layer": "$texture_layer",
-        "alpha": "$control_alpha",
-        "is_new_nine_slice": "$is_new_nine_slice",
-        "nine_slice_buttom": "$nine_slice_buttom",
-        "nine_slice_left": "$nine_slice_left",
-        "nine_slice_right": "$nine_slice_right",
-        "nine_slice_top": "$nine_slice_top",
-        "nineslice_size": "$nineslice_size",
-        "texture": "$hover_texture"
     },
     "imageBase": {
         "type": "image",
@@ -344,18 +305,6 @@
         "init_rot_y": 60.0,
         "rotation": "none",
         "screen_scale": 1.0
-    },
-    "pressed": {
-        "type": "image",
-        "layer": "$texture_layer",
-        "alpha": "$control_alpha",
-        "is_new_nine_slice": "$is_new_nine_slice",
-        "nine_slice_buttom": "$nine_slice_buttom",
-        "nine_slice_left": "$nine_slice_left",
-        "nine_slice_right": "$nine_slice_right",
-        "nine_slice_top": "$nine_slice_top",
-        "nineslice_size": "$nineslice_size",
-        "texture": "$pressed_texture"
     },
     "scrollBase@common.scrolling_panel": {
         "$scrolling_content": "PyreactBase.scroll_content_panel",

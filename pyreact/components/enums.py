@@ -11,6 +11,8 @@ class JustifyContent(object):
     end = "end"
     spaceBetween = "spaceBetween"
     spaceAround = "spaceAround"
+    flexEnd = "end"
+    flexStart = "start"
 
 
 class FlexDirection(object):
@@ -19,6 +21,9 @@ class FlexDirection(object):
     rowReverse = "rowReverse"
     columnReverse = "columnReverse"
 
+class FlexWrap(object):
+    nowrap = "nowrap"
+    wrap = "wrap"
 
 class FontSize(object):
     # Usage-side fontSize is logical text size.

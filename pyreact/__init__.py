@@ -18,6 +18,7 @@ from .components import (
     Button,
     Input,
     Scroll,
+    FlexWrap,
 )
 
 from .core import (
@@ -85,6 +86,7 @@ __all__ = [
     "TextAlign",
     "Color",
     "Colors",
+    "FlexWrap",
     "Position",
     "ButtonState",
     "ComponentNode",

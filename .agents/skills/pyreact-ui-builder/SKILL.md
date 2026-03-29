@@ -511,6 +511,96 @@ selected_tab, set_selected_tab = useState('all')
 - 存底层原生控件引用
 - 存不触发重渲染的可变对象
 
+## Color / Colors 类开发规范
+该模块提供了一个仿 Flutter 风格的不可变颜色对象。为保证颜色处理的一致性与准确性，请遵循以下开发规范。
+
+### 1. 颜色的创建与实例化 (Initialization)
+
+你可以通过多种方式来创建一个 `Color` 对象：
+
+```python
+# 1. 直接传入 32-bit ARGB 整数 (0xAARRGGBB)
+color1 = Color(0xFFFF0000)  # 不透明的红色
+
+# 2. 使用 fromARGB (Alpha, Red, Green, Blue) - 取值范围 0~255
+color2 = Color.fromARGB(255, 255, 0, 0)
+
+# 3. 使用 fromRGBO (Red, Green, Blue, Opacity) - RGB 取值 0~255，Opacity 取值 0.0~1.0
+color3 = Color.fromRGBO(255, 0, 0, 1.0)
+
+# 4. 使用 fromHex (支持解析 Hex 字符串)
+# 支持格式: #RGB, #ARGB, #RRGGBB, #AARRGGBB (也可以用 0x 或 0X 开头，或者不带前缀)
+color_hex1 = Color.fromHex("#FF0000")    # 默认 Alpha 为 FF (即完全不透明)
+color_hex2 = Color.fromHex("0xFFFF0000") # 包含 Alpha 通道
+color_hex3 = Color.fromHex("#F00")       # 简写形式，等同于 #FF0000
+```
+
+### 2. 获取颜色属性 (Properties)
+
+创建对象后，可以轻松读取颜色的各个通道值：
+
+```python
+my_color = Color.fromARGB(128, 50, 100, 150)
+
+# 获取 32-bit 整数值
+print(my_color.value)   # 返回对应的 int 值
+
+# 获取 0~255 范围的单通道整数值
+print(my_color.alpha)   # 128
+print(my_color.red)     # 50
+print(my_color.green)   # 100
+print(my_color.blue)    # 150
+
+# 获取 0.0~1.0 范围的不透明度
+print(my_color.opacity) # 128 / 255.0 ≈ 0.5019
+```
+
+### 3. 颜色的修改与派生 (Modifiers)
+
+由于 `Color` 是不可变对象，修改颜色属性会返回一个**全新**的 `Color` 实例：
+
+```python
+base_color = Color(0xFF00FF00) # 绿色
+
+# 替换某个通道的值 (0~255)，其他通道保持不变
+new_alpha = base_color.withAlpha(128)
+new_red   = base_color.withRed(255)
+new_green = base_color.withGreen(0)
+new_blue  = base_color.withBlue(128)
+
+# 替换不透明度 (0.0~1.0)
+half_transparent = base_color.withOpacity(0.5) 
+```
+
+### 4. 数据导出与转换 (Export / Conversion)
+
+如果需要将颜色传递给其他图形库或前端系统，可以使用以下导出方法：
+
+```python
+ui_color = Color.fromRGBO(255, 128, 0, 0.8)
+
+# 1. 导出为 0.0 ~ 1.0 范围的浮点数元组 (常用于 OpenGL 等图形 API)
+rgb_tuple = ui_color.toRGBUnitTuple()   # (1.0, 0.5019..., 0.0)
+rgba_tuple = ui_color.toRGBAUnitTuple() # (1.0, 0.5019..., 0.0, 0.8)
+
+# 2. 导出为 CSS 兼容的 rgba 字符串 (常用于 Web 前端)
+css_str = ui_color.toCSSRGBA() # "rgba(255,128,0,0.800000)"
+```
+
+### 5. 使用预设颜色常量 (`Colors` 类)
+
+`Colors` 类提供了一组静态的常用颜色常量，可以直接调用，无需重新实例化：
+
+```python
+# 直接使用预定义的 Color 对象
+bg_color = Colors.white
+text_color = Colors.black
+border_color = Colors.lightGrey
+
+# 可以搭配 Modifier 使用
+shadow_color = Colors.black.withOpacity(0.2)
+```
+
 ## Label / 文本开发规范
 
 ### `fontSize` 的预设值

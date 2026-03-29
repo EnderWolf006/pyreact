@@ -19,8 +19,9 @@ class PyreactExampleClientSystem(ClientSystem):
         def f():
             clientApi.PushScreen('PyreactExampleMod', 'PyreactExample', {"isHud": 1, 'data':{},'client':self})
 
-        comp = clientApi.GetEngineCompFactory().CreateGame(clientApi.GetLevelId())
-        comp.AddTimer(2.0,f)
+        f()
+        # comp = clientApi.GetEngineCompFactory().CreateGame(clientApi.GetLevelId())
+        # comp.AddTimer(2.0,f)
     def Destroy(self):
         pass
         

@@ -13,12 +13,14 @@ set "SRC_PYREACT=%SOURCE_ROOT%\pyreact"
 set "SRC_RUNTIME=%SOURCE_ROOT%\PyreactRuntimeScript"
 set "SRC_RUNTIME_NATIVE=%SRC_RUNTIME%\native_runtime"
 set "SRC_EXAMPLE=%SOURCE_ROOT%\PyreactExampleScript"
+set "SRC_EXAMPLE_SUB=%SRC_EXAMPLE%\examples"
 set "SRC_JSON_UI=%SOURCE_ROOT%\JsonUI"
 
 set "DST_PYREACT=%TARGET_ROOT%\pyreact"
 set "DST_RUNTIME=%TARGET_ROOT%\PyreactRuntimeScript"
 set "DST_RUNTIME_NATIVE=%DST_RUNTIME%\native_runtime"
 set "DST_EXAMPLE=%TARGET_ROOT%\PyreactExampleScript"
+set "DST_EXAMPLE_SUB=%DST_EXAMPLE%\examples"
 set "DST_RUNTIME_PYREACT=%DST_RUNTIME%\pyreact"
 set "DST_EXAMPLE_PYREACT=%DST_EXAMPLE%\pyreact"
 set "DST_JSON_UI=%TARGET_UI_ROOT%"
@@ -45,6 +47,10 @@ if not exist "%SRC_RUNTIME_NATIVE%" (
 )
 if not exist "%SRC_EXAMPLE%" (
   echo [ERROR] source PyreactExampleScript not found: %SRC_EXAMPLE%
+  exit /b 1
+)
+if not exist "%SRC_EXAMPLE_SUB%" (
+  echo [ERROR] source examples folder not found: %SRC_EXAMPLE_SUB%
   exit /b 1
 )
 if not exist "%SRC_JSON_UI%" (
@@ -87,6 +93,13 @@ echo [SYNC] example top-level .py
 robocopy "%SRC_EXAMPLE%" "%DST_EXAMPLE%" *.py /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 (
   echo [ERROR] Robocopy failed: example top-level .py
+  exit /b 8
+)
+
+echo [SYNC] example sub-folder: examples
+robocopy "%SRC_EXAMPLE_SUB%" "%DST_EXAMPLE_SUB%" /MIR /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XD __pycache__ /XF *.pyc >nul
+if errorlevel 8 (
+  echo [ERROR] Robocopy failed: example sub-folder examples
   exit /b 8
 )
 

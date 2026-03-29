@@ -342,11 +342,8 @@ class RuntimePropsMixin(object):
             self._safe_set_size(slot_path, button_width, button_height, slot_control)
             self._clear_prefixed_children(slot_path)
 
-            state_element = self._call_button_builder(builder, state, props.get("children"))
+            state_element = self._call_button_builder(builder, state)
             if state_element is None:
-                continue
-
-            if self._apply_state_element_directly(state_element, slot_path, slot_control):
                 continue
 
             self._render_state_element_into_slot(
@@ -356,14 +353,9 @@ class RuntimePropsMixin(object):
                 slot_height=button_height,
             )
 
-    def _call_button_builder(self, builder, state, button_children):
+    def _call_button_builder(self, builder, state):
         try:
             return builder(state)
-        except TypeError:
-            try:
-                return builder(state, button_children)
-            except Exception:
-                return None
         except Exception:
             return None
 
@@ -381,31 +373,6 @@ class RuntimePropsMixin(object):
             },
             src=texture,
         )
-
-    def _apply_state_element_directly(self, state_element, slot_path, slot_control):
-        node_type = self._safe_text(getattr(state_element, "node_type", ""))
-        if node_type != "Image":
-            return False
-
-        props = getattr(state_element, "props", None) or {}
-        if not isinstance(props, dict):
-            return False
-
-        if self._normalize_children_for_builder(props.get("children")):
-            return False
-
-        image_props = self._extract_image_props(props)
-        src = self._safe_text(image_props.get("src", ""))
-        color = self._parse_text_color(image_props.get("color"))
-        if not src and color is None:
-            return False
-
-        self._apply_image_style_props(
-            node_path=slot_path,
-            image_props=image_props,
-            node_control=slot_control,
-        )
-        return True
 
     def _render_state_element_into_slot(self, state_element, slot_path, slot_width, slot_height):
         from pyreact.components.primitives import Panel
