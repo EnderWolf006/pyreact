@@ -30,6 +30,12 @@ class FontSize(object):
     extraLarge = 64
 
 
+class TextAlign(object):
+    left = "left"
+    center = "center"
+    right = "right"
+
+
 class Position(object):
     relative = "relative"
     absolute = "absolute"

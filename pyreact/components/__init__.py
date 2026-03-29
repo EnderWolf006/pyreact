@@ -1,5 +1,5 @@
 from .style import Style
-from .enums import AlignItems, JustifyContent, FlexDirection, FontSize, Position, ButtonState
+from .enums import AlignItems, JustifyContent, FlexDirection, FontSize, Position, ButtonState, TextAlign
 from .color import Color, Colors
 from .node_base import ComponentNode
 from .primitives import Panel, Image, Label, Item, Button, Input, Scroll
@@ -12,6 +12,7 @@ __all__ = [
     "JustifyContent",
     "FlexDirection",
     "FontSize",
+    "TextAlign",
     "Color",
     "Colors",
     "Position",
