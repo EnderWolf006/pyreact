@@ -409,17 +409,15 @@ def BedwarStoreApp():
                             alignItems=AlignItems.center,
                         ),
                         children=inv_currency_ui + [
-                            Button(
+                            FilledButton(
                                 style=Style(
                                     width=22,
                                     height=22,
                                     alignItems=AlignItems.center,
                                     justifyContent=JustifyContent.center
                                 ),
-                                buttonBuilder=flat_button_builder_preset(
-                                    default=Colors.black.withAlpha(0.2),
-                                    pressed=Colors.black.withAlpha(0.1),
-                                ),
+                                default=Colors.black.withAlpha(0.2),
+                                pressed=Colors.black.withAlpha(0.1),
                                 children=[
                                     Label(
                                         content="x"

@@ -1,15 +1,15 @@
-# coding=utf-8
-from pyreact import Image, ButtonState, Style, Color
+from pyreact import Component, Button, Style, ButtonState, Image, ComponentNode, Color, Colors
 
-def flat_button_builder_preset(default, hover=None, pressed=None):
-    # type: (Color, Color, Color) -> callable
 
+@Component
+def FilledButton(default=Colors.transparent, hover=None, pressed=None, **kwargs):
+    # type: (Color, Color, Color, **object) -> ComponentNode
     if hover is None and pressed is None:
         hover = default
         pressed = default
     elif hover is None:
         hover = pressed
-    else: # pressed is None
+    else:  # pressed is None
         pressed = hover
 
     def builder(state):
@@ -25,4 +25,7 @@ def flat_button_builder_preset(default, hover=None, pressed=None):
             ),
             color=color_map[state],
         )
-    return builder
+    return Button(
+        buttonBuilder=builder,
+        **kwargs
+    )
