@@ -28,7 +28,7 @@ class RuntimePropsMixin(object):
             pass
 
         style = self._extract_node_style(node, props)
-        self._apply_common_style_props(node_path, style, node_control)
+        self._apply_common_style_props(node_path, style, props, node_control)
 
         if node_type == "Image":
             image_props = self._extract_image_props(props)
@@ -532,7 +532,7 @@ class RuntimePropsMixin(object):
             node_control,
         )
 
-    def _apply_common_style_props(self, node_path, style, node_control):
+    def _apply_common_style_props(self, node_path, style, props, node_control):
         if not isinstance(style, dict):
             return
 
@@ -553,18 +553,20 @@ class RuntimePropsMixin(object):
             self._safe_set_visible(node_path, True, node_control)
 
         opacity = style.get("opacity")
-        color = style.get("color") # type: Color
-        if opacity is not None:
-            alpha = self._to_float(opacity, 1.0)
-            if color is not None:
-                alpha *= color.alpha
-            if alpha < 0.0:
-                alpha = 0.0
-            if alpha > 1.0:
-                alpha = 1.0
-            next_cached_style['opacity'] = alpha
-            if cached_style.get('opacity') != alpha:
-                self._safe_set_alpha(node_path, alpha, node_control)
+        color = props.get("color")  # type: Color
+
+        if opacity is not None or color is not None:
+            base_opacity = self._to_float(opacity, 1.0) if opacity is not None else 1.0
+            color_alpha = color.alpha if color is not None else 1.0
+            final_alpha = base_opacity * color_alpha
+            if final_alpha < 0.0:
+                final_alpha = 0.0
+            elif final_alpha > 1.0:
+                final_alpha = 1.0
+            next_cached_style['opacity'] = final_alpha
+            if cached_style.get('opacity') != final_alpha:
+                self._safe_set_alpha(node_path, final_alpha, node_control)
+
         elif 'opacity' in cached_style:
             self._safe_set_alpha(node_path, 1.0, node_control)
 

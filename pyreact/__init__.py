@@ -29,6 +29,10 @@ from .core import (
     useRef,
 )
 
+from .presets import (
+    flat_button_builder_preset,
+)
+
 
 def render_app(
     root,
@@ -104,4 +108,5 @@ __all__ = [
     "useCallback",
     "useRef",
     "render_app",
+    "flat_button_builder_preset",
 ]

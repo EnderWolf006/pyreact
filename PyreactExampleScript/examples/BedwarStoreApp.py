@@ -416,9 +416,9 @@ def BedwarStoreApp():
                                     alignItems=AlignItems.center,
                                     justifyContent=JustifyContent.center
                                 ),
-                                buttonBuilder=lambda state: Image(
-                                    style=Style(width='100%', height='100%', opacity=0.5 if state == ButtonState.default else 0.2),
-                                    color=Colors.black,
+                                buttonBuilder=flat_button_builder_preset(
+                                    default=Colors.black.withAlpha(0.2),
+                                    pressed=Colors.black.withAlpha(0.1),
                                 ),
                                 children=[
                                     Label(

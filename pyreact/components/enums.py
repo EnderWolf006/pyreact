@@ -21,9 +21,11 @@ class FlexDirection(object):
     rowReverse = "rowReverse"
     columnReverse = "columnReverse"
 
+
 class FlexWrap(object):
     nowrap = "nowrap"
     wrap = "wrap"
+
 
 class FontSize(object):
     small = 5
