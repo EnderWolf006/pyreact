@@ -543,16 +543,16 @@ color_hex3 = Color.fromHex("#F00")       # 简写形式，等同于 #FF0000
 my_color = Color.fromARGB(128, 50, 100, 150)
 
 # 获取 32-bit 整数值
-print(my_color.value)   # 返回对应的 int 值
+print(my_color.value)  # 返回对应的 int 值
 
 # 获取 0~255 范围的单通道整数值
-print(my_color.alpha)   # 128
-print(my_color.red)     # 50
-print(my_color.green)   # 100
-print(my_color.blue)    # 150
+print(my_color.alpha8)  # 128
+print(my_color.red)  # 50
+print(my_color.green)  # 100
+print(my_color.blue)  # 150
 
 # 获取 0.0~1.0 范围的不透明度
-print(my_color.opacity) # 128 / 255.0 ≈ 0.5019
+print(my_color.opacity)  # 128 / 255.0 ≈ 0.5019
 ```
 
 ### 3. 颜色的修改与派生 (Modifiers)
@@ -607,21 +607,21 @@ shadow_color = Colors.black.withOpacity(0.2)
 
 公开枚举位于 `pyreact/components/enums.py`：
 
-- `FontSize.small = 8`
-- `FontSize.normal = 16`
-- `FontSize.large = 32`
-- `FontSize.extraLarge = 64`
+- `FontSize.small = 5`
+- `FontSize.normal = 10`
+- `FontSize.large = 20`
+- `FontSize.extraLarge = 40`
 
-Runtime 的映射基线是：`16 -> scale 1.0`。
+Runtime 的映射基线是：`10px -> scale 1.0`。
 
 因此常用映射可理解为：
 
 | fontSize | 数值 | 原生 scale |
 | --- | ---: | ---: |
-| `FontSize.small` | 8 | 0.5 |
-| `FontSize.normal` | 16 | 1.0 |
-| `FontSize.large` | 32 | 2.0 |
-| `FontSize.extraLarge` | 64 | 4.0 |
+| `FontSize.small` | 5 | 0.5 |
+| `FontSize.normal` | 10 | 1.0 |
+| `FontSize.large` | 20 | 2.0 |
+| `FontSize.extraLarge` | 40 | 4.0 |
 
 建议：
 
@@ -634,8 +634,8 @@ Runtime 的映射基线是：`16 -> scale 1.0`。
 在 `scale=1.0`、行距为 0 的常见情况下：
 
 - 实际高度大约是 10px（会继续受 UI 适配缩放影响）
-- 英文常见宽度约 8px
-- 中文常见宽度约 16px
+- 英文常见宽度约 5px
+- 中文常见宽度约 10px
 - 符号常见宽度约 3px
 - 字符间距约 2px
 

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import mod.client.extraClientApi as clientApi
+from pyreact.components.color import Color
 
 
 class RuntimePropsMixin(object):
@@ -552,8 +553,11 @@ class RuntimePropsMixin(object):
             self._safe_set_visible(node_path, True, node_control)
 
         opacity = style.get("opacity")
+        color = style.get("color") # type: Color
         if opacity is not None:
             alpha = self._to_float(opacity, 1.0)
+            if color is not None:
+                alpha *= color.alpha
             if alpha < 0.0:
                 alpha = 0.0
             if alpha > 1.0:

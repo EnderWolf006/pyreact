@@ -19,8 +19,6 @@ def _clamp_byte(value):
 
 
 class Color(object):
-    """Flutter-like immutable ARGB color object."""
-
     __slots__ = ("_value",)
 
     def __init__(self, value):
@@ -31,7 +29,7 @@ class Color(object):
         self._value = int(value)
 
     @staticmethod
-    def fromARGB(a, r, g, b):
+    def _fromARGB8888(a, r, g, b):
         a8 = _clamp_byte(a)
         r8 = _clamp_byte(r)
         g8 = _clamp_byte(g)
@@ -39,16 +37,20 @@ class Color(object):
         return Color((a8 << 24) | (r8 << 16) | (g8 << 8) | b8)
 
     @staticmethod
-    def fromRGBO(r, g, b, opacity):
+    def fromRGB(r, g, b):
+        return Color._fromARGB8888(255, r, g, b)
+
+    @staticmethod
+    def fromRGBA(r, g, b, a):
         try:
-            alpha = float(opacity)
+            alpha = float(a)
         except Exception:
             alpha = 1.0
         if alpha < 0.0:
             alpha = 0.0
         if alpha > 1.0:
             alpha = 1.0
-        return Color.fromARGB(int(round(alpha * 255.0)), r, g, b)
+        return Color._fromARGB8888(int(round(alpha * 255.0)), r, g, b)
 
     @staticmethod
     def fromHex(value):
@@ -75,7 +77,7 @@ class Color(object):
             size = 8
 
         if size == 6:
-            # RRGGBB -> AARRGGBB (alpha defaults to 0xFF)
+            # RRGGBB -> AARRGGBB (alpha8 defaults to 0xFF)
             text = "FF" + text
         elif size != 8:
             raise ValueError("Color.fromHex supports #RGB/#ARGB/#RRGGBB/#AARRGGBB")
@@ -92,7 +94,7 @@ class Color(object):
         return self._value
 
     @property
-    def alpha(self):
+    def alpha8(self):
         return (self._value >> 24) & 0xFF
 
     @property
@@ -109,22 +111,29 @@ class Color(object):
 
     @property
     def opacity(self):
-        return self.alpha / 255.0
+        return self.alpha8 / 255.0
+
+    @property
+    def alpha(self):
+        return self.alpha8 / 255.0
 
     def withAlpha(self, a):
-        return Color.fromARGB(a, self.red, self.green, self.blue)
+        return Color.fromRGBA(self.red, self.green, self.blue, a)
+
+    def withAlpha8(self, a):
+        return Color._fromARGB8888(a, self.red, self.green, self.blue)
 
     def withRed(self, r):
-        return Color.fromARGB(self.alpha, r, self.green, self.blue)
+        return Color._fromARGB8888(self.alpha8, r, self.green, self.blue)
 
     def withGreen(self, g):
-        return Color.fromARGB(self.alpha, self.red, g, self.blue)
+        return Color._fromARGB8888(self.alpha8, self.red, g, self.blue)
 
     def withBlue(self, b):
-        return Color.fromARGB(self.alpha, self.red, self.green, b)
+        return Color._fromARGB8888(self.alpha8, self.red, self.green, b)
 
     def withOpacity(self, opacity):
-        return Color.fromRGBO(self.red, self.green, self.blue, opacity)
+        return Color.fromRGBA(self.red, self.green, self.blue, opacity)
 
     def toRGBUnitTuple(self):
         return (
@@ -138,15 +147,7 @@ class Color(object):
             self.red / 255.0,
             self.green / 255.0,
             self.blue / 255.0,
-            self.alpha / 255.0,
-        )
-
-    def toCSSRGBA(self):
-        return "rgba(%d,%d,%d,%.6f)" % (
-            self.red,
-            self.green,
-            self.blue,
-            self.opacity,
+            self.alpha8 / 255.0,
         )
 
     def __eq__(self, other):

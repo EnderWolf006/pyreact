@@ -11,7 +11,7 @@ except NameError:
 
 
 class RuntimeNativeApiMixin(object):
-    _TEXT_FONT_SIZE_BASE = 16.0
+    _TEXT_FONT_SIZE_BASE = 10.0
 
     def _ensure_measure_label(self):
         measure_path = self._root_path + "/" + self._MEASURE_LABEL_NAME

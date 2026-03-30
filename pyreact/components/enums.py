@@ -26,13 +26,10 @@ class FlexWrap(object):
     wrap = "wrap"
 
 class FontSize(object):
-    # Usage-side fontSize is logical text size.
-    # Runtime converts it to NetEase native SetTextFontSize(scale)
-    # with 16 fontSize == 1.0 scale.
-    small = 8
-    normal = 16
-    large = 32
-    extraLarge = 64
+    small = 5
+    normal = 10
+    large = 20
+    extraLarge = 40
 
 
 class TextAlign(object):

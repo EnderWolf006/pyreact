@@ -125,7 +125,7 @@ def HorizontalItemCard(goods_data, onClick):
                 width="100%",
                 opacity=0.3 if state == ButtonState.default else 0.6,
             ),
-            color=Color.fromARGB(1.0, 39, 18, 19)
+            color=Color.fromRGB(39, 18, 19)
         ),
         children=[
             Item(
@@ -156,7 +156,7 @@ def HorizontalItemCard(goods_data, onClick):
                             marginBottom=2,
                         ),
                         content=str(goods_data["name"]),
-                        fontSize=20,
+                        fontSize=13,
                     ),
                     Label(
                         color=Colors.grey,
@@ -196,7 +196,7 @@ def VerticalItemCard(goods_data, onClick):
                 width="100%",
                 opacity=0.3 if state == ButtonState.default else 0.6,
             ),
-            color=Color.fromARGB(1.0, 39, 18, 19)
+            color=Color.fromRGB(39, 18, 19)
         ),
         children=[
             Panel(
@@ -276,7 +276,6 @@ def BedwarStoreApp():
                     marginLeft=4,
                     marginRight=6,
                 ),
-                fontSize=14,
                 shadow=True,
                 content=str(value),
             )
@@ -299,7 +298,7 @@ def BedwarStoreApp():
                         width="100%",
                         opacity=0.3 if state == ButtonState.default else 0.6,
                     ),
-                    color=Color.fromARGB(1.0, 152, 86, 86) if selected else Colors.black,
+                    color=Color.fromRGB(152, 86, 86) if selected else Colors.black,
                 ),
                 onClick=lambda index=i: set_selected_category_index(index),
                 children=[
@@ -349,7 +348,7 @@ def BedwarStoreApp():
             height="100%",
             padding=8
         ),
-        color=Color.fromARGB(1.0, 82, 71, 98),
+        color=Color.fromRGB(82, 71, 98),
         children=[
             # Appbar
             Panel(
