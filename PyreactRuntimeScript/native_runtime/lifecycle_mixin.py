@@ -6,6 +6,216 @@ import mod.client.extraClientApi as clientApi
 
 
 class RuntimeLifecycleMixin(object):
+    def _get_native_control_def_cache(self):
+        cache = getattr(self, '_native_control_def_cache', None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._native_control_def_cache = cache
+        return cache
+
+    def _remember_native_control_def(self, control_path, def_name):
+        cache = self._get_native_control_def_cache()
+        cache[self._safe_text(control_path)] = self._safe_text(def_name)
+
+    def _get_native_control_def(self, control_path):
+        cache = self._get_native_control_def_cache()
+        return self._safe_text(cache.get(self._safe_text(control_path)))
+
+    def _drop_native_control_defs(self, path_prefix=None):
+        cache = self._get_native_control_def_cache()
+        if not path_prefix:
+            cache.clear()
+            return
+
+        prefix = self._safe_text(path_prefix)
+        if not prefix:
+            cache.clear()
+            return
+
+        prefix_with_sep = prefix + '/'
+        for cached_path in list(cache.keys()):
+            safe_cached_path = self._safe_text(cached_path)
+            if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
+                try:
+                    del cache[cached_path]
+                except Exception:
+                    pass
+
+    def _get_pooled_control_paths(self):
+        pooled = getattr(self, '_pooled_control_paths', None)
+        if not isinstance(pooled, dict):
+            pooled = {}
+            self._pooled_control_paths = pooled
+        return pooled
+
+    def _mark_control_pooled(self, control_path, pooled=True):
+        cache = self._get_pooled_control_paths()
+        safe_path = self._safe_text(control_path)
+        if not safe_path:
+            return
+        if pooled:
+            cache[safe_path] = True
+            return
+        try:
+            del cache[safe_path]
+        except Exception:
+            pass
+
+    def _is_control_pooled(self, control_path):
+        cache = self._get_pooled_control_paths()
+        return bool(cache.get(self._safe_text(control_path)))
+
+    def _drop_pooled_control_paths(self, path_prefix=None):
+        cache = self._get_pooled_control_paths()
+        if not path_prefix:
+            cache.clear()
+            return
+
+        prefix = self._safe_text(path_prefix)
+        if not prefix:
+            cache.clear()
+            return
+
+        prefix_with_sep = prefix + '/'
+        for cached_path in list(cache.keys()):
+            safe_cached_path = self._safe_text(cached_path)
+            if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
+                try:
+                    del cache[cached_path]
+                except Exception:
+                    pass
+
+    def _park_control(self, control_path, control=None):
+        hidden_pos = getattr(self, '_POOL_HIDDEN_POSITION', -100000.0)
+        self._safe_set_visible(control_path, False, control)
+        self._safe_set_position(control_path, hidden_pos, hidden_pos, control)
+
+    def _pool_control_if_exists(self, control_path, control=None):
+        target = control
+        if not target:
+            try:
+                target = self._screen.GetBaseUIControl(control_path)
+            except Exception:
+                target = None
+        if not target:
+            return False
+        self._park_control(control_path, target)
+        self._mark_control_pooled(control_path, True)
+        return True
+
+    def _activate_control_for_reuse(self, control_path, control=None):
+        self._drop_native_prop_cache(control_path)
+        self._drop_native_common_style_cache(control_path)
+        self._safe_set_visible(control_path, True, control)
+        self._mark_control_pooled(control_path, False)
+
+    def _obtain_native_control(self, parent_control_path, control_path, child_name, node_type, parent_control=None):
+        def_name = self._get_def_name(node_type)
+        try:
+            control = self._screen.GetBaseUIControl(control_path)
+        except Exception:
+            control = None
+
+        if control:
+            cached_def_name = self._get_native_control_def(control_path)
+            if cached_def_name and cached_def_name != def_name:
+                try:
+                    self._remove_control_if_exists(control_path, control)
+                except Exception:
+                    pass
+                control = None
+            else:
+                self._activate_control_for_reuse(control_path, control)
+
+        if not control:
+            if not parent_control:
+                try:
+                    parent_control = self._screen.GetBaseUIControl(parent_control_path)
+                except Exception:
+                    parent_control = None
+            if not parent_control:
+                return None
+
+            try:
+                self._screen.CreateChildControl(def_name, child_name, parent_control)
+            except Exception:
+                pass
+            control = self._screen.GetBaseUIControl(control_path)
+            if not control:
+                return None
+            self._count_native_api_call('CreateChildControl')
+            self._drop_native_common_style_cache(control_path)
+            self._drop_native_prop_cache(control_path)
+
+        self._remember_native_control_def(control_path, def_name)
+        return control
+
+    def _is_stable_keyed_node_id(self, node_id):
+        safe_node_id = self._safe_text(node_id or '')
+        return safe_node_id.startswith('k_')
+
+    def _build_native_child_name(self, node_id, shadow_path):
+        safe_node_id = self._safe_text(node_id or 'node') or 'node'
+        if self._is_stable_keyed_node_id(safe_node_id):
+            return "%s%s" % (self._CONTROL_NAME_PREFIX, safe_node_id)
+        if not shadow_path:
+            return "%s%s_root" % (self._CONTROL_NAME_PREFIX, safe_node_id)
+        path_token = '_'.join([str(index) for index in shadow_path])
+        return "%s%s_%s" % (self._CONTROL_NAME_PREFIX, safe_node_id, path_token)
+
+    def _get_child_shadow_base(self, node, shadow_path):
+        if self._is_stable_keyed_node_id(getattr(node, 'node_id', None)):
+            return []
+        return shadow_path
+
+    def _is_layout_only_panel_node(self, node):
+        if node is None or isinstance(node, (list, tuple)):
+            return False
+        if self._safe_text(getattr(node, 'node_type', 'Panel') or 'Panel') != 'Panel':
+            return False
+        if self._is_stable_keyed_node_id(getattr(node, 'node_id', None)):
+            return False
+
+        props = getattr(node, 'props', None) or {}
+        if not isinstance(props, dict):
+            props = {}
+        if props.get('ref') is not None:
+            return False
+
+        style = getattr(node, 'style', None) or {}
+        if not isinstance(style, dict):
+            style = {}
+
+        display = self._safe_text(style.get('display')).strip().lower()
+        if display == 'none':
+            return False
+        if style.get('opacity') is not None:
+            return False
+        if style.get('zIndex') is not None:
+            return False
+        return True
+
+    def _remove_control_if_exists(self, control_path, control=None):
+        target = control
+        if not target:
+            try:
+                target = self._screen.GetBaseUIControl(control_path)
+            except Exception:
+                target = None
+        if not target:
+            return False
+        try:
+            self._screen.RemoveChildControl(target)
+            self._count_native_api_call('RemoveChildControl')
+        except Exception:
+            return False
+        self._drop_native_control_defs(control_path)
+        self._drop_pooled_control_paths(control_path)
+        self._drop_native_common_style_cache(control_path)
+        self._drop_native_prop_cache(control_path)
+        self._drop_button_slot_vtrees(control_path)
+        return True
+
     def _log_render_stage_timings(self, component_ms, build_ms, diff_ms, layout_ms, native_ms):
         if not getattr(self, '_log_perf', False):
             return
@@ -57,7 +267,11 @@ class RuntimeLifecycleMixin(object):
         self._prev_vtree = None
         self._prev_shadow_root = None
         self._measure_label_path = None
+        self._drop_pooled_control_paths()
         self._drop_native_common_style_cache()
+        self._drop_native_prop_cache()
+        self._drop_native_control_defs()
+        self._drop_button_slot_vtrees()
         self._clear_root_children()
 
     def request_render(self):
@@ -96,21 +310,25 @@ class RuntimeLifecycleMixin(object):
                 diff_ms = (time.time() - diff_start_time) * 1000.0
 
                 native_start_time = time.time()
-                self._prev_vtree = None
-                self._prev_shadow_root = None
-                self._input_callbacks = {}
-                self._input_paths = {}
-                self._input_last_values = {}
-                self._node_refs = {}
+                self._begin_native_update_batch()
                 try:
-                    self._clear_all_refs()
-                except Exception:
-                    pass
-                try:
-                    self._unbind_input_edit_handlers()
-                except Exception:
-                    pass
-                self._clear_root_children()
+                    self._prev_vtree = None
+                    self._prev_shadow_root = None
+                    self._input_callbacks = {}
+                    self._input_paths = {}
+                    self._input_last_values = {}
+                    self._node_refs = {}
+                    try:
+                        self._clear_all_refs()
+                    except Exception:
+                        pass
+                    try:
+                        self._unbind_input_edit_handlers()
+                    except Exception:
+                        pass
+                    self._clear_root_children()
+                finally:
+                    self._flush_native_update_batch()
                 native_ms = (time.time() - native_start_time) * 1000.0
                 self._log_render_stage_timings(component_ms, build_ms, diff_ms, 0.0, native_ms)
                 return
@@ -131,23 +349,28 @@ class RuntimeLifecycleMixin(object):
             layout_ms = (time.time() - layout_start_time) * 1000.0
 
             native_start_time = time.time()
-            if self._can_apply_incremental(mutations):
-                self._apply_incremental_updates(shadow_root, mutations)
-                self._refresh_button_callbacks(shadow_root)
-            else:
-                if getattr(self, '_debug_render', False):
-                    counts = {}
-                    muts = mutations or []
-                    for m in muts:
-                        t = self._safe_text(getattr(m, 'type_', ''))
-                        counts[t] = counts.get(t, 0) + 1
-                self._clear_root_children()
-                self._render_children(
-                    children=[shadow_root],
-                    parent_path=self._root_path,
-                    parent_abs_x=0.0,
-                    parent_abs_y=0.0,
-                )
+            self._begin_native_update_batch()
+            try:
+                if self._can_apply_incremental(mutations):
+                    self._apply_incremental_updates(shadow_root, mutations)
+                    self._refresh_button_callbacks(shadow_root)
+                else:
+                    if getattr(self, '_debug_render', False):
+                        counts = {}
+                        muts = mutations or []
+                        for m in muts:
+                            t = self._safe_text(getattr(m, 'type_', ''))
+                            counts[t] = counts.get(t, 0) + 1
+                    self._clear_root_children()
+                    self._render_children(
+                        children=[shadow_root],
+                        parent_path=self._root_path,
+                        parent_abs_x=0.0,
+                        parent_abs_y=0.0,
+                        parent_shadow_path=[],
+                    )
+            finally:
+                self._flush_native_update_batch()
             native_ms = (time.time() - native_start_time) * 1000.0
 
             self._log_render_stage_timings(component_ms, build_ms, diff_ms, layout_ms, native_ms)
@@ -223,9 +446,9 @@ class RuntimeLifecycleMixin(object):
             recreate_paths=recreate_paths,
         )
 
-    def _apply_layout_to_existing_tree(self, current_node, parent_control_path, parent_abs_x, parent_abs_y, shadow_path, recreate_paths):
+    def _apply_layout_to_existing_tree(self, current_node, parent_control_path, parent_abs_x, parent_abs_y, shadow_path, recreate_paths, prune_current_level=True):
         if current_node is None:
-            return
+            return []
 
         if isinstance(current_node, (list, tuple)):
             children = list(current_node)
@@ -249,20 +472,18 @@ class RuntimeLifecycleMixin(object):
             self._apply_scroll_props(current_node, parent_control_path)
 
         if not children:
-            try:
-                # Ensure we remove stale prefixed children when the new tree has none.
-                self._prune_prefixed_children(children_parent_path, [])
-            except Exception:
-                pass
-            return
+            if prune_current_level:
+                try:
+                    # Ensure we remove stale prefixed children when the new tree has none.
+                    self._prune_prefixed_children(children_parent_path, [])
+                except Exception:
+                    pass
+            return []
 
         index = 0
         expected_child_names = []
         for node in children:
             node_id = self._safe_text(getattr(node, 'node_id', 'node'))
-            child_name = "%s%s_%s" % (self._CONTROL_NAME_PREFIX, node_id, index)
-            expected_child_names.append(child_name)
-            
             node_type = self._safe_text(getattr(node, 'node_type', 'Panel') or 'Panel')
             layout = getattr(node, 'layout', None)
             abs_x = self._to_float(getattr(layout, 'x', 0.0), 0.0)
@@ -270,71 +491,74 @@ class RuntimeLifecycleMixin(object):
             width = self._to_float(getattr(layout, 'width', 0.0), 0.0)
             height = self._to_float(getattr(layout, 'height', 0.0), 0.0)
 
-            control_path = children_parent_path + '/' + child_name
-            child_control_paths = control_path
-            control = self._screen.GetBaseUIControl(control_path)
-
             next_shadow_path = list(shadow_path)
             next_shadow_path.append(index)
+            child_name = self._build_native_child_name(node_id, next_shadow_path)
 
-            # If the reconciler says this path is newly created, ensure any stale
-            # control at the same name is removed and rebuilt with the right def.
-            try:
-                if recreate_paths and recreate_paths.get(tuple(next_shadow_path)) and control:
-                    try:
-                        self._screen.RemoveChildControl(control)
-                    except Exception:
-                        pass
-                    self._drop_native_common_style_cache(control_path)
-                    control = None
-            except Exception:
-                pass
+            control_path = children_parent_path + '/' + child_name
+            child_control_paths = control_path
 
+            if self._is_layout_only_panel_node(node):
+                self._pool_control_if_exists(control_path)
+                nested_expected = self._apply_layout_to_existing_tree(
+                    current_node=node,
+                    parent_control_path=children_parent_path,
+                    parent_abs_x=parent_abs_x,
+                    parent_abs_y=parent_abs_y,
+                    shadow_path=next_shadow_path,
+                    recreate_paths=recreate_paths,
+                    prune_current_level=False,
+                )
+                if nested_expected:
+                    expected_child_names.extend(nested_expected)
+                if self._needs_render:
+                    return expected_child_names
+                index += 1
+                continue
+
+            expected_child_names.append(child_name)
+            control = self._obtain_native_control(
+                parent_control_path=children_parent_path,
+                control_path=control_path,
+                child_name=child_name,
+                node_type=node_type,
+            )
             if not control:
-                parent_control = self._screen.GetBaseUIControl(children_parent_path)
-                if not parent_control:
-                    self._needs_render = True
-                    return
-
-                def_name = self._get_def_name(node_type)
-                try:
-                    self._screen.CreateChildControl(def_name, child_name, parent_control)
-                except Exception:
-                    pass
-                control = self._screen.GetBaseUIControl(control_path)
-                if not control:
-                    self._needs_render = True
-                    return
-                self._drop_native_common_style_cache(control_path)
+                self._needs_render = True
+                return expected_child_names
+            self._apply_deferred_node_props(node, control_path, control)
             self._safe_set_position(control_path, abs_x - parent_abs_x, abs_y - parent_abs_y, control)
             if node_type != "Label":
                 self._safe_set_size(control_path, width, height, control)
             self._apply_node_props(node, control_path, node_type, node_id, control)
+            self._apply_immediate_node_props(node, control_path, control)
 
             self._apply_layout_to_existing_tree(
                 current_node=node,
                 parent_control_path=child_control_paths,
                 parent_abs_x=abs_x,
                 parent_abs_y=abs_y,
-                shadow_path=next_shadow_path,
+                shadow_path=self._get_child_shadow_base(node, next_shadow_path),
                 recreate_paths=recreate_paths,
             )
 
             if self._needs_render:
-                return
+                return expected_child_names
             index += 1
 
-        try:
-            # Remove any orphaned prefixed children not present in the new tree.
-            self._prune_prefixed_children(children_parent_path, expected_child_names)
-        except Exception:
-            pass
+        if prune_current_level:
+            try:
+                # Remove any orphaned prefixed children not present in the new tree.
+                self._prune_prefixed_children(children_parent_path, expected_child_names)
+            except Exception:
+                pass
+        return expected_child_names
 
     def _refresh_button_callbacks(self, shadow_root):
         self._button_callbacks = {}
-        self._refresh_button_callbacks_walk([shadow_root], self._root_path)
+        self._refresh_button_callbacks_walk([shadow_root], self._root_path, [])
 
-    def _refresh_button_callbacks_walk(self, current_node, parent_control_path):
+    def _refresh_button_callbacks_walk(self, current_node, parent_control_path, shadow_path):
         if current_node is None:
             return
 
@@ -352,15 +576,23 @@ class RuntimeLifecycleMixin(object):
         index = 0
         for child in children:
             child_id = self._safe_text(getattr(child, 'node_id', 'node'))
-            child_name = "%s%s_%s" % (self._CONTROL_NAME_PREFIX, child_id, index)
             node_type = self._safe_text(getattr(child, 'node_type', 'Panel') or 'Panel')
-            
+            next_shadow_path = list(shadow_path)
+            next_shadow_path.append(index)
+            child_name = self._build_native_child_name(child_id, next_shadow_path)
+
+            if self._is_layout_only_panel_node(child):
+                self._refresh_button_callbacks_walk(child, children_parent_path, next_shadow_path)
+                index += 1
+                continue
+
             control_path = children_parent_path + '/' + child_name
             child_control_paths = control_path
             if node_type == 'Button':
                 self._refresh_button_callback(child, control_path)
 
-            self._refresh_button_callbacks_walk(child, child_control_paths)
+            child_shadow_base = self._get_child_shadow_base(child, next_shadow_path)
+            self._refresh_button_callbacks_walk(child, child_control_paths, child_shadow_base)
             index += 1
 
     def _refresh_button_callback(self, button_node, button_path):
@@ -370,12 +602,10 @@ class RuntimeLifecycleMixin(object):
         onclick = props.get("onClick")
         if not callable(onclick):
             return
-        node_id = self._safe_text(getattr(button_node, 'node_id', 'node'))
-        self._button_callbacks[node_id] = onclick
-        self._bind_button_click(button_path, node_id)
+        self._button_callbacks[button_path] = onclick
+        self._bind_button_click(button_path)
 
     def _clear_root_children(self):
-        self._drop_native_common_style_cache()
         try:
             names = self._screen.GetChildrenName(self._root_path) or []
         except Exception:
@@ -388,35 +618,48 @@ class RuntimeLifecycleMixin(object):
             try:
                 child_control = self._screen.GetBaseUIControl(child_path)
                 if child_control:
-                    self._screen.RemoveChildControl(child_control)
+                    self._pool_control_if_exists(child_path, child_control)
             except Exception:
                 pass
 
-    def _render_children(self, children, parent_path, parent_abs_x, parent_abs_y):
+    def _render_children(self, children, parent_path, parent_abs_x, parent_abs_y, parent_shadow_path):
         index = 0
         for child in children:
-            self._render_node(child, parent_path, parent_abs_x, parent_abs_y, index)
+            self._render_node(child, parent_path, parent_abs_x, parent_abs_y, index, parent_shadow_path)
             index += 1
 
-    def _render_node(self, node, parent_path, parent_abs_x, parent_abs_y, sibling_index):
+    def _render_node(self, node, parent_path, parent_abs_x, parent_abs_y, sibling_index, parent_shadow_path):
         if node is None:
             return
 
         node_type = self._safe_text(getattr(node, "node_type", "Panel") or "Panel")
         def_name = self._get_def_name(node_type)
         node_id = self._safe_text(getattr(node, "node_id", "node"))
-        child_name = "%s%s_%s" % (self._CONTROL_NAME_PREFIX, node_id, sibling_index)
+        shadow_path = list(parent_shadow_path)
+        shadow_path.append(sibling_index)
+
+        if self._is_layout_only_panel_node(node):
+            children = self._get_render_children(node, node_type)
+            self._render_children(children, parent_path, parent_abs_x, parent_abs_y, shadow_path)
+            return
+
+        child_name = self._build_native_child_name(node_id, shadow_path)
 
         parent_control = self._screen.GetBaseUIControl(parent_path)
         if not parent_control:
             return
 
-        child_control = self._screen.CreateChildControl(def_name, child_name, parent_control)
+        child_control = self._obtain_native_control(
+            parent_control_path=parent_path,
+            control_path=parent_path + "/" + child_name,
+            child_name=child_name,
+            node_type=node_type,
+            parent_control=parent_control,
+        )
         if not child_control:
             return
 
         node_path = parent_path + "/" + child_name
-        self._drop_native_common_style_cache(node_path)
         layout = getattr(node, "layout", None)
         abs_x = self._to_float(getattr(layout, "x", 0.0), 0.0)
         abs_y = self._to_float(getattr(layout, "y", 0.0), 0.0)
@@ -425,10 +668,12 @@ class RuntimeLifecycleMixin(object):
         local_x = abs_x - parent_abs_x
         local_y = abs_y - parent_abs_y
 
+        self._apply_deferred_node_props(node, node_path, child_control)
         self._safe_set_position(node_path, local_x, local_y, child_control)
         if node_type != "Label":
             self._safe_set_size(node_path, width, height, child_control)
         self._apply_node_props(node, node_path, node_type, node_id, child_control)
+        self._apply_immediate_node_props(node, node_path, child_control)
 
         children_parent_path = node_path
         if node_type == "Scroll" and layout:
@@ -443,7 +688,8 @@ class RuntimeLifecycleMixin(object):
         child_parent_x = abs_x
         child_parent_y = abs_y
         children = self._get_render_children(node, node_type)
-        self._render_children(children, children_parent_path, child_parent_x, child_parent_y)
+        child_shadow_base = self._get_child_shadow_base(node, shadow_path)
+        self._render_children(children, children_parent_path, child_parent_x, child_parent_y, child_shadow_base)
 
     def _apply_scroll_props(self, node, node_path):
         props = getattr(node, "props", {}) or {}

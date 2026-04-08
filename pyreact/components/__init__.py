@@ -3,7 +3,7 @@ from .enums import AlignItems, JustifyContent, FlexDirection, FontSize, Position
 from .color import Color, Colors
 from .node_base import ComponentNode
 from .primitives import Panel, Image, Label, Item, Button, Input, Scroll
-from .component import Component
+from .component import Component, is_component
 
 
 __all__ = [
@@ -20,6 +20,7 @@ __all__ = [
     "ButtonState",
     "ComponentNode",
     "Component",
+    "is_component",
     "Panel",
     "Image",
     "Label",

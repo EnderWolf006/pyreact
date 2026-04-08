@@ -30,8 +30,8 @@ class PyreactExampleScreen(ScreenNode):
             'base_namespace': 'PyreactBase',
         }
         # 可以在此切换挂载展示不同的app示例
-        # render_app(root=FriendApp, bind=bind)
-        render_app(root=BedwarStoreApp, bind=bind)
+        render_app(root=FriendApp, bind=bind, log_perf=True)
+        # render_app(root=BedwarStoreApp, bind=bind, log_perf=True)
 
     def Destroy(self):
         runtime_system = clientApi.GetSystem('PyreactRuntimeMod', 'PyreactRuntimeClientSystem')

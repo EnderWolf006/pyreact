@@ -8,9 +8,24 @@
 
 - **函数式组件**：通过 `@Component` 声明组件
 - **Hooks**：`useState` / `useEffect` / `useMemo` / `useCallback` / `useRef`
-- **基础控件**（Primitives）：`Panel` / `Image` / `Label` / `Button` / `Input` / `Scroll`
-- **布局**：Flexbox 风格布局（子集），支持 `width/height/padding/margin/flexDirection/justifyContent/alignItems/...`
+- **基础控件**（Primitives）：`Panel` / `Image` / `Label` / `Item` / `Button` / `Input` / `Scroll`
+- **组合控件**：内置 `FilledButton`
+- **布局**：Flexbox 风格布局（子集），支持 `width/height/padding/margin/flexDirection/justifyContent/alignItems/flexWrap/...`
+- **文本与枚举**：公开 `FontSize` / `TextAlign` / `ButtonState` / `Colors`
 - **运行时桥接**：将组件树渲染到 NetEase UI（通过 Runtime 系统统一管理挂载/卸载/重渲染）
+- **Native 节点池化**：运行时默认复用已创建控件，节点移除时优先隐藏并移出屏幕，而不是直接删除；再次命中同一路径时只补应用与缓存状态不同的属性
+
+## 公开 API 概览
+
+业务 UI 建议始终从 `pyreact/__init__.py` 导入。当前公开入口包括：
+
+- 组件装饰器：`Component`
+- primitives：`Panel` / `Image` / `Label` / `Item` / `Button` / `Input` / `Scroll`
+- composites：`FilledButton`
+- hooks：`useState` / `useEffect` / `useMemo` / `useCallback` / `useRef`
+- 样式与枚举：`Style` / `AlignItems` / `JustifyContent` / `FlexDirection` / `FlexWrap` / `Position` / `FontSize` / `TextAlign` / `ButtonState`
+- 颜色：`Color` / `Colors`
+- 挂载：`render_app`
 
 
 ## 快速开始（在 ModSDK AddOn 中使用）
@@ -107,11 +122,21 @@ class MyScreen(ScreenNode):
             runtime_system.UnmountApp({'app_id': 'pyreact_counter_demo'})
 ```
 
+## 常用组件约定
+
+- `Label` 的文字相关能力走 props：`content` / `color` / `fontSize` / `textAlign` / `linePadding` / `shadow`
+- `Image` 的贴图能力走 props：`src` / `color` / `uv` / `uvSize` / `nineSlice` / `rotation` 等，不写进 `style`
+- `Item` 用于渲染物品图标，支持扁平 props 或 `itemDict`
+- `Scroll` 的 `showScrollbar` 是公开 prop，`ref` 由 `@Component` 统一透传
+- `FilledButton` 是对 `Button + buttonBuilder` 的便捷封装，适合纯色态按钮
+
 ## JsonUI 约定
 
 `render_app(..., bind={'root': '/root', ...})` 默认会把控件挂载到一个名为 `root` 的容器节点下。
 
 如需打印每次更新的 5 段性能日志（组件执行 / VNode 构建 / Diff / 布局 / 原生 UI 应用），可传入 `log_perf=True`。
+
+当前 runtime 默认会缓存已应用的 native 属性，并尽量复用已创建控件；因此频繁增删同一路径节点时，通常不会重复创建/销毁 native 控件，而是复用并增量更新属性。
 
 下面是一个最小 Screen JSON（同样可直接参考 `JsonUI/PyreactExample.json`）：
 

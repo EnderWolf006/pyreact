@@ -79,9 +79,13 @@ class LayoutEngine(object):
             children=[],
         )
 
+        child_base_path = path
+        if getattr(vnode, "key", None) is not None:
+            child_base_path = []
+
         index = 0
         for child in self._extract_children(vnode):
-            child_path = list(path)
+            child_path = list(child_base_path)
             child_path.append(index)
             shadow_node.add_child(self._build_shadow_tree(child, child_path))
             index += 1

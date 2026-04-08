@@ -11,6 +11,7 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
     """Render pyreact component tree into NetEase ScreenNode controls."""
 
     _CONTROL_NAME_PREFIX = "pyreact_"
+    _POOL_HIDDEN_POSITION = -100000.0
 
     _TYPE_DEF_SUFFIX_MAP = {
         "Panel": "panelBase",
@@ -56,7 +57,15 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         self._input_last_values = {}
         self._node_refs = {}
         self._prev_node_refs = {}
+        self._button_slot_vtrees = {}
         self._native_common_style_cache = {}
+        self._native_prop_cache = {}
+        self._native_control_def_cache = {}
+        self._pooled_control_paths = {}
+        self._native_api_call_counts = {}
+        self._native_api_counting_active = False
+        self._native_update_batch_active = False
+        self._native_update_batch_dirty = False
         self._input_edit_bound = False
         self._input_edit_handler_method_name = None
 

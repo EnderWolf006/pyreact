@@ -9,27 +9,110 @@ nodes (Panel/Image/Label/...).
 to declare `key`/`ref` parameters.
 """
 
+import inspect
+
+
+_COMPONENT_REGISTRY = {}
+
+
+def _extract_special_kwarg(kwargs, key):
+    if not isinstance(kwargs, dict):
+        return None
+    return kwargs.pop(key, None)
+
+
+def _call_with_fallbacks(component_fn, *attempts):
+    last_error = None
+    for attempt in attempts:
+        try:
+            return attempt()
+        except TypeError as exc:
+            last_error = exc
+
+    if last_error is not None:
+        raise last_error
+    return None
+
+
+def _get_component_argspec(component_fn):
+    try:
+        return inspect.getfullargspec(component_fn)
+    except Exception:
+        try:
+            return inspect.getargspec(component_fn)
+        except Exception:
+            return None
+
+
+def _accepts_kwargs(component_fn):
+    spec = _get_component_argspec(component_fn)
+    if spec is None:
+        return False
+    return bool(getattr(spec, 'varkw', None) or getattr(spec, 'keywords', None))
+
+
+def _positional_arg_names(component_fn):
+    spec = _get_component_argspec(component_fn)
+    if spec is None:
+        return []
+    names = getattr(spec, 'args', None)
+    if not isinstance(names, list):
+        names = list(names or [])
+    return names
+
+
+def _invoke_component(component_fn, args, kwargs):
+    if (not args) and isinstance(kwargs, dict) and kwargs:
+        if _accepts_kwargs(component_fn):
+            return component_fn(**kwargs)
+
+        arg_names = _positional_arg_names(component_fn)
+        if len(arg_names) == 1:
+            return component_fn(kwargs)
+
+        return component_fn(**kwargs)
+
+    if len(args) == 1 and (not kwargs) and isinstance(args[0], dict):
+        props = args[0]
+        arg_names = _positional_arg_names(component_fn)
+        if _accepts_kwargs(component_fn):
+            return _call_with_fallbacks(
+                component_fn,
+                lambda: component_fn(**props),
+                lambda: component_fn(props),
+            )
+
+        if len(arg_names) == 0:
+            return component_fn()
+
+        if len(arg_names) == 1:
+            return _call_with_fallbacks(
+                component_fn,
+                lambda: component_fn(**props),
+                lambda: component_fn(props),
+            )
+
+        return component_fn(**props)
+
+    return _call_with_fallbacks(
+        component_fn,
+        lambda: component_fn(*args, **kwargs),
+        lambda: component_fn(kwargs),
+        lambda: component_fn(),
+    )
+
+
+def is_component(component_fn):
+    return bool(_COMPONENT_REGISTRY.get(component_fn))
+
 
 def Component(component_fn):
     if not callable(component_fn):
         raise TypeError("@Component expects a callable")
 
     def _wrapper(*args, **kwargs):
-        key = None
-        ref = None
-        if isinstance(kwargs, dict):
-            if 'key' in kwargs:
-                key = kwargs.get('key')
-                try:
-                    del kwargs['key']
-                except Exception:
-                    pass
-            if 'ref' in kwargs:
-                ref = kwargs.get('ref')
-                try:
-                    del kwargs['ref']
-                except Exception:
-                    pass
+        key = _extract_special_kwarg(kwargs, 'key')
+        ref = _extract_special_kwarg(kwargs, 'ref')
 
         # Call user component with remaining props.
         # Supported styles:
@@ -37,38 +120,7 @@ def Component(component_fn):
         # - def Comp(props_dict)
         # - def Comp()
         # Also supports being invoked with positional dict by ComponentInstance.
-        out = None
-
-        # Common case 1: invoked by our TreeBuilder using kwargs (def Comp(**props)).
-        if (not args) and isinstance(kwargs, dict) and kwargs:
-            try:
-                out = component_fn(**kwargs)
-            except TypeError:
-                try:
-                    out = component_fn(kwargs)
-                except TypeError:
-                    out = component_fn()
-
-        # Common case 2: invoked by ComponentInstance using a positional props dict.
-        elif len(args) == 1 and (not kwargs) and isinstance(args[0], dict):
-            props = args[0]
-            try:
-                out = component_fn(**props)
-            except TypeError:
-                try:
-                    out = component_fn(props)
-                except TypeError:
-                    out = component_fn()
-
-        # Fallback: call as-is, then try legacy fallbacks.
-        else:
-            try:
-                out = component_fn(*args, **kwargs)
-            except TypeError:
-                try:
-                    out = component_fn(kwargs)
-                except TypeError:
-                    out = component_fn()
+        out = _invoke_component(component_fn, args, kwargs)
 
         if out is None:
             return None
@@ -77,7 +129,7 @@ def Component(component_fn):
         # Key is promoted to an attribute so LayoutEngine can build stable node_id.
         if key is not None:
             try:
-                out.key = key
+                setattr(out, 'key', key)
             except Exception:
                 pass
 
@@ -87,26 +139,21 @@ def Component(component_fn):
                 if isinstance(props, dict):
                     props['ref'] = ref
                 else:
-                    out.ref = ref
+                    setattr(out, 'ref', ref)
             except Exception:
                 pass
 
         return out
 
-    try:
-        _wrapper.__name__ = getattr(component_fn, '__name__', 'Component')
-    except Exception:
-        pass
-    try:
-        _wrapper.__doc__ = getattr(component_fn, '__doc__', None)
-    except Exception:
-        pass
+    for attr_name, fallback in [
+        ('__name__', 'Component'),
+        ('__doc__', None),
+    ]:
+        try:
+            setattr(_wrapper, attr_name, getattr(component_fn, attr_name, fallback))
+        except Exception:
+            pass
 
-    # Mark for potential introspection.
-    try:
-        _wrapper.__pyreact_component__ = True
-        _wrapper.__pyreact_inner__ = component_fn
-    except Exception:
-        pass
+    _COMPONENT_REGISTRY[_wrapper] = True
 
     return _wrapper

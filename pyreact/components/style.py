@@ -13,6 +13,8 @@ class Style(object):
         "opacity", "display", "zIndex",
     ]
 
+    _CACHE_ATTR = "_cached_dict"
+
     def __init__(
         self,
         width=None,
@@ -87,18 +89,33 @@ class Style(object):
         self.display = display
         self.zIndex = zIndex
 
-    def to_dict(self):
+    def __setattr__(self, key, value):
+        object.__setattr__(self, key, value)
+        if key != self._CACHE_ATTR:
+            object.__setattr__(self, self._CACHE_ATTR, None)
+
+    def _as_dict(self):
+        cached = getattr(self, self._CACHE_ATTR, None)
+        if cached is not None:
+            return cached
+
         data = {}
-        for key, value in self.__dict__.items():
+        for key in self._SUPPORTED_KEYS:
+            value = getattr(self, key, None)
             if value is not None:
                 data[key] = value
+
+        object.__setattr__(self, self._CACHE_ATTR, data)
         return data
 
+    def to_dict(self):
+        return dict(self._as_dict())
+
     def __getitem__(self, key):
-        return self.to_dict()[key]
+        return self._as_dict()[key]
 
     def get(self, key, default=None):
-        return self.to_dict().get(key, default)
+        return self._as_dict().get(key, default)
 
     def __contains__(self, key):
-        return key in self.to_dict()
+        return key in self._as_dict()

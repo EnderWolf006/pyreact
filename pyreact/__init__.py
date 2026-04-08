@@ -11,6 +11,7 @@ from .components import (
     ButtonState,
     ComponentNode,
     Component,
+    is_component,
     Panel,
     Image,
     Label,
@@ -46,7 +47,7 @@ def render_app(
     # Reason: only @Component guarantees key/ref support and consistent behavior.
     if not callable(root):
         raise TypeError("render_app(root=...) must be a callable component")
-    if not getattr(root, '__pyreact_component__', False):
+    if not is_component(root):
         name = getattr(root, '__name__', 'root')
         raise TypeError(
             "render_app root component '%s' must be decorated with @Component (to support key/ref)." % name
@@ -65,7 +66,7 @@ def render_app(
 
     runtime_system = bind.get("runtime_system")
     if runtime_system is None:
-        import mod.client.extraClientApi as clientApi
+        clientApi = __import__('mod.client.extraClientApi', fromlist=['extraClientApi'])
         runtime_system = clientApi.GetSystem("PyreactRuntimeMod", "PyreactRuntimeClientSystem")
 
     if runtime_system is None:
@@ -95,6 +96,7 @@ __all__ = [
     "ButtonState",
     "ComponentNode",
     "Component",
+    "is_component",
     "Panel",
     "Image",
     "Label",
