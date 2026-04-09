@@ -398,8 +398,7 @@
         "anchor_from": "top_left",
         "anchor_to": "top_left"
     },
-    "scroll_content_panel": {
-        "type": "panel",
+    "scroll_content_panel@rootBase": {
         "size": [
             "100%",
             "100%c"
