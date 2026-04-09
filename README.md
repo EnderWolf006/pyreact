@@ -2,7 +2,7 @@
 
 面向 **网易我的世界（基岩版）ModSDK** 的 Python UI 声明式渲染框架（实验性）。
 
-它提供类似 React 的组件函数 + Hooks 写法，把组件树（VNode）经过 Diff 与布局计算后，渲染为 **ScreenNode / JsonUI 控件树**。
+它提供类似 React 的组件函数 + Hooks 写法，把组件树（VNode）经过 Diff 与布局计算后，渲染为 **直接挂载到 `root` / `scroll_content` 的原生控件集合**。
 
 ## 特性
 
@@ -10,7 +10,7 @@
 - **Hooks**：`useState` / `useEffect` / `useMemo` / `useCallback` / `useRef`
 - **基础控件**（Primitives）：`Panel` / `Image` / `Label` / `Button` / `Input` / `Scroll`
 - **布局**：Flexbox 风格布局（子集），支持 `width/height/padding/margin/flexDirection/justifyContent/alignItems/...`
-- **运行时桥接**：将组件树渲染到 NetEase UI（通过 Runtime 系统统一管理挂载/卸载/重渲染）
+- **运行时桥接**：将组件树扁平渲染到 NetEase UI（通过 Runtime 系统统一管理挂载/卸载/重渲染）
 
 
 ## 快速开始（在 ModSDK AddOn 中使用）
@@ -109,7 +109,9 @@ class MyScreen(ScreenNode):
 
 ## JsonUI 约定
 
-`render_app(..., bind={'root': '/root', ...})` 默认会把控件挂载到一个名为 `root` 的容器节点下。
+`render_app(..., bind={'root': '/root', ...})` 默认会把控件扁平挂载到一个名为 `root` 的容器节点下；若节点位于 `Scroll` 内部，则直接挂到该 scroll 的 `scroll_content`。
+
+`Panel` 现在是**纯布局节点**：它仍然是公开 primitive，用来组织 Flex / 定位 / children，但 runtime 不会为它单独创建原生 `panel` 控件。
 
 如需打印每次更新的 5 段性能日志（组件执行 / VNode 构建 / Diff / 布局 / 原生 UI 应用），可传入 `log_perf=True`。
 
@@ -129,7 +131,7 @@ class MyScreen(ScreenNode):
 }
 ```
 
-同时需要在资源包 `ui/` 里提供 `PyreactBase.json`，作为运行时创建控件时的基础 type_def（`panelBase` / `imageBase` / `textBase` / `buttonBase` / `inputBase` / `scrollBase`）。
+同时需要在资源包 `ui/` 里提供 `PyreactBase.json`，作为运行时创建控件时的基础 type_def（`imageBase` / `textBase` / `buttonBase` / `inputBase` / `scrollBase`，以及按钮/滚动条内部模板依赖的基础定义）。
 
 ## 目录结构
 

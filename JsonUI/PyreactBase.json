@@ -1,4 +1,23 @@
 {
+    "buttonPanelBase": {
+        "type": "panel",
+        "anchor_from": "top_left",
+        "anchor_to": "top_left",
+        "layer": 0,
+        "offset": [
+            0,
+            0
+        ],
+        "size": [
+            0,
+            0
+        ],
+        "controls": [
+            {
+                "widget@PyreactBase.buttonBase": {}
+            }
+        ]
+    },
     "buttonBase@common.button": {
         "$pressed_button_name": "%NukkitStackUI.OnClickBt",
         "$texture_layer": 2,
@@ -153,6 +172,25 @@
             0
         ]
     },
+    "imagePanelBase": {
+        "type": "panel",
+        "layer": 0,
+        "anchor_from": "top_left",
+        "anchor_to": "top_left",
+        "offset": [
+            0,
+            0
+        ],
+        "size": [
+            0,
+            0
+        ],
+        "controls": [
+            {
+                "widget@PyreactBase.imageBase": {}
+            }
+        ]
+    },
     "inputBase@common.text_edit_box": {
         "$edit_box_default_texture": "textures/ui/edit_box_indent",
         "$edit_box_hover_texture": "textures/ui/edit_box_indent_hover",
@@ -214,6 +252,25 @@
         ],
         "visible": true
     },
+    "inputPanelBase": {
+        "type": "panel",
+        "layer": 0,
+        "anchor_from": "top_left",
+        "anchor_to": "top_left",
+        "offset": [
+            0,
+            0
+        ],
+        "size": [
+            0,
+            0
+        ],
+        "controls": [
+            {
+                "widget@PyreactBase.inputBase": {}
+            }
+        ]
+    },
     "itemBase": {
         "type": "custom",
         "renderer": "inventory_item_renderer",
@@ -249,6 +306,25 @@
         "property_bag": {
             "#item_id_aux": 131072
         }
+    },
+    "itemPanelBase": {
+        "type": "panel",
+        "layer": 0,
+        "anchor_from": "top_left",
+        "anchor_to": "top_left",
+        "offset": [
+            0,
+            0
+        ],
+        "size": [
+            0,
+            0
+        ],
+        "controls": [
+            {
+                "widget@PyreactBase.itemBase": {}
+            }
+        ]
     },
     "namespace": "PyreactBase",
     "panelBase": {
@@ -372,5 +448,120 @@
         "shadow": false,
         "text": "Hello World!",
         "text_alignment": "center"
+    },
+    "textPanelBase": {
+        "type": "panel",
+        "layer": 0,
+        "anchor_from": "top_left",
+        "anchor_to": "top_left",
+        "offset": [
+            0,
+            0
+        ],
+        "size": [
+            0,
+            0
+        ],
+        "controls": [
+            {
+                "widget@PyreactBase.textBase": {}
+            }
+        ]
+    },
+    "rootBase": {
+        "type": "panel",
+        "layer": 1,
+        "controls": [
+            {
+                "buttonGrid": {
+                    "type": "grid",
+                    "anchor_from": "top_left",
+                    "anchor_to": "top_left",
+                    "size": [
+                        0.0,
+                        0.0
+                    ],
+                    "layer": 0,
+                    "collection_name": "test_grid",
+                    "grid_dimensions": [
+                        1,
+                        0
+                    ],
+                    "grid_item_template": "PyreactBase.buttonPanelBase"
+                }
+            },
+            {
+                "imageGrid": {
+                    "type": "grid",
+                    "anchor_from": "top_left",
+                    "anchor_to": "top_left",
+                    "size": [
+                        0.0,
+                        0.0
+                    ],
+                    "layer": 0,
+                    "collection_name": "test_grid",
+                    "grid_dimensions": [
+                        1,
+                        0
+                    ],
+                    "grid_item_template": "PyreactBase.imagePanelBase"
+                }
+            },
+            {
+                "inputGrid": {
+                    "type": "grid",
+                    "anchor_from": "top_left",
+                    "anchor_to": "top_left",
+                    "size": [
+                        0.0,
+                        0.0
+                    ],
+                    "layer": 0,
+                    "collection_name": "test_grid",
+                    "grid_dimensions": [
+                        1,
+                        0
+                    ],
+                    "grid_item_template": "PyreactBase.inputPanelBase"
+                }
+            },
+            {
+                "itemGrid": {
+                    "type": "grid",
+                    "anchor_from": "top_left",
+                    "anchor_to": "top_left",
+                    "size": [
+                        0.0,
+                        0.0
+                    ],
+                    "layer": 0,
+                    "collection_name": "test_grid",
+                    "grid_dimensions": [
+                        1,
+                        0
+                    ],
+                    "grid_item_template": "PyreactBase.itemPanelBase"
+                }
+            },
+            {
+                "textGrid": {
+                    "type": "grid",
+                    "anchor_from": "top_left",
+                    "anchor_to": "top_left",
+                    "size": [
+                        0.0,
+                        0.0
+                    ],
+                    "layer": 0,
+                    "collection_name": "test_grid",
+                    "grid_dimensions": [
+                        1,
+                        0
+                    ],
+                    "grid_item_template": "PyreactBase.textPanelBase"
+                }
+            }
+        ]
     }
 }

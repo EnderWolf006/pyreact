@@ -81,7 +81,7 @@ metadata:
 → VNode / 组件树
 → Flex 布局
 → Native Runtime
-→ NetEase ScreenNode 控件树
+→ 直接挂载到 `root` / `scroll_content` 的 NetEase 原生控件
 
 写业务 UI 时，通常只需要关心：
 
@@ -162,6 +162,8 @@ def UserCard(name, level):
 ### 1. `Panel`
 
 用途：通用容器、布局节点。
+
+运行时语义：`Panel` 是**虚拟布局节点**，只参与布局与 children 组织；runtime 不会为它单独创建原生 `panel` 控件。也就是说，`Panel` 的子节点会直接继承当前挂载目标（`root` 或最近的 `scroll_content`）。
 
 常用参数：
 

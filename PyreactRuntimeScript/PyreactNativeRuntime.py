@@ -13,7 +13,6 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
     _CONTROL_NAME_PREFIX = "pyreact_"
 
     _TYPE_DEF_SUFFIX_MAP = {
-        "Panel": "panelBase",
         "Image": "imageBase",
         "Label": "textBase",
         "Item": "itemBase",

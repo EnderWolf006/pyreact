@@ -25,6 +25,16 @@ def _safe_float(value, default_value=0.0):
         return float(default_value)
 
 
+def _safe_int(value, default_value=0):
+    try:
+        return int(value)
+    except Exception:
+        try:
+            return int(float(value))
+        except Exception:
+            return int(default_value)
+
+
 def normalize_style(style):
     if style is None:
         return {}
@@ -232,13 +242,20 @@ def _resolve_own_size(node, style, available_width, available_height, forced_wid
     return width, height
 
 
-def compute_layout(node, x, y, available_width, available_height, forced_width=None, forced_height=None, text_measurer=None, measure_pass=False):
+def compute_layout(node, x, y, available_width, available_height, forced_width=None, forced_height=None, text_measurer=None, measure_pass=False, mount_origin_x=0.0, mount_origin_y=0.0):
     style = normalize_style(node.style)
+    abs_x = x
+    abs_y = y
+    local_x = abs_x - mount_origin_x
+    local_y = abs_y - mount_origin_y
+    final_layer = (_safe_int(getattr(node, 'depth', 1), 1) * 1000) + _safe_int(style.get('zIndex'), 0)
     display_value = style.get("display")
     if isinstance(display_value, TEXT_TYPES) and display_value.strip().lower() == "none":
         node.layout = LayoutResult(
-            x=x,
-            y=y,
+            x=local_x,
+            y=local_y,
+            abs_x=abs_x,
+            abs_y=abs_y,
             width=0.0,
             height=0.0,
             padding_top=0.0,
@@ -249,6 +266,7 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             margin_right=0.0,
             margin_bottom=0.0,
             margin_left=0.0,
+            final_layer=final_layer,
         )
         return node
 
@@ -271,8 +289,10 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
     )
 
     node.layout = LayoutResult(
-        x=x,
-        y=y,
+        x=local_x,
+        y=local_y,
+        abs_x=abs_x,
+        abs_y=abs_y,
         width=width,
         height=height,
         padding_top=padding_top,
@@ -283,6 +303,7 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
         margin_right=margin_right,
         margin_bottom=margin_bottom,
         margin_left=margin_left,
+        final_layer=final_layer,
     )
 
     if not node.children:
@@ -315,8 +336,8 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
     if flex_wrap not in ("nowrap", "wrap"):
         flex_wrap = "nowrap"
 
-    content_x = x + padding_left
-    content_y = y + padding_top
+    content_x = abs_x + padding_left
+    content_y = abs_y + padding_top
     content_width = max(0.0, width - padding_left - padding_right)
     content_height = max(0.0, height - padding_top - padding_bottom)
 
@@ -651,8 +672,12 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
         child_width = max(0.0, child_width)
         child_height = max(0.0, child_height)
 
+        child_mount_origin_x = mount_origin_x
+        child_mount_origin_y = mount_origin_y
         if is_scroll:
             item["child"]._parent_is_scroll = True
+            child_mount_origin_x = abs_x
+            child_mount_origin_y = abs_y
 
         compute_layout(
             item["child"],
@@ -664,6 +689,8 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             forced_height=child_height,
             text_measurer=text_measurer,
             measure_pass=measure_pass,
+            mount_origin_x=child_mount_origin_x,
+            mount_origin_y=child_mount_origin_y,
         )
 
     for item in absolute_items:
@@ -709,6 +736,12 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
         elif bottom is not None and child_height is not None:
             child_y = content_y + content_height - bottom - child_height - item["margin_bottom"]
 
+        child_mount_origin_x = mount_origin_x
+        child_mount_origin_y = mount_origin_y
+        if is_scroll:
+            child_mount_origin_x = abs_x
+            child_mount_origin_y = abs_y
+
         compute_layout(
             item["child"],
             child_x,
@@ -719,6 +752,8 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             forced_height=child_height,
             text_measurer=text_measurer,
             measure_pass=measure_pass,
+            mount_origin_x=child_mount_origin_x,
+            mount_origin_y=child_mount_origin_y,
         )
 
     explicit_width = parse_length(style.get("width"), available_width)
@@ -733,8 +768,8 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
 
         for child in node.children:
             if child.layout:
-                child_left = child.layout.x
-                child_top = child.layout.y
+                child_left = child.layout.abs_x
+                child_top = child.layout.abs_y
                 child_right = child_left + child.layout.width
                 child_bottom = child_top + child.layout.height
 
@@ -748,8 +783,8 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
                     max_y = child_bottom
 
         if min_x is not None and max_x is not None:
-            intrinsic_width = (max_x - x) + padding_right
-            intrinsic_height = (max_y - y) + padding_bottom
+            intrinsic_width = (max_x - abs_x) + padding_right
+            intrinsic_height = (max_y - abs_y) + padding_bottom
 
             # For Scroll nodes, content size should match children bounds
             if node.node_type == "Scroll":

@@ -3,10 +3,7 @@
         "type": "screen",
         "controls": [
             {
-                "root": {
-                    "type": "panel",
-                    "layer": 1
-                }
+                "root@PyreactBase.rootBase": {}
             }
         ]
     },

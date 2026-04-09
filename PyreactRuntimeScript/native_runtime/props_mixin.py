@@ -390,12 +390,32 @@ class RuntimePropsMixin(object):
             children=state_children,
         )
         shadow_root = self._layout_engine.calculate(state_root, slot_width, slot_height)
-        self._render_children(
-            children=getattr(shadow_root, "children", []) or [],
-            parent_path=slot_path,
-            parent_abs_x=0.0,
-            parent_abs_y=0.0,
-        )
+        self._normalize_button_slot_layers(getattr(shadow_root, "children", []) or [])
+        self._render_flat_tree(getattr(shadow_root, "children", []) or [], slot_path)
+
+    def _normalize_button_slot_layers(self, nodes):
+        if not nodes:
+            return
+
+        if not isinstance(nodes, (list, tuple)):
+            nodes = [nodes]
+
+        for node in nodes:
+            if node is None:
+                continue
+
+            layout = getattr(node, "layout", None)
+            if layout is not None:
+                try:
+                    style = getattr(node, "style", None) or {}
+                    z_index = 0
+                    if isinstance(style, dict):
+                        z_index = int(round(self._to_float(style.get("zIndex"), 0.0)))
+                    layout.final_layer = z_index
+                except Exception:
+                    pass
+
+            self._normalize_button_slot_layers(getattr(node, "children", None) or [])
 
     def _normalize_children_for_builder(self, value):
         if value is None:
@@ -536,6 +556,8 @@ class RuntimePropsMixin(object):
         if not isinstance(style, dict):
             return
 
+        layout = getattr(props.get('__shadow_node__'), 'layout', None) if isinstance(props, dict) else None
+
         cache = self._get_native_common_style_cache()
         cached_style = cache.get(node_path, {})
         next_cached_style = {}
@@ -570,13 +592,15 @@ class RuntimePropsMixin(object):
         elif 'opacity' in cached_style:
             self._safe_set_alpha(node_path, 1.0, node_control)
 
-        layer = style.get("zIndex")
+        layer = getattr(layout, 'final_layer', None)
+        if layer is None:
+            layer = style.get("zIndex")
         if layer is not None:
             layer_value = int(round(self._to_float(layer, 0.0)))
-            next_cached_style['zIndex'] = layer_value
-            if cached_style.get('zIndex') != layer_value:
+            next_cached_style['layer'] = layer_value
+            if cached_style.get('layer') != layer_value:
                 self._safe_set_layer(node_path, layer_value, node_control)
-        elif 'zIndex' in cached_style:
+        elif 'layer' in cached_style:
             self._safe_set_layer(node_path, 0, node_control)
 
         cache[node_path] = next_cached_style

@@ -67,7 +67,7 @@ class LayoutEngine(object):
                 result[k] = v
         return result
 
-    def _build_shadow_tree(self, vnode, path=None):
+    def _build_shadow_tree(self, vnode, path=None, depth=1):
         if path is None:
             path = []
 
@@ -77,13 +77,14 @@ class LayoutEngine(object):
             style=self._extract_style(vnode),
             props=self._extract_props(vnode),
             children=[],
+            depth=depth,
         )
 
         index = 0
         for child in self._extract_children(vnode):
             child_path = list(path)
             child_path.append(index)
-            shadow_node.add_child(self._build_shadow_tree(child, child_path))
+            shadow_node.add_child(self._build_shadow_tree(child, child_path, depth + 1))
             index += 1
         return shadow_node
 

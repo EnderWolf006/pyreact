@@ -4,6 +4,8 @@ class LayoutResult(object):
     def __init__(self,
                  x=0.0,
                  y=0.0,
+                 abs_x=0.0,
+                 abs_y=0.0,
                  width=0.0,
                  height=0.0,
                  padding_top=0.0,
@@ -14,10 +16,13 @@ class LayoutResult(object):
                  margin_right=0.0,
                  margin_bottom=0.0,
                  margin_left=0.0,
+                 final_layer=0,
                  content_width=0.0,
                  content_height=0.0):
         self.x = float(x)
         self.y = float(y)
+        self.abs_x = float(abs_x)
+        self.abs_y = float(abs_y)
         self.width = float(width)
         self.height = float(height)
 
@@ -30,6 +35,7 @@ class LayoutResult(object):
         self.margin_right = float(margin_right)
         self.margin_bottom = float(margin_bottom)
         self.margin_left = float(margin_left)
+        self.final_layer = int(final_layer)
 
         self.content_width = float(content_width)
         self.content_height = float(content_height)
@@ -43,12 +49,13 @@ class LayoutResult(object):
 
 
 class ShadowNode(object):
-    def __init__(self, node_id, node_type, style=None, children=None, props=None):
+    def __init__(self, node_id, node_type, style=None, children=None, props=None, depth=1):
         self.node_id = node_id
         self.node_type = node_type
         self.style = style or {}
         self.props = props or {}
         self.children = children or []
+        self.depth = int(depth)
         self.layout = None
         self._measured_shrunk = False
 
