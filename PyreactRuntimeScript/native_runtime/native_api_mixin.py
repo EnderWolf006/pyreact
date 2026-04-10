@@ -5,6 +5,16 @@ import time
 from pyreact.components.color import Color
 
 
+def _perf_now():
+    perf_counter = getattr(time, 'perf_counter', None)
+    if callable(perf_counter):
+        return perf_counter()
+    clock = getattr(time, 'clock', None)
+    if callable(clock):
+        return clock()
+    return time.time()
+
+
 try:
     _UNICODE_TYPE = unicode
 except NameError:
@@ -14,6 +24,56 @@ except NameError:
 
 class RuntimeNativeApiMixin(object):
     _TEXT_FONT_SIZE_BASE = 10.0
+
+    def _get_native_layout_cache(self):
+        cache = getattr(self, '_native_layout_cache', None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._native_layout_cache = cache
+        return cache
+
+    def _get_native_layout_cache_entry(self, path):
+        safe_path = self._safe_text(path)
+        if not safe_path:
+            return None, None
+        cache = self._get_native_layout_cache()
+        entry = cache.get(safe_path)
+        if not isinstance(entry, dict):
+            entry = {}
+            cache[safe_path] = entry
+        return safe_path, entry
+
+    def _drop_native_layout_cache(self, path_prefix=None):
+        cache = self._get_native_layout_cache()
+        if not path_prefix:
+            cache.clear()
+            return
+
+        prefix = self._safe_text(path_prefix)
+        if not prefix:
+            cache.clear()
+            return
+
+        prefix_with_sep = prefix + '/'
+        for cached_path in list(cache.keys()):
+            safe_cached_path = self._safe_text(cached_path)
+            if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
+                try:
+                    del cache[cached_path]
+                except Exception:
+                    pass
+
+    def _get_cached_native_prop(self, path, prop_name):
+        safe_path, entry = self._get_native_layout_cache_entry(path)
+        if entry is None:
+            return None
+        return entry.get(prop_name)
+
+    def _set_cached_native_prop(self, path, prop_name, value):
+        safe_path, entry = self._get_native_layout_cache_entry(path)
+        if entry is None:
+            return
+        entry[prop_name] = value
 
     def _reset_native_api_call_counts(self):
         self._native_api_call_counts = {}
@@ -158,9 +218,9 @@ class RuntimeNativeApiMixin(object):
             rows = 0
 
         try:
-            start_time = time.time()
+            start_time = _perf_now()
             grid_control.SetGridDimension((rows, cols))
-            self._count_native_api_call('SetGridDimension', elapsed_ms=(time.time() - start_time) * 1000.0)
+            self._count_native_api_call('SetGridDimension', elapsed_ms=(_perf_now() - start_time) * 1000.0)
             return True
         except Exception:
             return False
@@ -194,16 +254,16 @@ class RuntimeNativeApiMixin(object):
         self._safe_set_position(measure_path, -100000.0, -100000.0, control)
         try:
             if hasattr(control, "SetVisible"):
-                start_time = time.time()
+                start_time = _perf_now()
                 control.SetVisible(True)
-                self._count_native_api_call('SetVisible', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('SetVisible', elapsed_ms=(_perf_now() - start_time) * 1000.0)
         except Exception:
             pass
         try:
             if hasattr(control, "SetAlpha"):
-                start_time = time.time()
+                start_time = _perf_now()
                 control.SetAlpha(0.0)
-                self._count_native_api_call('SetAlpha', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('SetAlpha', elapsed_ms=(_perf_now() - start_time) * 1000.0)
         except Exception:
             pass
         return control
@@ -280,29 +340,36 @@ class RuntimeNativeApiMixin(object):
         }
 
     def _safe_set_text(self, path, text, control=None):
+        text_value = self._safe_text(text)
+        if self._get_cached_native_prop(path, 'text') == text_value:
+            return
         try:
             if control and hasattr(control, "SetText"):
                 try:
-                    start_time = time.time()
-                    control.SetText(text+"1", True)
-                    control.SetText(text, True)
-                    self._count_native_api_call('SetText', 2, elapsed_ms=(time.time() - start_time) * 1000.0)
+                    start_time = _perf_now()
+                    control.SetText(text_value+"1", True)
+                    control.SetText(text_value, True)
+                    self._count_native_api_call('SetText', 2, elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                    self._set_cached_native_prop(path, 'text', text_value)
                 except TypeError:
-                    start_time = time.time()
-                    control.SetText(text+"1")
-                    control.SetText(text)
-                    self._count_native_api_call('SetText', 2, elapsed_ms=(time.time() - start_time) * 1000.0)
+                    start_time = _perf_now()
+                    control.SetText(text_value+"1")
+                    control.SetText(text_value)
+                    self._count_native_api_call('SetText', 2, elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                    self._set_cached_native_prop(path, 'text', text_value)
                 return
             try:
-                start_time = time.time()
-                control.asLabel().SetText(text+"1", True)
-                control.asLabel().SetText(text, True)
-                self._count_native_api_call('SetText', 2, elapsed_ms=(time.time() - start_time) * 1000.0)
+                start_time = _perf_now()
+                control.asLabel().SetText(text_value+"1", True)
+                control.asLabel().SetText(text_value, True)
+                self._count_native_api_call('SetText', 2, elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'text', text_value)
             except TypeError:
-                start_time = time.time()
-                control.asLabel().SetText(text+"1")
-                control.asLabel().SetText(text)
-                self._count_native_api_call('SetText', 2, elapsed_ms=(time.time() - start_time) * 1000.0)
+                start_time = _perf_now()
+                control.asLabel().SetText(text_value+"1")
+                control.asLabel().SetText(text_value)
+                self._count_native_api_call('SetText', 2, elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'text', text_value)
         except Exception:
             pass
 
@@ -336,9 +403,9 @@ class RuntimeNativeApiMixin(object):
         if not te:
             return False
         try:
-            start_time = time.time()
+            start_time = _perf_now()
             te.SetEditText(self._safe_text(text))
-            self._count_native_api_call('SetEditText', elapsed_ms=(time.time() - start_time) * 1000.0)
+            self._count_native_api_call('SetEditText', elapsed_ms=(_perf_now() - start_time) * 1000.0)
             return True
         except Exception:
             return False
@@ -354,9 +421,9 @@ class RuntimeNativeApiMixin(object):
         if max_len <= 0:
             return False
         try:
-            start_time = time.time()
+            start_time = _perf_now()
             te.SetEditTextMaxLength(max_len)
-            self._count_native_api_call('SetEditTextMaxLength', elapsed_ms=(time.time() - start_time) * 1000.0)
+            self._count_native_api_call('SetEditTextMaxLength', elapsed_ms=(_perf_now() - start_time) * 1000.0)
             return True
         except Exception:
             return False
@@ -406,23 +473,29 @@ class RuntimeNativeApiMixin(object):
         sprite_text = self._safe_text(sprite)
         if not sprite_text:
             return False
+        if self._get_cached_native_prop(path, 'sprite') == sprite_text:
+            return True
 
         if control and hasattr(control, "asImage"):
             try:
                 image_control = control.asImage()
                 if image_control and hasattr(image_control, "SetSprite"):
-                    start_time = time.time()
+                    start_time = _perf_now()
                     ret = image_control.SetSprite(sprite_text)
-                    self._count_native_api_call('SetSprite', elapsed_ms=(time.time() - start_time) * 1000.0)
+                    self._count_native_api_call('SetSprite', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                    if ret is not False:
+                        self._set_cached_native_prop(path, 'sprite', sprite_text)
                     return ret is not False
             except Exception:
                 pass
 
         if control and hasattr(control, "SetSprite"):
             try:
-                start_time = time.time()
+                start_time = _perf_now()
                 ret = control.SetSprite(sprite_text)
-                self._count_native_api_call('SetSprite', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('SetSprite', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                if ret is not False:
+                    self._set_cached_native_prop(path, 'sprite', sprite_text)
                 return ret is not False
             except Exception:
                 pass
@@ -433,23 +506,30 @@ class RuntimeNativeApiMixin(object):
         rgb = self._to_rgb_tuple(color)
         if rgb is None:
             return
+        if self._get_cached_native_prop(path, 'sprite_color') == rgb:
+            return
 
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "SetSpriteColor"):
             try:
-                start_time = time.time()
+                start_time = _perf_now()
                 image_control.SetSpriteColor(rgb)
-                self._count_native_api_call('SetSpriteColor', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('SetSpriteColor', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'sprite_color', rgb)
             except Exception:
                 pass
 
     def _safe_set_sprite_gray(self, path, gray, control=None):
+        gray_value = bool(gray)
+        if self._get_cached_native_prop(path, 'sprite_gray') == gray_value:
+            return
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "SetSpriteGray"):
             try:
-                start_time = time.time()
-                image_control.SetSpriteGray(bool(gray))
-                self._count_native_api_call('SetSpriteGray', elapsed_ms=(time.time() - start_time) * 1000.0)
+                start_time = _perf_now()
+                image_control.SetSpriteGray(gray_value)
+                self._count_native_api_call('SetSpriteGray', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'sprite_gray', gray_value)
             except Exception:
                 pass
 
@@ -464,9 +544,9 @@ class RuntimeNativeApiMixin(object):
         if r > 1.0:
             r = 1.0
         try:
-            start_time = time.time()
+            start_time = _perf_now()
             image_control.SetSpriteClipRatio(r)
-            self._count_native_api_call('SetSpriteClipRatio', elapsed_ms=(time.time() - start_time) * 1000.0)
+            self._count_native_api_call('SetSpriteClipRatio', elapsed_ms=(_perf_now() - start_time) * 1000.0)
         except Exception:
             pass
 
@@ -474,9 +554,9 @@ class RuntimeNativeApiMixin(object):
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "SetSpriteUV"):
             try:
-                start_time = time.time()
+                start_time = _perf_now()
                 image_control.SetSpriteUV(uv)
-                self._count_native_api_call('SetSpriteUV', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('SetSpriteUV', elapsed_ms=(_perf_now() - start_time) * 1000.0)
             except Exception:
                 pass
 
@@ -484,9 +564,9 @@ class RuntimeNativeApiMixin(object):
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "SetSpriteUVSize"):
             try:
-                start_time = time.time()
+                start_time = _perf_now()
                 image_control.SetSpriteUVSize(uv_size)
-                self._count_native_api_call('SetSpriteUVSize', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('SetSpriteUVSize', elapsed_ms=(_perf_now() - start_time) * 1000.0)
             except Exception:
                 pass
 
@@ -508,17 +588,17 @@ class RuntimeNativeApiMixin(object):
         item_control = self._to_item_renderer_control(control, path)
         if item_control and hasattr(item_control, 'SetUiItem'):
             try:
-                start_time = time.time()
+                start_time = _perf_now()
                 ok = item_control.SetUiItem(item_name, aux_number, enchant_flag, payload_user_data) is not False
-                self._count_native_api_call('SetUiItem', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('SetUiItem', elapsed_ms=(_perf_now() - start_time) * 1000.0)
                 return ok
             except Exception:
                 pass
 
         try:
-            start_time = time.time()
+            start_time = _perf_now()
             ok = self._screen.SetUiItem(path, item_name, aux_number, enchant_flag, payload_user_data) is not False
-            self._count_native_api_call('SetUiItem', elapsed_ms=(time.time() - start_time) * 1000.0)
+            self._count_native_api_call('SetUiItem', elapsed_ms=(_perf_now() - start_time) * 1000.0)
             return ok
         except Exception:
             return False
@@ -527,9 +607,9 @@ class RuntimeNativeApiMixin(object):
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "SetImageAdaptionType"):
             try:
-                start_time = time.time()
+                start_time = _perf_now()
                 image_control.SetImageAdaptionType(adaption_type, adaption_data)
-                self._count_native_api_call('SetImageAdaptionType', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('SetImageAdaptionType', elapsed_ms=(_perf_now() - start_time) * 1000.0)
             except Exception:
                 pass
 
@@ -537,9 +617,9 @@ class RuntimeNativeApiMixin(object):
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "Rotate"):
             try:
-                start_time = time.time()
+                start_time = _perf_now()
                 image_control.Rotate(angle)
-                self._count_native_api_call('Rotate', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('Rotate', elapsed_ms=(_perf_now() - start_time) * 1000.0)
             except Exception:
                 pass
 
@@ -547,9 +627,9 @@ class RuntimeNativeApiMixin(object):
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "SetRotatePivot"):
             try:
-                start_time = time.time()
+                start_time = _perf_now()
                 image_control.SetRotatePivot(pivot)
-                self._count_native_api_call('SetRotatePivot', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('SetRotatePivot', elapsed_ms=(_perf_now() - start_time) * 1000.0)
             except Exception:
                 pass
 
@@ -608,23 +688,27 @@ class RuntimeNativeApiMixin(object):
         rgb = self._to_rgb_tuple(color)
         if rgb is None:
             return
+        if self._get_cached_native_prop(path, 'text_color') == rgb:
+            return
 
         if control and hasattr(control, "asLabel"):
             try:
                 label_control = control.asLabel()
                 if label_control and hasattr(label_control, "SetTextColor"):
-                    start_time = time.time()
+                    start_time = _perf_now()
                     label_control.SetTextColor(rgb)
-                    self._count_native_api_call('SetTextColor', elapsed_ms=(time.time() - start_time) * 1000.0)
+                    self._count_native_api_call('SetTextColor', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                    self._set_cached_native_prop(path, 'text_color', rgb)
                     return
             except Exception:
                 pass
 
         if control and hasattr(control, "SetTextColor"):
             try:
-                start_time = time.time()
+                start_time = _perf_now()
                 control.SetTextColor(rgb)
-                self._count_native_api_call('SetTextColor', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('SetTextColor', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'text_color', rgb)
                 return
             except Exception:
                 pass
@@ -632,89 +716,114 @@ class RuntimeNativeApiMixin(object):
         try:
             if hasattr(self._screen, "SetTextColor"):
                 rgba = (rgb[0], rgb[1], rgb[2], 1.0)
-                start_time = time.time()
+                start_time = _perf_now()
                 self._screen.SetTextColor(path, rgba)
-                self._count_native_api_call('SetTextColor', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('SetTextColor', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'text_color', rgb)
         except Exception:
             pass
 
     def _safe_set_text_font_size(self, path, scale, control=None):
+        scale_value = self._to_float(scale, 1.0)
+        if self._get_cached_native_prop(path, 'text_font_size') == scale_value:
+            return
         label_control = self._to_label_control(control, path)
         if label_control and hasattr(label_control, "SetTextFontSize"):
             try:
-                start_time = time.time()
-                label_control.SetTextFontSize(scale)
-                self._count_native_api_call('SetTextFontSize', elapsed_ms=(time.time() - start_time) * 1000.0)
+                start_time = _perf_now()
+                label_control.SetTextFontSize(scale_value)
+                self._count_native_api_call('SetTextFontSize', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'text_font_size', scale_value)
             except Exception:
                 pass
 
     def _safe_set_text_alignment(self, path, alignment, control=None):
+        alignment_value = self._safe_text(alignment)
+        if self._get_cached_native_prop(path, 'text_alignment') == alignment_value:
+            return
         label_control = self._to_label_control(control, path)
         if label_control and hasattr(label_control, "SetTextAlignment"):
             try:
-                start_time = time.time()
-                label_control.SetTextAlignment(alignment)
-                self._count_native_api_call('SetTextAlignment', elapsed_ms=(time.time() - start_time) * 1000.0)
+                start_time = _perf_now()
+                label_control.SetTextAlignment(alignment_value)
+                self._count_native_api_call('SetTextAlignment', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'text_alignment', alignment_value)
             except Exception:
                 pass
 
     def _safe_set_text_line_padding(self, path, text_line_padding, control=None):
+        padding_value = self._to_float(text_line_padding, 0.0)
+        if self._get_cached_native_prop(path, 'text_line_padding') == padding_value:
+            return
         label_control = self._to_label_control(control, path)
         if label_control and hasattr(label_control, "SetTextLinePadding"):
             try:
-                start_time = time.time()
-                label_control.SetTextLinePadding(text_line_padding)
-                self._count_native_api_call('SetTextLinePadding', elapsed_ms=(time.time() - start_time) * 1000.0)
+                start_time = _perf_now()
+                label_control.SetTextLinePadding(padding_value)
+                self._count_native_api_call('SetTextLinePadding', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'text_line_padding', padding_value)
             except Exception:
                 pass
 
     def _safe_set_text_shadow(self, path, enabled, control=None):
+        shadow_enabled = bool(enabled)
+        if self._get_cached_native_prop(path, 'text_shadow') == shadow_enabled:
+            return
         label_control = self._to_label_control(control, path)
         if not label_control:
             return
         try:
-            if enabled and hasattr(label_control, "EnableTextShadow"):
-                start_time = time.time()
+            if shadow_enabled and hasattr(label_control, "EnableTextShadow"):
+                start_time = _perf_now()
                 label_control.EnableTextShadow()
-                self._count_native_api_call('EnableTextShadow', elapsed_ms=(time.time() - start_time) * 1000.0)
-            elif (not enabled) and hasattr(label_control, "DisableTextShadow"):
-                start_time = time.time()
+                self._count_native_api_call('EnableTextShadow', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'text_shadow', shadow_enabled)
+            elif (not shadow_enabled) and hasattr(label_control, "DisableTextShadow"):
+                start_time = _perf_now()
                 label_control.DisableTextShadow()
-                self._count_native_api_call('DisableTextShadow', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('DisableTextShadow', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'text_shadow', shadow_enabled)
         except Exception:
             pass
 
     def _safe_set_position(self, path, x, y, control=None):
         try:
             pos = (int(round(x)), int(round(y)))
+            safe_path, cache_entry = self._get_native_layout_cache_entry(path)
+            if cache_entry is not None and cache_entry.get('position') == pos:
+                return
             if control:
                 used_full = False
                 if hasattr(control, "SetFullPosition"):
-                    start_time = time.time()
+                    start_time = _perf_now()
                     ret_x = control.SetFullPosition(axis="x", paramDict={"absoluteValue": float(pos[0]), "followType": "none", "relativeValue": 0.0})
                     ret_y = control.SetFullPosition(axis="y", paramDict={"absoluteValue": float(pos[1]), "followType": "none", "relativeValue": 0.0})
                     used_full = bool(ret_x) and bool(ret_y)
                     if used_full:
-                        self._count_native_api_call('SetFullPosition', 2, elapsed_ms=(time.time() - start_time) * 1000.0)
+                        self._count_native_api_call('SetFullPosition', 2, elapsed_ms=(_perf_now() - start_time) * 1000.0)
 
                 if hasattr(control, "SetPosition"):
                     try:
-                        start_time = time.time()
+                        start_time = _perf_now()
                         control.SetPosition(pos)
                         if not used_full:
-                            self._count_native_api_call('SetPosition', elapsed_ms=(time.time() - start_time) * 1000.0)
+                            self._count_native_api_call('SetPosition', elapsed_ms=(_perf_now() - start_time) * 1000.0)
                     except TypeError:
-                        start_time = time.time()
+                        start_time = _perf_now()
                         control.SetPosition(float(pos[0]), float(pos[1]))
                         if not used_full:
-                            self._count_native_api_call('SetPosition', elapsed_ms=(time.time() - start_time) * 1000.0)
+                            self._count_native_api_call('SetPosition', elapsed_ms=(_perf_now() - start_time) * 1000.0)
                     except Exception:
                         if not used_full:
                             raise
+                if cache_entry is not None:
+                    cache_entry['position'] = pos
                 return
-            start_time = time.time()
+            start_time = _perf_now()
             self._screen.SetPosition(path, pos)
-            self._count_native_api_call('SetPosition', elapsed_ms=(time.time() - start_time) * 1000.0)
+            self._count_native_api_call('SetPosition', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+            if cache_entry is not None:
+                cache_entry['position'] = pos
         except Exception:
             pass
 
@@ -727,34 +836,41 @@ class RuntimeNativeApiMixin(object):
             if height < 0:
                 height = 0
             size = (width, height)
+            safe_path, cache_entry = self._get_native_layout_cache_entry(path)
+            if cache_entry is not None and cache_entry.get('size') == size:
+                return
             if control:
                 used_full = False
                 if hasattr(control, "SetFullSize"):
-                    start_time = time.time()
+                    start_time = _perf_now()
                     ret_w = control.SetFullSize(axis="x", paramDict={"absoluteValue": float(size[0]), "followType": "none", "relativeValue": 0.0})
                     ret_h = control.SetFullSize(axis="y", paramDict={"absoluteValue": float(size[1]), "followType": "none", "relativeValue": 0.0})
                     used_full = bool(ret_w) and bool(ret_h)
                     if used_full:
-                        self._count_native_api_call('SetFullSize', 2, elapsed_ms=(time.time() - start_time) * 1000.0)
+                        self._count_native_api_call('SetFullSize', 2, elapsed_ms=(_perf_now() - start_time) * 1000.0)
 
                 if hasattr(control, "SetSize"):
                     try:
-                        start_time = time.time()
+                        start_time = _perf_now()
                         control.SetSize(size, True)
                         if not used_full:
-                            self._count_native_api_call('SetSize', elapsed_ms=(time.time() - start_time) * 1000.0)
+                            self._count_native_api_call('SetSize', elapsed_ms=(_perf_now() - start_time) * 1000.0)
                     except TypeError:
-                        start_time = time.time()
+                        start_time = _perf_now()
                         control.SetSize(size)
                         if not used_full:
-                            self._count_native_api_call('SetSize', elapsed_ms=(time.time() - start_time) * 1000.0)
+                            self._count_native_api_call('SetSize', elapsed_ms=(_perf_now() - start_time) * 1000.0)
                     except Exception:
                         if not used_full:
                             raise
+                if cache_entry is not None:
+                    cache_entry['size'] = size
                 return
-            start_time = time.time()
+            start_time = _perf_now()
             self._screen.SetSize(path, size, True)
-            self._count_native_api_call('SetSize', elapsed_ms=(time.time() - start_time) * 1000.0)
+            self._count_native_api_call('SetSize', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+            if cache_entry is not None:
+                cache_entry['size'] = size
         except Exception:
             pass
 
@@ -762,51 +878,56 @@ class RuntimeNativeApiMixin(object):
         try:
             if control and hasattr(control, "SetVisible"):
                 if sync_refresh is None:
-                    start_time = time.time()
+                    start_time = _perf_now()
                     control.SetVisible(bool(visible))
                 else:
-                    start_time = time.time()
+                    start_time = _perf_now()
                     control.SetVisible(bool(visible), bool(sync_refresh))
-                self._count_native_api_call('SetVisible', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('SetVisible', elapsed_ms=(_perf_now() - start_time) * 1000.0)
                 return
             base = self._screen.GetBaseUIControl(path)
             if base and hasattr(base, "SetVisible"):
                 if sync_refresh is None:
-                    start_time = time.time()
+                    start_time = _perf_now()
                     base.SetVisible(bool(visible))
                 else:
-                    start_time = time.time()
+                    start_time = _perf_now()
                     base.SetVisible(bool(visible), bool(sync_refresh))
-                self._count_native_api_call('SetVisible', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('SetVisible', elapsed_ms=(_perf_now() - start_time) * 1000.0)
         except Exception:
             if sync_refresh is None:
                 return
             try:
                 if control and hasattr(control, "SetVisible"):
-                    start_time = time.time()
+                    start_time = _perf_now()
                     control.SetVisible(bool(visible))
-                    self._count_native_api_call('SetVisible', elapsed_ms=(time.time() - start_time) * 1000.0)
+                    self._count_native_api_call('SetVisible', elapsed_ms=(_perf_now() - start_time) * 1000.0)
                     return
                 base = self._screen.GetBaseUIControl(path)
                 if base and hasattr(base, "SetVisible"):
-                    start_time = time.time()
+                    start_time = _perf_now()
                     base.SetVisible(bool(visible))
-                    self._count_native_api_call('SetVisible', elapsed_ms=(time.time() - start_time) * 1000.0)
+                    self._count_native_api_call('SetVisible', elapsed_ms=(_perf_now() - start_time) * 1000.0)
             except Exception:
                 pass
 
     def _safe_set_alpha(self, path, alpha, control=None):
+        alpha_value = self._to_float(alpha, 1.0)
+        if self._get_cached_native_prop(path, 'alpha') == alpha_value:
+            return
         try:
             if control and hasattr(control, "SetAlpha"):
-                start_time = time.time()
-                control.SetAlpha(float(alpha))
-                self._count_native_api_call('SetAlpha', elapsed_ms=(time.time() - start_time) * 1000.0)
+                start_time = _perf_now()
+                control.SetAlpha(alpha_value)
+                self._count_native_api_call('SetAlpha', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'alpha', alpha_value)
                 return
             base = self._screen.GetBaseUIControl(path)
             if base and hasattr(base, "SetAlpha"):
-                start_time = time.time()
-                base.SetAlpha(float(alpha))
-                self._count_native_api_call('SetAlpha', elapsed_ms=(time.time() - start_time) * 1000.0)
+                start_time = _perf_now()
+                base.SetAlpha(alpha_value)
+                self._count_native_api_call('SetAlpha', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'alpha', alpha_value)
         except Exception:
             pass
 
@@ -815,20 +936,33 @@ class RuntimeNativeApiMixin(object):
             layer_value = int(round(self._to_float(layer, 0.0)))
         except Exception:
             return
+        if self._get_cached_native_prop(path, 'layer') == layer_value:
+            return
 
         use_three_args = sync_refresh is not None or force_update is not None
         if use_three_args:
             sync_val = bool(sync_refresh) if sync_refresh is not None else False
             force_val = bool(force_update) if force_update is not None else False
+            if sync_val or force_val:
+                try:
+                    print('=====> PyreactRuntime[warn] SetLayer触发强制刷新: path=%s layer=%s syncRefresh=%s forceUpdate=%s <=====' % (
+                        self._safe_text(path),
+                        layer_value,
+                        sync_val,
+                        force_val,
+                    ))
+                except Exception:
+                    pass
 
         try:
             if control and hasattr(control, "SetLayer"):
-                start_time = time.time()
+                start_time = _perf_now()
                 if use_three_args:
                     control.SetLayer(layer_value, sync_val, force_val)
                 else:
                     control.SetLayer(layer_value)
-                self._count_native_api_call('SetLayer', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('SetLayer', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'layer', layer_value)
                 return
         except Exception:
             if not use_three_args:
@@ -836,9 +970,10 @@ class RuntimeNativeApiMixin(object):
             else:
                 try:
                     if control and hasattr(control, "SetLayer"):
-                        start_time = time.time()
+                        start_time = _perf_now()
                         control.SetLayer(layer_value)
-                        self._count_native_api_call('SetLayer', elapsed_ms=(time.time() - start_time) * 1000.0)
+                        self._count_native_api_call('SetLayer', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                        self._set_cached_native_prop(path, 'layer', layer_value)
                         return
                 except Exception:
                     pass
@@ -846,12 +981,13 @@ class RuntimeNativeApiMixin(object):
         try:
             base = self._screen.GetBaseUIControl(path)
             if base and hasattr(base, "SetLayer"):
-                start_time = time.time()
+                start_time = _perf_now()
                 if use_three_args:
                     base.SetLayer(layer_value, sync_val, force_val)
                 else:
                     base.SetLayer(layer_value)
-                self._count_native_api_call('SetLayer', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('SetLayer', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'layer', layer_value)
                 return
         except Exception:
             if not use_three_args:
@@ -860,18 +996,20 @@ class RuntimeNativeApiMixin(object):
                 try:
                     base = self._screen.GetBaseUIControl(path)
                     if base and hasattr(base, "SetLayer"):
-                        start_time = time.time()
+                        start_time = _perf_now()
                         base.SetLayer(layer_value)
-                        self._count_native_api_call('SetLayer', elapsed_ms=(time.time() - start_time) * 1000.0)
+                        self._count_native_api_call('SetLayer', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                        self._set_cached_native_prop(path, 'layer', layer_value)
                         return
                 except Exception:
                     pass
 
         try:
             if hasattr(self._screen, "SetLayer"):
-                start_time = time.time()
+                start_time = _perf_now()
                 self._screen.SetLayer(path, layer_value)
-                self._count_native_api_call('SetLayer', elapsed_ms=(time.time() - start_time) * 1000.0)
+                self._count_native_api_call('SetLayer', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'layer', layer_value)
         except Exception:
             pass
 

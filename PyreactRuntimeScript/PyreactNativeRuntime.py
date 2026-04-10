@@ -88,6 +88,7 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         self._node_refs = {}
         self._prev_node_refs = {}
         self._native_common_style_cache = {}
+        self._native_layout_cache = {}
         self._grid_pool_states = {}
         self._preserved_root_scroll_hosts = {}
         self._input_edit_bound = False

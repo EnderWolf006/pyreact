@@ -398,11 +398,6 @@ class RuntimePropsMixin(object):
         image_props = self._extract_image_props(props)
         self._apply_image_style_props(image_path, image_props, image_control)
 
-        src = self._safe_text(image_props.get('src', ''))
-        default_texture = 'textures/ui/white_bg'
-        if src and src != default_texture:
-            self._safe_set_sprite(image_path, src, image_control)
-
     def _call_button_builder(self, builder, state):
         try:
             return builder(state)
@@ -755,6 +750,14 @@ class RuntimePropsMixin(object):
                         self._drop_grid_pool_states_under_path(child_path)
                     except Exception:
                         pass
+                    try:
+                        self._drop_grid_slot_visible_states_under_path(child_path)
+                    except Exception:
+                        pass
+                    try:
+                        self._drop_native_layout_cache(child_path)
+                    except Exception:
+                        pass
                     self._screen.RemoveChildControl(child_control)
                     self._drop_native_common_style_cache(child_path)
             except Exception:
@@ -787,6 +790,14 @@ class RuntimePropsMixin(object):
                 if child_control:
                     try:
                         self._drop_grid_pool_states_under_path(child_path)
+                    except Exception:
+                        pass
+                    try:
+                        self._drop_grid_slot_visible_states_under_path(child_path)
+                    except Exception:
+                        pass
+                    try:
+                        self._drop_native_layout_cache(child_path)
                     except Exception:
                         pass
                     self._screen.RemoveChildControl(child_control)

@@ -4,6 +4,8 @@ import time
 
 import mod.client.extraClientApi as clientApi
 
+from PyreactRuntimeScript.native_runtime.native_api_mixin import _perf_now
+
 
 class RuntimeLifecycleMixin(object):
     def _log_render_stage_timings(self, component_ms, build_ms, diff_ms, layout_ms, native_ms, deferred_grid_count=0, native_call_counts=None):
@@ -105,7 +107,7 @@ class RuntimeLifecycleMixin(object):
 
         total_elapsed_ms = 0.0
         try:
-            total_elapsed_ms = (time.time() - perf_state.get('native_start_time', time.time())) * 1000.0
+            total_elapsed_ms = (_perf_now() - perf_state.get('native_start_time', _perf_now())) * 1000.0
         except Exception:
             total_elapsed_ms = 0.0
 
@@ -210,11 +212,11 @@ class RuntimeLifecycleMixin(object):
             build_ms = 0.0
 
             if element is None:
-                diff_start_time = time.time()
+                diff_start_time = _perf_now()
                 mutations = self._reconciler.reconcile(self._prev_vtree, None)
-                diff_ms = (time.time() - diff_start_time) * 1000.0
+                diff_ms = (_perf_now() - diff_start_time) * 1000.0
 
-                native_start_time = time.time()
+                native_start_time = _perf_now()
                 self._begin_native_api_call_batch()
                 try:
                     self._prev_vtree = None
@@ -234,7 +236,7 @@ class RuntimeLifecycleMixin(object):
                     self._clear_root_children(clear_grid_pool=True)
                 finally:
                     native_call_counts = self._finish_native_api_call_batch()
-                native_ms = (time.time() - native_start_time) * 1000.0
+                native_ms = (_perf_now() - native_start_time) * 1000.0
                 self._log_render_stage_timings(component_ms, build_ms, diff_ms, 0.0, native_ms, native_call_counts=native_call_counts)
                 return
 
@@ -245,16 +247,16 @@ class RuntimeLifecycleMixin(object):
             component_ms += tree_perf.get('component_exec_ms', 0.0)
             build_ms = tree_perf.get('build_only_ms', 0.0)
 
-            diff_start_time = time.time()
+            diff_start_time = _perf_now()
             mutations = self._reconciler.reconcile(self._prev_vtree, new_vtree)
-            diff_ms = (time.time() - diff_start_time) * 1000.0
+            diff_ms = (_perf_now() - diff_start_time) * 1000.0
 
-            layout_start_time = time.time()
+            layout_start_time = _perf_now()
             shadow_root = self._layout_engine.calculate(new_vtree, width, height)
-            layout_ms = (time.time() - layout_start_time) * 1000.0
+            layout_ms = (_perf_now() - layout_start_time) * 1000.0
             expected_children_by_parent, current_root_scroll_hosts = self._collect_render_cleanup_state([shadow_root], self._root_path)
 
-            native_start_time = time.time()
+            native_start_time = _perf_now()
             self._begin_native_api_call_batch()
             try:
                 if getattr(self, '_debug_render', False):
@@ -271,7 +273,7 @@ class RuntimeLifecycleMixin(object):
                 deferred_grid_count = self._render_flat_tree([shadow_root], self._root_path)
             finally:
                 native_call_counts = self._finish_native_api_call_batch()
-            native_ms = (time.time() - native_start_time) * 1000.0
+            native_ms = (_perf_now() - native_start_time) * 1000.0
 
             if deferred_grid_count > 0:
                 self._begin_deferred_perf_tracking(self._render_generation, deferred_grid_count, native_ms, native_start_time)
@@ -593,9 +595,9 @@ class RuntimeLifecycleMixin(object):
         if not control:
             def_name = self._get_def_name(node_type)
             try:
-                create_start_time = time.time()
+                create_start_time = _perf_now()
                 self._screen.CreateChildControl(def_name, child_name, parent_control)
-                self._count_native_api_call('CreateChildControl', elapsed_ms=(time.time() - create_start_time) * 1000.0)
+                self._count_native_api_call('CreateChildControl', elapsed_ms=(_perf_now() - create_start_time) * 1000.0)
             except Exception:
                 pass
             control = self._screen.GetBaseUIControl(node_path)
@@ -779,17 +781,21 @@ class RuntimeLifecycleMixin(object):
                 self._grid_slot_visible_states = {}
             slot_states = self._grid_slot_visible_states
             slot_key = self._safe_text(widget_path)
-            if slot_states.get(slot_key) != True:
+            needs_reactivate = slot_states.get(slot_key) != True
+            if needs_reactivate:
                 self._safe_set_visible(widget_path, True, widget_control)
                 slot_states[slot_key] = True
-            
-            self._reset_pooled_widget_native_state(widget_path, node_type, widget_control)
+
+            needs_native_reset = needs_reactivate or node_type == 'Label'
+            if needs_native_reset:
+                self._reset_pooled_widget_native_state(widget_path, node_type, widget_control)
             native_layer_path = None
             if node_type == 'Item':
                 native_layer_path = wrapper_path
 
-            self._drop_native_common_style_cache(widget_path)
-            self._drop_native_common_style_cache(wrapper_path)
+            if needs_native_reset:
+                self._drop_native_common_style_cache(widget_path)
+                self._drop_native_common_style_cache(wrapper_path)
             applied = self._apply_rendered_entry(
                 pending_entry.get('node'),
                 node_type,
@@ -1104,6 +1110,28 @@ class RuntimeLifecycleMixin(object):
             except Exception:
                 pass
 
+    def _drop_grid_slot_visible_states_under_path(self, root_path):
+        safe_root_path = self._safe_text(root_path)
+        if not safe_root_path:
+            return
+
+        slot_states = getattr(self, '_grid_slot_visible_states', None)
+        if not isinstance(slot_states, dict):
+            return
+
+        prefix = safe_root_path + '/'
+        stale_paths = []
+        for widget_path in slot_states.keys():
+            safe_widget_path = self._safe_text(widget_path)
+            if safe_widget_path == safe_root_path or safe_widget_path.startswith(prefix):
+                stale_paths.append(safe_widget_path)
+
+        for stale_path in stale_paths:
+            try:
+                del slot_states[stale_path]
+            except Exception:
+                pass
+
     def _prune_preserved_host_subtree(self, parent_path, expected_children_by_parent):
         safe_parent_path = self._safe_text(parent_path)
         if not safe_parent_path:
@@ -1128,6 +1156,8 @@ class RuntimeLifecycleMixin(object):
         if clear_grid_pool:
             self._hide_all_used_grid_entries()
             self._preserved_root_scroll_hosts = {}
+            self._grid_slot_visible_states = {}
+            self._drop_native_layout_cache()
 
         if not isinstance(expected_children_by_parent, dict):
             expected_children_by_parent = {}
@@ -1170,9 +1200,11 @@ class RuntimeLifecycleMixin(object):
                     continue
 
                 self._drop_grid_pool_states_under_path(child_path)
-                remove_start_time = time.time()
+                self._drop_grid_slot_visible_states_under_path(child_path)
+                self._drop_native_layout_cache(child_path)
+                remove_start_time = _perf_now()
                 self._screen.RemoveChildControl(child_control)
-                self._count_native_api_call('RemoveChildControl', elapsed_ms=(time.time() - remove_start_time) * 1000.0)
+                self._count_native_api_call('RemoveChildControl', elapsed_ms=(_perf_now() - remove_start_time) * 1000.0)
             except Exception:
                 pass
 

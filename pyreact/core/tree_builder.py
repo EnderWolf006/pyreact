@@ -6,18 +6,28 @@ except Exception:
     from vnode import VNode
 
 
+def _perf_now():
+    perf_counter = getattr(time, 'perf_counter', None)
+    if callable(perf_counter):
+        return perf_counter()
+    clock = getattr(time, 'clock', None)
+    if callable(clock):
+        return clock()
+    return time.time()
+
+
 class TreeBuilder(object):
     def __init__(self):
         self.fiber_map = {}
         self._perf_stats = None
 
     def build_tree(self, root_element):
-        start_time = time.time()
+        start_time = _perf_now()
         self._perf_stats = {
             'component_exec_ms': 0.0,
         }
         tree = self._build_node(root_element, [])
-        total_ms = (time.time() - start_time) * 1000.0
+        total_ms = (_perf_now() - start_time) * 1000.0
         self._perf_stats['build_total_ms'] = total_ms
         build_only_ms = total_ms - self._perf_stats.get('component_exec_ms', 0.0)
         if build_only_ms < 0.0:
@@ -108,7 +118,7 @@ class TreeBuilder(object):
         return result
 
     def _call_component(self, component_fn, props):
-        start_time = time.time()
+        start_time = _perf_now()
         try:
             return component_fn(**props)
         except TypeError:
@@ -118,7 +128,7 @@ class TreeBuilder(object):
                 return component_fn()
         finally:
             if isinstance(self._perf_stats, dict):
-                self._perf_stats['component_exec_ms'] = self._perf_stats.get('component_exec_ms', 0.0) + ((time.time() - start_time) * 1000.0)
+                self._perf_stats['component_exec_ms'] = self._perf_stats.get('component_exec_ms', 0.0) + ((_perf_now() - start_time) * 1000.0)
 
     def _extract_children(self, props):
         children = props.get('children', [])
