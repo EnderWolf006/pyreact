@@ -24,22 +24,32 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         "Button": {
             "grid_name": "buttonGrid",
             "template_name": "buttonPanelBase",
+            "initial_pool_size": 32,
+            "max_pool_size": 64,
         },
         "Image": {
             "grid_name": "imageGrid",
             "template_name": "imagePanelBase",
+            "initial_pool_size": 32,
+            "max_pool_size": 64,
         },
         "Input": {
             "grid_name": "inputGrid",
             "template_name": "inputPanelBase",
+            "initial_pool_size": 32,
+            "max_pool_size": 64,
         },
         "Item": {
             "grid_name": "itemGrid",
             "template_name": "itemPanelBase",
+            "initial_pool_size": 32,
+            "max_pool_size": 64,
         },
         "Label": {
             "grid_name": "textGrid",
             "template_name": "textPanelBase",
+            "initial_pool_size": 32,
+            "max_pool_size": 64,
         },
     }
     _DEFAULT_WHITE_TEXTURE = "textures/ui/white_bg"
@@ -78,6 +88,8 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         self._node_refs = {}
         self._prev_node_refs = {}
         self._native_common_style_cache = {}
+        self._grid_pool_states = {}
+        self._preserved_root_scroll_hosts = {}
         self._input_edit_bound = False
         self._input_edit_handler_method_name = None
         self._screen_update_tasks = []

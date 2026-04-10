@@ -117,7 +117,9 @@ class MyScreen(ScreenNode):
 - `rootBase` 下保留 `buttonGrid` / `imageGrid` / `inputGrid` / `itemGrid` / `textGrid`
 - grid item 模板保持 `xxxPanelBase -> widget@xxxBase` 结构
 
-运行时会先设置 grid item 数量，再在 `ScreenNode.Update()` 的下一帧里初始化生成出来的 `widget`。因此这 5 类 grid 控件的 `size/position` 会作用在 `widget` 子节点上；其中 `Item` 的 `layer` 会设置到它的父 `panel`，避免直接给 `item_renderer` 本体设层级。
+这 5 类 typed grid 默认会在 `JsonUI/PyreactBase.json` 里各自预分配 32 个槽位，运行时优先复用这些槽位，而不是每次 render 都把 `grid_dimensions` 重设为当前数量。只有当某类控件数量首次超过当前池容量，且仍未超过 runtime 里的该类最大池化上限时，才会额外调用一次 `SetGridDimension` 扩容。
+
+运行时仍会在 `ScreenNode.Update()` 的下一帧里初始化新扩出来的 `widget`。因此这 5 类 grid 控件的 `size/position` 会作用在 `widget` 子节点上；其中 `Item` 的 `layer` 会设置到它的父 `panel`，避免直接给 `item_renderer` 本体设层级。上一帧用过、这一帧未使用的池化槽位会通过 `SetVisible(False, False)` 隐藏；从未使用过的预分配槽位保持 JSON 默认 `size=[0, 0]`，不会额外触发隐藏调用。对于 `Scroll` 内部的 typed grid，runtime 现在也会尽量保留已创建的 scroll 宿主与其 `scrolling_content` 子树，在 tab / 列表切换时优先复用已有 grid 实例，而不是每次都把整个宿主删掉后再重新 `SetGridDimension`。
 
 `Panel` 现在是**纯布局节点**：它仍然是公开 primitive，用来组织 Flex / 定位 / children，但 runtime 不会为它单独创建原生 `panel` 控件。
 
@@ -139,7 +141,7 @@ class MyScreen(ScreenNode):
 }
 ```
 
-同时需要在资源包 `ui/` 里提供 `PyreactBase.json`，作为运行时创建控件时的基础 type_def（`imageBase` / `textBase` / `buttonBase` / `inputBase` / `scrollBase`，以及按钮/滚动条内部模板依赖的基础定义）。如果你使用当前版本的 typed grid 优化，还需要保留 `rootBase` 及其 5 个 grid 定义。
+同时需要在资源包 `ui/` 里提供 `PyreactBase.json`，作为运行时创建控件时的基础 type_def（`imageBase` / `textBase` / `buttonBase` / `inputBase` / `scrollBase`，以及按钮/滚动条内部模板依赖的基础定义）。如果你使用当前版本的 typed grid 优化，还需要保留 `rootBase` 及其 5 个 grid 定义，并让 JSON 里的初始 `grid_dimensions` 与 runtime 中 `_GRID_TYPE_CONFIG` 的默认池容量保持一致（当前默认初始 32、最大池化 64）。
 
 ## 目录结构
 

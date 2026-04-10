@@ -484,7 +484,7 @@
                     "collection_name": "test_grid",
                     "grid_dimensions": [
                         1,
-                        0
+                        32
                     ],
                     "grid_item_template": "PyreactBase.buttonPanelBase"
                 }
@@ -502,7 +502,7 @@
                     "collection_name": "test_grid",
                     "grid_dimensions": [
                         1,
-                        0
+                        32
                     ],
                     "grid_item_template": "PyreactBase.imagePanelBase"
                 }
@@ -520,7 +520,7 @@
                     "collection_name": "test_grid",
                     "grid_dimensions": [
                         1,
-                        0
+                        32
                     ],
                     "grid_item_template": "PyreactBase.inputPanelBase"
                 }
@@ -538,7 +538,7 @@
                     "collection_name": "test_grid",
                     "grid_dimensions": [
                         1,
-                        0
+                        32
                     ],
                     "grid_item_template": "PyreactBase.itemPanelBase"
                 }
@@ -556,7 +556,7 @@
                     "collection_name": "test_grid",
                     "grid_dimensions": [
                         1,
-                        0
+                        32
                     ],
                     "grid_item_template": "PyreactBase.textPanelBase"
                 }

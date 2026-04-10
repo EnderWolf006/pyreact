@@ -610,9 +610,9 @@ class RuntimePropsMixin(object):
             layer_value = int(round(self._to_float(layer, 0.0)))
             next_cached_style['layer'] = layer_value
             if cached_style.get('layer') != layer_value:
-                self._safe_set_layer(layer_path, layer_value, layer_control)
+                self._safe_set_layer(layer_path, layer_value, layer_control, sync_refresh=False)
         elif 'layer' in cached_style:
-            self._safe_set_layer(layer_path, 0, layer_control)
+            self._safe_set_layer(layer_path, 0, layer_control, sync_refresh=False)
 
         cache[node_path] = next_cached_style
 
@@ -702,6 +702,10 @@ class RuntimePropsMixin(object):
             try:
                 child_control = self._screen.GetBaseUIControl(child_path)
                 if child_control:
+                    try:
+                        self._drop_grid_pool_states_under_path(child_path)
+                    except Exception:
+                        pass
                     self._screen.RemoveChildControl(child_control)
                     self._drop_native_common_style_cache(child_path)
             except Exception:
@@ -732,6 +736,10 @@ class RuntimePropsMixin(object):
             try:
                 child_control = self._screen.GetBaseUIControl(child_path)
                 if child_control:
+                    try:
+                        self._drop_grid_pool_states_under_path(child_path)
+                    except Exception:
+                        pass
                     self._screen.RemoveChildControl(child_control)
                     self._drop_native_common_style_cache(child_path)
             except Exception:

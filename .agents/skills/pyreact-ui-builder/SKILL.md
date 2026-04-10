@@ -83,7 +83,7 @@ metadata:
 → Native Runtime
 → 直接挂载到 `root` / `scroll_content` 的 NetEase 原生控件
 
-补充：当前 runtime 会优先把 `Button` / `Image` / `Input` / `Item` / `Label` 这 5 类 flat 控件分发到 `root` / `scroll_content` 下预置的 typed grid（`buttonGrid` / `imageGrid` / `inputGrid` / `itemGrid` / `textGrid`）。所以业务 UI 所在的 JsonUI 容器应继续复用 `PyreactBase.rootBase`，不要删掉这些 grid 定义。
+补充：当前 runtime 会优先把 `Button` / `Image` / `Input` / `Item` / `Label` 这 5 类 flat 控件分发到 `root` / `scroll_content` 下预置的 typed grid（`buttonGrid` / `imageGrid` / `inputGrid` / `itemGrid` / `textGrid`）。这些 grid 默认在 `PyreactBase.json` 中预分配 32 个槽位，运行时按池化方式复用，超出当前容量时才会按需扩容。对于 `Scroll` 内部的列表，runtime 也会尽量保留 scroll 宿主和它的 `scrolling_content` 子树，以便切页或切 tab 时继续复用同一批 typed grid 实例。所以业务 UI 所在的 JsonUI 容器应继续复用 `PyreactBase.rootBase`，不要删掉这些 grid 定义，也不要把 scroll 的 `scroll_content` 改成不继承 `rootBase` 的结构。
 
 写业务 UI 时，通常只需要关心：
 

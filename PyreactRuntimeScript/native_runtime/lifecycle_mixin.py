@@ -26,6 +26,21 @@ class RuntimeLifecycleMixin(object):
     def _clear_deferred_perf_state(self):
         self._deferred_perf_state = None
 
+    def _cancel_pending_deferred_perf_state(self):
+        perf_state = getattr(self, '_deferred_perf_state', None)
+        if not isinstance(perf_state, dict):
+            return
+
+        generation = perf_state.get('generation')
+        try:
+            remaining = int(perf_state.get('remaining', 0))
+        except Exception:
+            remaining = 0
+
+        while remaining > 0:
+            self._mark_deferred_grid_entry_done(generation, succeeded=False)
+            remaining -= 1
+
     def _begin_deferred_perf_tracking(self, generation, deferred_grid_count, native_submit_ms, native_start_time):
         if not getattr(self, '_log_perf', False):
             return
@@ -37,6 +52,8 @@ class RuntimeLifecycleMixin(object):
             'generation': generation,
             'remaining': deferred_grid_count,
             'total': deferred_grid_count,
+            'completed': 0,
+            'failed': 0,
             'native_submit_ms': native_submit_ms,
             'native_start_time': native_start_time,
             'update_ticks': 0,
@@ -49,17 +66,42 @@ class RuntimeLifecycleMixin(object):
             return
         perf_state['update_ticks'] = perf_state.get('update_ticks', 0) + 1
 
-    def _mark_deferred_grid_entry_done(self, generation):
+    def _mark_deferred_grid_entry_done(self, generation, succeeded=True):
         perf_state = getattr(self, '_deferred_perf_state', None)
         if not isinstance(perf_state, dict):
             return
         if perf_state.get('generation') != generation:
             return
+        if perf_state.get('remaining', 0) <= 0:
+            return
+
+        if succeeded:
+            perf_state['completed'] = perf_state.get('completed', 0) + 1
+        else:
+            perf_state['failed'] = perf_state.get('failed', 0) + 1
 
         remaining = perf_state.get('remaining', 0) - 1
         perf_state['remaining'] = remaining
         if remaining > 0:
             return
+
+        perf_state['pending_finalize'] = True
+        if getattr(self, '_native_api_counting_active', False):
+            return
+
+        self._finalize_deferred_perf_state(perf_state)
+
+    def _finalize_deferred_perf_state(self, perf_state=None):
+        if perf_state is None:
+            perf_state = getattr(self, '_deferred_perf_state', None)
+        if not isinstance(perf_state, dict):
+            return
+        if perf_state.get('remaining', 0) > 0:
+            return
+        if not perf_state.get('pending_finalize'):
+            return
+
+        perf_state['pending_finalize'] = False
 
         total_elapsed_ms = 0.0
         try:
@@ -73,11 +115,13 @@ class RuntimeLifecycleMixin(object):
         deferred_wait_ms = total_elapsed_ms - native_submit_ms
 
         try:
-            print('=====> PyreactRuntime[perf] 6. Grid跨帧初始化完成: %.3fms (额外等待: %.3fms, Update帧: %s, 项数: %s) <=====' % (
+            print('=====> PyreactRuntime[perf] 6. Grid跨帧初始化完成: %.3fms (额外等待: %.3fms, Update帧: %s, 项数: %s, 成功: %s, 失败: %s) <=====' % (
                 total_elapsed_ms,
                 deferred_wait_ms,
                 perf_state.get('update_ticks', 0),
                 perf_state.get('total', 0),
+                perf_state.get('completed', 0),
+                perf_state.get('failed', 0),
             ))
         except Exception:
             pass
@@ -130,7 +174,7 @@ class RuntimeLifecycleMixin(object):
         self._prev_shadow_root = None
         self._measure_label_path = None
         self._drop_native_common_style_cache()
-        self._clear_root_children()
+        self._clear_root_children(clear_grid_pool=True)
 
     def request_render(self):
         if not self._mounted:
@@ -153,8 +197,8 @@ class RuntimeLifecycleMixin(object):
         self._render_scheduled = False
         self._is_rendering = True
         try:
+            self._cancel_pending_deferred_perf_state()
             self._clear_pending_screen_update_tasks()
-            self._clear_deferred_perf_state()
             self._button_callbacks = {}
             self._input_callbacks = {}
             self._input_paths = {}
@@ -187,7 +231,7 @@ class RuntimeLifecycleMixin(object):
                         self._unbind_input_edit_handlers()
                     except Exception:
                         pass
-                    self._clear_root_children()
+                    self._clear_root_children(clear_grid_pool=True)
                 finally:
                     native_call_counts = self._finish_native_api_call_batch()
                 native_ms = (time.time() - native_start_time) * 1000.0
@@ -208,6 +252,7 @@ class RuntimeLifecycleMixin(object):
             layout_start_time = time.time()
             shadow_root = self._layout_engine.calculate(new_vtree, width, height)
             layout_ms = (time.time() - layout_start_time) * 1000.0
+            expected_children_by_parent, current_root_scroll_hosts = self._collect_render_cleanup_state([shadow_root], self._root_path)
 
             native_start_time = time.time()
             self._begin_native_api_call_batch()
@@ -218,7 +263,11 @@ class RuntimeLifecycleMixin(object):
                     for m in muts:
                         t = self._safe_text(getattr(m, 'type_', ''))
                         counts[t] = counts.get(t, 0) + 1
-                self._clear_root_children()
+                self._clear_root_children(
+                    clear_grid_pool=False,
+                    expected_children_by_parent=expected_children_by_parent,
+                    current_root_scroll_hosts=current_root_scroll_hosts,
+                )
                 deferred_grid_count = self._render_flat_tree([shadow_root], self._root_path)
             finally:
                 native_call_counts = self._finish_native_api_call_batch()
@@ -357,7 +406,7 @@ class RuntimeLifecycleMixin(object):
     def _clear_pending_screen_update_tasks(self):
         self._screen_update_tasks = []
 
-    def _schedule_screen_update_task(self, callback, retries=3):
+    def _schedule_screen_update_task(self, callback, retries=3, on_give_up=None):
         if not callable(callback):
             return
 
@@ -371,6 +420,7 @@ class RuntimeLifecycleMixin(object):
         self._screen_update_tasks.append({
             'callback': callback,
             'retries': retry_count,
+            'on_give_up': on_give_up,
         })
 
     def _run_screen_update_tasks(self):
@@ -390,18 +440,22 @@ class RuntimeLifecycleMixin(object):
         for task in tasks:
             callback = None
             retries = 0
+            on_give_up = None
             if isinstance(task, dict):
                 callback = task.get('callback')
                 retries = task.get('retries', 0)
+                on_give_up = task.get('on_give_up')
             if not callable(callback):
                 continue
 
             should_retry = False
+            task_failed = False
             try:
                 result = callback()
                 should_retry = (result is False)
             except Exception:
                 should_retry = False
+                task_failed = True
 
             if should_retry:
                 try:
@@ -412,11 +466,23 @@ class RuntimeLifecycleMixin(object):
                     self._screen_update_tasks.append({
                         'callback': callback,
                         'retries': retries - 1,
+                        'on_give_up': on_give_up,
                     })
+                elif callable(on_give_up):
+                    try:
+                        on_give_up()
+                    except Exception:
+                        pass
+            elif task_failed and callable(on_give_up):
+                try:
+                    on_give_up()
+                except Exception:
+                    pass
 
         perf_state = getattr(self, '_deferred_perf_state', None)
         if isinstance(perf_state, dict):
             self._merge_native_api_call_counts(perf_state.get('native_call_counts'), self._finish_native_api_call_batch())
+            self._finalize_deferred_perf_state(perf_state)
         else:
             self._finish_native_api_call_batch()
 
@@ -490,7 +556,7 @@ class RuntimeLifecycleMixin(object):
 
         pending_grid_entries = []
         if root_parent_path == self._root_path:
-            self._reset_root_grid_dimensions()
+            self._render_grid_counts = {}
 
         for entry in entries:
             pending_grid_entry = self._render_flat_entry(entry)
@@ -501,6 +567,8 @@ class RuntimeLifecycleMixin(object):
 
         if pending_grid_entries:
             self._flush_pending_grid_entries(pending_grid_entries)
+        elif root_parent_path == self._root_path:
+            self._hide_unused_grid_entries({}, {})
 
         return len(pending_grid_entries)
 
@@ -525,14 +593,15 @@ class RuntimeLifecycleMixin(object):
         if not control:
             def_name = self._get_def_name(node_type)
             try:
+                create_start_time = time.time()
                 self._screen.CreateChildControl(def_name, child_name, parent_control)
+                self._count_native_api_call('CreateChildControl', elapsed_ms=(time.time() - create_start_time) * 1000.0)
             except Exception:
                 pass
             control = self._screen.GetBaseUIControl(node_path)
             if not control:
                 self._needs_render = True
                 return
-            self._count_native_api_call('CreateChildControl')
             self._drop_native_common_style_cache(node_path)
 
         self._apply_rendered_entry(node, node_type, node_id, node_path, control)
@@ -622,15 +691,22 @@ class RuntimeLifecycleMixin(object):
 
     def _build_pending_grid_entry(self, entry, parent_path):
         node_type = entry.get('node_type')
-        if not self._get_grid_type_config(node_type):
+        grid_config = self._get_grid_type_config(node_type)
+        if not grid_config:
             return None
         if not self._is_grid_available_for_parent(parent_path, node_type):
             return None
 
         index = self._next_grid_index(parent_path, node_type)
+        max_pool_size = self._get_grid_pool_limit(node_type, 'max_pool_size', 0)
+        if max_pool_size > 0 and index > max_pool_size:
+            return None
         paths = self._get_grid_item_paths(parent_path, node_type, index)
         if not isinstance(paths, dict):
             return None
+
+        grid_path = paths.get('grid_path')
+        pool_state = self._ensure_grid_pool_state(grid_path, node_type)
 
         return {
             'node': entry.get('node'),
@@ -642,15 +718,18 @@ class RuntimeLifecycleMixin(object):
             'widget_path': paths.get('widget_path'),
             'grid_index': index,
             'generation': self._render_generation,
+            'pool_state': pool_state,
         }
 
     def _flush_pending_grid_entries(self, pending_grid_entries):
         grid_counts = {}
+        grid_types = {}
         for pending_entry in pending_grid_entries:
             if not isinstance(pending_entry, dict):
                 continue
             grid_path = self._safe_text(pending_entry.get('grid_path'))
             grid_index = pending_entry.get('grid_index', 0)
+            node_type = self._safe_text(pending_entry.get('node_type'))
             if not grid_path:
                 continue
             try:
@@ -662,9 +741,12 @@ class RuntimeLifecycleMixin(object):
             prev_count = grid_counts.get(grid_path, 0)
             if grid_index > prev_count:
                 grid_counts[grid_path] = grid_index
+                grid_types[grid_path] = node_type
 
         for grid_path, grid_count in grid_counts.items():
-            self._safe_set_grid_dimension(grid_path, 1, grid_count)
+            self._ensure_grid_pool_capacity(grid_path, grid_types.get(grid_path), grid_count)
+
+        self._hide_unused_grid_entries(grid_counts, grid_types)
 
         for pending_entry in pending_grid_entries:
             self._schedule_grid_entry_apply(pending_entry)
@@ -673,8 +755,12 @@ class RuntimeLifecycleMixin(object):
         if not isinstance(pending_entry, dict):
             return
 
+        def _mark_pending_grid_entry_failed():
+            self._mark_deferred_grid_entry_done(pending_entry.get('generation'), succeeded=False)
+
         def _apply_pending_grid_entry():
             if pending_entry.get('generation') != self._render_generation:
+                self._mark_deferred_grid_entry_done(pending_entry.get('generation'), succeeded=False)
                 return True
 
             widget_path = self._safe_text(pending_entry.get('widget_path'))
@@ -688,6 +774,9 @@ class RuntimeLifecycleMixin(object):
                 return False
 
             node_type = pending_entry.get('node_type')
+            self._safe_set_visible(wrapper_path, True, wrapper_control)
+            self._safe_set_visible(widget_path, True, widget_control)
+            self._reset_pooled_widget_native_state(widget_path, node_type, widget_control)
             native_layer_path = None
             if node_type == 'Item':
                 native_layer_path = wrapper_path
@@ -706,19 +795,178 @@ class RuntimeLifecycleMixin(object):
                 self._mark_deferred_grid_entry_done(pending_entry.get('generation'))
             return applied
 
-        self._schedule_screen_update_task(_apply_pending_grid_entry, retries=6)
+        self._schedule_screen_update_task(_apply_pending_grid_entry, retries=6, on_give_up=_mark_pending_grid_entry_failed)
 
-    def _reset_root_grid_dimensions(self):
-        self._render_grid_counts = {}
-        grid_config_map = getattr(self, '_GRID_TYPE_CONFIG', None) or {}
-        for _, grid_config in grid_config_map.items():
-            if not isinstance(grid_config, dict):
+    def _get_grid_pool_limit(self, node_type, field_name, fallback=0):
+        grid_config = self._get_grid_type_config(node_type)
+        if not isinstance(grid_config, dict):
+            return fallback
+        try:
+            value = int(grid_config.get(field_name, fallback))
+        except Exception:
+            value = fallback
+        if value < 0:
+            value = fallback
+        return value
+
+    def _ensure_grid_pool_state(self, grid_path, node_type):
+        if not isinstance(getattr(self, '_grid_pool_states', None), dict):
+            self._grid_pool_states = {}
+        safe_grid_path = self._safe_text(grid_path)
+        if not safe_grid_path:
+            return None
+
+        state = self._grid_pool_states.get(safe_grid_path)
+        initial_pool_size = self._get_grid_pool_limit(node_type, 'initial_pool_size', 0)
+        max_pool_size = self._get_grid_pool_limit(node_type, 'max_pool_size', initial_pool_size)
+        if max_pool_size < initial_pool_size:
+            max_pool_size = initial_pool_size
+
+        if not isinstance(state, dict):
+            state = {
+                'node_type': node_type,
+                'capacity': 0,
+                'active_count': 0,
+                'max_pool_size': max_pool_size,
+                'initialized': False,
+            }
+            self._grid_pool_states[safe_grid_path] = state
+            return state
+
+        state['node_type'] = node_type
+        state['max_pool_size'] = max_pool_size
+        if self._to_float(state.get('active_count'), 0) < 0:
+            state['active_count'] = 0
+        return state
+
+    def _ensure_grid_pool_capacity(self, grid_path, node_type, required_count):
+        state = self._ensure_grid_pool_state(grid_path, node_type)
+        if not isinstance(state, dict):
+            return False
+
+        try:
+            needed = int(required_count)
+        except Exception:
+            needed = 0
+        if needed <= 0:
+            return True
+
+        current_capacity = int(state.get('capacity', 0) or 0)
+        initial_pool_size = self._get_grid_pool_limit(node_type, 'initial_pool_size', 0)
+        target_capacity = needed
+        if initial_pool_size > target_capacity:
+            target_capacity = initial_pool_size
+        if not state.get('initialized') and target_capacity <= 0:
+            target_capacity = initial_pool_size
+        if target_capacity <= current_capacity:
+            state['initialized'] = True
+            return True
+
+        max_pool_size = int(state.get('max_pool_size', current_capacity) or current_capacity)
+        if target_capacity > max_pool_size:
+            target_capacity = max_pool_size
+        if target_capacity <= current_capacity:
+            state['initialized'] = True
+            return True
+
+        if self._safe_set_grid_dimension(grid_path, 1, target_capacity):
+            state['capacity'] = target_capacity
+            state['initialized'] = True
+            return True
+        return False
+
+    def _hide_unused_grid_entries(self, grid_counts, grid_types):
+        pool_states = getattr(self, '_grid_pool_states', None)
+        if not isinstance(pool_states, dict):
+            return
+
+        for grid_path, state in pool_states.items():
+            if not isinstance(state, dict):
                 continue
-            grid_name = self._safe_text(grid_config.get('grid_name'))
-            if not grid_name:
+            node_type = grid_types.get(grid_path) or state.get('node_type')
+            next_active = grid_counts.get(grid_path, 0)
+            try:
+                next_active = int(next_active)
+            except Exception:
+                next_active = 0
+            try:
+                prev_active = int(state.get('active_count', 0))
+            except Exception:
+                prev_active = 0
+
+            if prev_active > next_active:
+                self._set_grid_entry_visibility_range(grid_path, node_type, next_active + 1, prev_active, False)
+
+            state['active_count'] = next_active
+
+    def _hide_all_used_grid_entries(self):
+        pool_states = getattr(self, '_grid_pool_states', None)
+        if not isinstance(pool_states, dict):
+            return
+
+        for grid_path, state in pool_states.items():
+            if not isinstance(state, dict):
                 continue
-            grid_path = self._root_path + '/' + grid_name
-            self._safe_set_grid_dimension(grid_path, 1, 0)
+            node_type = state.get('node_type')
+            try:
+                active_count = int(state.get('active_count', 0))
+            except Exception:
+                active_count = 0
+            if active_count > 0:
+                self._set_grid_entry_visibility_range(grid_path, node_type, 1, active_count, False)
+            state['active_count'] = 0
+
+    def _set_grid_entry_visibility_range(self, grid_path, node_type, start_index, end_index, visible):
+        if not grid_path or not node_type:
+            return
+
+        try:
+            begin = int(start_index)
+            end = int(end_index)
+        except Exception:
+            return
+
+        if begin <= 0 or end < begin:
+            return
+
+        for index in range(begin, end + 1):
+            paths = self._get_grid_item_paths_by_grid_path(grid_path, node_type, index)
+            if not isinstance(paths, dict):
+                continue
+            wrapper_path = paths.get('wrapper_path')
+            widget_path = paths.get('widget_path')
+            wrapper_control = self._screen.GetBaseUIControl(wrapper_path) if wrapper_path else None
+            widget_control = self._screen.GetBaseUIControl(widget_path) if widget_path else None
+            if wrapper_control:
+                self._safe_set_visible(wrapper_path, visible, wrapper_control, sync_refresh=False)
+            if widget_control:
+                self._safe_set_visible(widget_path, visible, widget_control, sync_refresh=False)
+
+    def _get_grid_item_paths_by_grid_path(self, grid_path, node_type, index):
+        grid_config = self._get_grid_type_config(node_type)
+        if not isinstance(grid_config, dict):
+            return None
+
+        grid_name = self._safe_text(grid_config.get('grid_name'))
+        template_name = self._safe_text(grid_config.get('template_name'))
+        safe_grid_path = self._safe_text(grid_path)
+        if not grid_name or not template_name or not safe_grid_path:
+            return None
+
+        suffix = '/' + grid_name
+        if not safe_grid_path.endswith(suffix):
+            return None
+
+        parent_path = safe_grid_path[:-len(suffix)]
+        wrapper_name = self._get_grid_item_wrapper_name(template_name, index)
+        wrapper_path = safe_grid_path + '/' + wrapper_name
+        return {
+            'grid_path': safe_grid_path,
+            'wrapper_name': wrapper_name,
+            'wrapper_path': wrapper_path,
+            'widget_path': wrapper_path + '/widget',
+            'parent_path': parent_path,
+        }
 
     def _refresh_button_callbacks(self, shadow_root):
         self._button_callbacks = {}
@@ -764,25 +1012,159 @@ class RuntimeLifecycleMixin(object):
         self._button_callbacks[node_id] = onclick
         self._bind_button_click(button_path, node_id)
 
-    def _clear_root_children(self):
+    def _collect_render_cleanup_state(self, children, root_parent_path):
+        entries = []
+        self._collect_flat_entries(children, self._make_parent_target('path', root_parent_path), entries)
+
+        expected_children_by_parent = {}
+        current_root_scroll_hosts = {}
+        grid_index_map = {}
+
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+
+            parent_path = self._resolve_parent_target(entry.get('parent_target'))
+            node_type = self._safe_text(entry.get('node_type'))
+            child_name = self._safe_text(entry.get('child_name'))
+            if not parent_path or not child_name:
+                continue
+
+            child_path = parent_path + '/' + child_name
+            if parent_path == self._root_path and node_type == 'Scroll':
+                current_root_scroll_hosts[child_path] = True
+
+            if not child_name.startswith(self._CONTROL_NAME_PREFIX):
+                continue
+
+            if self._would_render_entry_in_grid(parent_path, node_type, grid_index_map):
+                continue
+
+            bucket = expected_children_by_parent.get(parent_path)
+            if not isinstance(bucket, list):
+                bucket = []
+                expected_children_by_parent[parent_path] = bucket
+            if child_name not in bucket:
+                bucket.append(child_name)
+
+        return expected_children_by_parent, current_root_scroll_hosts
+
+    def _would_render_entry_in_grid(self, parent_path, node_type, grid_index_map=None):
+        if not self._get_grid_type_config(node_type):
+            return False
+        if not self._is_grid_available_for_parent(parent_path, node_type):
+            return False
+
+        if not isinstance(grid_index_map, dict):
+            grid_index_map = {}
+        key = '%s|%s' % (self._safe_text(parent_path), self._safe_text(node_type))
+        next_index = grid_index_map.get(key, 0) + 1
+        grid_index_map[key] = next_index
+
+        max_pool_size = self._get_grid_pool_limit(node_type, 'max_pool_size', 0)
+        if max_pool_size > 0 and next_index > max_pool_size:
+            return False
+        return True
+
+    def _drop_grid_pool_states_under_path(self, root_path):
+        safe_root_path = self._safe_text(root_path)
+        if not safe_root_path:
+            return
+        pool_states = getattr(self, '_grid_pool_states', None)
+        if not isinstance(pool_states, dict):
+            return
+
+        prefix = safe_root_path + '/'
+        stale_paths = []
+        for grid_path in pool_states.keys():
+            safe_grid_path = self._safe_text(grid_path)
+            if safe_grid_path == safe_root_path or safe_grid_path.startswith(prefix):
+                stale_paths.append(safe_grid_path)
+
+        for stale_path in stale_paths:
+            try:
+                del pool_states[stale_path]
+            except Exception:
+                pass
+
+    def _prune_preserved_host_subtree(self, parent_path, expected_children_by_parent):
+        safe_parent_path = self._safe_text(parent_path)
+        if not safe_parent_path:
+            return
+
+        expected_child_names = expected_children_by_parent.get(safe_parent_path, [])
+        self._prune_prefixed_children(safe_parent_path, expected_child_names)
+
+        for child_name in expected_child_names:
+            safe_child_name = self._safe_text(child_name)
+            if not safe_child_name.startswith(self._CONTROL_NAME_PREFIX):
+                continue
+            child_path = safe_parent_path + '/' + safe_child_name
+            self._prune_preserved_host_subtree(child_path, expected_children_by_parent)
+            scroll_content_path = self._get_scroll_content_path(child_path)
+            if scroll_content_path and scroll_content_path != child_path:
+                self._prune_preserved_host_subtree(scroll_content_path, expected_children_by_parent)
+
+    def _clear_root_children(self, clear_grid_pool=False, expected_children_by_parent=None, current_root_scroll_hosts=None):
         self._drop_native_common_style_cache()
-        self._reset_root_grid_dimensions()
+        self._render_grid_counts = {}
+        if clear_grid_pool:
+            self._hide_all_used_grid_entries()
+            self._preserved_root_scroll_hosts = {}
+
+        if not isinstance(expected_children_by_parent, dict):
+            expected_children_by_parent = {}
+        if not isinstance(current_root_scroll_hosts, dict):
+            current_root_scroll_hosts = {}
+        preserved_root_scroll_hosts = getattr(self, '_preserved_root_scroll_hosts', None)
+        if not isinstance(preserved_root_scroll_hosts, dict):
+            preserved_root_scroll_hosts = {}
+            self._preserved_root_scroll_hosts = preserved_root_scroll_hosts
+
         try:
             names = self._screen.GetChildrenName(self._root_path) or []
         except Exception:
             names = []
 
+        existing_root_paths = {}
+
         for name in names:
-            if not self._safe_text(name).startswith(self._CONTROL_NAME_PREFIX):
+            safe_name = self._safe_text(name)
+            if not safe_name.startswith(self._CONTROL_NAME_PREFIX):
                 continue
-            child_path = self._root_path + "/" + name
+            child_path = self._root_path + "/" + safe_name
+            existing_root_paths[child_path] = True
             try:
                 child_control = self._screen.GetBaseUIControl(child_path)
-                if child_control:
-                    self._screen.RemoveChildControl(child_control)
-                    self._count_native_api_call('RemoveChildControl')
+                if not child_control:
+                    continue
+
+                is_preserved_scroll = (not clear_grid_pool) and (child_path in current_root_scroll_hosts or child_path in preserved_root_scroll_hosts)
+                if is_preserved_scroll:
+                    preserved_root_scroll_hosts[child_path] = True
+                    if child_path in current_root_scroll_hosts:
+                        self._safe_set_visible(child_path, True, child_control)
+                        self._prune_preserved_host_subtree(child_path, expected_children_by_parent)
+                        scroll_content_path = self._get_scroll_content_path(child_path)
+                        if scroll_content_path and scroll_content_path != child_path:
+                            self._prune_preserved_host_subtree(scroll_content_path, expected_children_by_parent)
+                    else:
+                        self._safe_set_visible(child_path, False, child_control, sync_refresh=False)
+                    continue
+
+                self._drop_grid_pool_states_under_path(child_path)
+                remove_start_time = time.time()
+                self._screen.RemoveChildControl(child_control)
+                self._count_native_api_call('RemoveChildControl', elapsed_ms=(time.time() - remove_start_time) * 1000.0)
             except Exception:
                 pass
+
+        for child_path in list(preserved_root_scroll_hosts.keys()):
+            if child_path not in existing_root_paths:
+                try:
+                    del preserved_root_scroll_hosts[child_path]
+                except Exception:
+                    pass
 
     def _apply_scroll_props(self, node, node_path):
         props = getattr(node, "props", {}) or {}
