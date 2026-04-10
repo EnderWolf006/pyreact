@@ -6,7 +6,7 @@ import mod.client.extraClientApi as clientApi
 
 
 class RuntimeLifecycleMixin(object):
-    def _log_render_stage_timings(self, component_ms, build_ms, diff_ms, layout_ms, native_ms):
+    def _log_render_stage_timings(self, component_ms, build_ms, diff_ms, layout_ms, native_ms, deferred_grid_count=0, native_call_counts=None):
         if not getattr(self, '_log_perf', False):
             return
         try:
@@ -14,9 +14,77 @@ class RuntimeLifecycleMixin(object):
             print('=====> PyreactRuntime[perf] 2. 构建VNode树: %.3fms <=====' % build_ms)
             print('=====> PyreactRuntime[perf] 3. Diff计算: %.3fms <=====' % diff_ms)
             print('=====> PyreactRuntime[perf] 4. 布局计算: %.3fms <=====' % layout_ms)
-            print('=====> PyreactRuntime[perf] 5. 应用到原生UI: %.3fms <=====' % native_ms)
+            if deferred_grid_count > 0:
+                print('=====> PyreactRuntime[perf] 5. 应用到原生UI(本帧提交): %.3fms <=====' % native_ms)
+                print('=====> PyreactRuntime[perf]    Grid跨帧初始化待完成: %s项 <=====' % deferred_grid_count)
+            else:
+                print('=====> PyreactRuntime[perf] 5. 应用到原生UI: %.3fms <=====' % native_ms)
         except Exception:
             pass
+        self._log_native_api_call_counts('原生接口调用统计(本帧)', native_call_counts)
+
+    def _clear_deferred_perf_state(self):
+        self._deferred_perf_state = None
+
+    def _begin_deferred_perf_tracking(self, generation, deferred_grid_count, native_submit_ms, native_start_time):
+        if not getattr(self, '_log_perf', False):
+            return
+        if deferred_grid_count <= 0:
+            self._clear_deferred_perf_state()
+            return
+
+        self._deferred_perf_state = {
+            'generation': generation,
+            'remaining': deferred_grid_count,
+            'total': deferred_grid_count,
+            'native_submit_ms': native_submit_ms,
+            'native_start_time': native_start_time,
+            'update_ticks': 0,
+            'native_call_counts': {},
+        }
+
+    def _mark_deferred_perf_update_tick(self):
+        perf_state = getattr(self, '_deferred_perf_state', None)
+        if not isinstance(perf_state, dict):
+            return
+        perf_state['update_ticks'] = perf_state.get('update_ticks', 0) + 1
+
+    def _mark_deferred_grid_entry_done(self, generation):
+        perf_state = getattr(self, '_deferred_perf_state', None)
+        if not isinstance(perf_state, dict):
+            return
+        if perf_state.get('generation') != generation:
+            return
+
+        remaining = perf_state.get('remaining', 0) - 1
+        perf_state['remaining'] = remaining
+        if remaining > 0:
+            return
+
+        total_elapsed_ms = 0.0
+        try:
+            total_elapsed_ms = (time.time() - perf_state.get('native_start_time', time.time())) * 1000.0
+        except Exception:
+            total_elapsed_ms = 0.0
+
+        native_submit_ms = self._to_float(perf_state.get('native_submit_ms', 0.0), 0.0)
+        if total_elapsed_ms < native_submit_ms:
+            total_elapsed_ms = native_submit_ms
+        deferred_wait_ms = total_elapsed_ms - native_submit_ms
+
+        try:
+            print('=====> PyreactRuntime[perf] 6. Grid跨帧初始化完成: %.3fms (额外等待: %.3fms, Update帧: %s, 项数: %s) <=====' % (
+                total_elapsed_ms,
+                deferred_wait_ms,
+                perf_state.get('update_ticks', 0),
+                perf_state.get('total', 0),
+            ))
+        except Exception:
+            pass
+
+        self._log_native_api_call_counts('原生接口调用统计(跨帧)', perf_state.get('native_call_counts'))
+
+        self._clear_deferred_perf_state()
 
     def _init_pyreact_runtime(self):
         from pyreact.layout.layout_engine import LayoutEngine
@@ -43,6 +111,7 @@ class RuntimeLifecycleMixin(object):
     def unmount(self):
         self._mounted = False
         self._clear_pending_screen_update_tasks()
+        self._clear_deferred_perf_state()
         self._unbind_screen_update_handler()
         self._button_callbacks = {}
         self._input_callbacks = {}
@@ -85,6 +154,7 @@ class RuntimeLifecycleMixin(object):
         self._is_rendering = True
         try:
             self._clear_pending_screen_update_tasks()
+            self._clear_deferred_perf_state()
             self._button_callbacks = {}
             self._input_callbacks = {}
             self._input_paths = {}
@@ -101,23 +171,27 @@ class RuntimeLifecycleMixin(object):
                 diff_ms = (time.time() - diff_start_time) * 1000.0
 
                 native_start_time = time.time()
-                self._prev_vtree = None
-                self._prev_shadow_root = None
-                self._input_callbacks = {}
-                self._input_paths = {}
-                self._input_last_values = {}
-                self._node_refs = {}
+                self._begin_native_api_call_batch()
                 try:
-                    self._clear_all_refs()
-                except Exception:
-                    pass
-                try:
-                    self._unbind_input_edit_handlers()
-                except Exception:
-                    pass
-                self._clear_root_children()
+                    self._prev_vtree = None
+                    self._prev_shadow_root = None
+                    self._input_callbacks = {}
+                    self._input_paths = {}
+                    self._input_last_values = {}
+                    self._node_refs = {}
+                    try:
+                        self._clear_all_refs()
+                    except Exception:
+                        pass
+                    try:
+                        self._unbind_input_edit_handlers()
+                    except Exception:
+                        pass
+                    self._clear_root_children()
+                finally:
+                    native_call_counts = self._finish_native_api_call_batch()
                 native_ms = (time.time() - native_start_time) * 1000.0
-                self._log_render_stage_timings(component_ms, build_ms, diff_ms, 0.0, native_ms)
+                self._log_render_stage_timings(component_ms, build_ms, diff_ms, 0.0, native_ms, native_call_counts=native_call_counts)
                 return
 
             width, height = self._get_root_size()
@@ -136,17 +210,24 @@ class RuntimeLifecycleMixin(object):
             layout_ms = (time.time() - layout_start_time) * 1000.0
 
             native_start_time = time.time()
-            if getattr(self, '_debug_render', False):
-                counts = {}
-                muts = mutations or []
-                for m in muts:
-                    t = self._safe_text(getattr(m, 'type_', ''))
-                    counts[t] = counts.get(t, 0) + 1
-            self._clear_root_children()
-            self._render_flat_tree([shadow_root], self._root_path)
+            self._begin_native_api_call_batch()
+            try:
+                if getattr(self, '_debug_render', False):
+                    counts = {}
+                    muts = mutations or []
+                    for m in muts:
+                        t = self._safe_text(getattr(m, 'type_', ''))
+                        counts[t] = counts.get(t, 0) + 1
+                self._clear_root_children()
+                deferred_grid_count = self._render_flat_tree([shadow_root], self._root_path)
+            finally:
+                native_call_counts = self._finish_native_api_call_batch()
             native_ms = (time.time() - native_start_time) * 1000.0
 
-            self._log_render_stage_timings(component_ms, build_ms, diff_ms, layout_ms, native_ms)
+            if deferred_grid_count > 0:
+                self._begin_deferred_perf_tracking(self._render_generation, deferred_grid_count, native_ms, native_start_time)
+
+            self._log_render_stage_timings(component_ms, build_ms, diff_ms, layout_ms, native_ms, deferred_grid_count, native_call_counts=native_call_counts)
 
             self._prev_vtree = new_vtree
             self._prev_shadow_root = shadow_root
@@ -295,11 +376,15 @@ class RuntimeLifecycleMixin(object):
     def _run_screen_update_tasks(self):
         if not getattr(self, '_mounted', False):
             self._clear_pending_screen_update_tasks()
+            self._clear_deferred_perf_state()
             return
 
         tasks = getattr(self, '_screen_update_tasks', None) or []
         if not tasks:
             return
+
+        self._mark_deferred_perf_update_tick()
+        self._begin_native_api_call_batch()
 
         self._screen_update_tasks = []
         for task in tasks:
@@ -328,6 +413,12 @@ class RuntimeLifecycleMixin(object):
                         'callback': callback,
                         'retries': retries - 1,
                     })
+
+        perf_state = getattr(self, '_deferred_perf_state', None)
+        if isinstance(perf_state, dict):
+            self._merge_native_api_call_counts(perf_state.get('native_call_counts'), self._finish_native_api_call_batch())
+        else:
+            self._finish_native_api_call_batch()
 
     def _is_virtual_node(self, node_type):
         return node_type == 'Panel'
@@ -411,6 +502,8 @@ class RuntimeLifecycleMixin(object):
         if pending_grid_entries:
             self._flush_pending_grid_entries(pending_grid_entries)
 
+        return len(pending_grid_entries)
+
     def _render_flat_entry(self, entry):
         node = entry.get('node')
         parent_path = self._resolve_parent_target(entry.get('parent_target'))
@@ -439,6 +532,7 @@ class RuntimeLifecycleMixin(object):
             if not control:
                 self._needs_render = True
                 return
+            self._count_native_api_call('CreateChildControl')
             self._drop_native_common_style_cache(node_path)
 
         self._apply_rendered_entry(node, node_type, node_id, node_path, control)
@@ -600,7 +694,7 @@ class RuntimeLifecycleMixin(object):
 
             self._drop_native_common_style_cache(widget_path)
             self._drop_native_common_style_cache(wrapper_path)
-            return self._apply_rendered_entry(
+            applied = self._apply_rendered_entry(
                 pending_entry.get('node'),
                 node_type,
                 pending_entry.get('node_id'),
@@ -608,6 +702,9 @@ class RuntimeLifecycleMixin(object):
                 widget_control,
                 native_layer_path=native_layer_path,
             )
+            if applied:
+                self._mark_deferred_grid_entry_done(pending_entry.get('generation'))
+            return applied
 
         self._schedule_screen_update_task(_apply_pending_grid_entry, retries=6)
 
@@ -683,6 +780,7 @@ class RuntimeLifecycleMixin(object):
                 child_control = self._screen.GetBaseUIControl(child_path)
                 if child_control:
                     self._screen.RemoveChildControl(child_control)
+                    self._count_native_api_call('RemoveChildControl')
             except Exception:
                 pass
 

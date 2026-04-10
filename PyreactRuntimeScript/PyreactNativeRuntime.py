@@ -82,6 +82,7 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         self._input_edit_handler_method_name = None
         self._screen_update_tasks = []
         self._render_generation = 0
+        self._deferred_perf_state = None
 
         # Debug logs are enabled by default for example apps.
         app_label = ""
