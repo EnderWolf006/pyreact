@@ -111,6 +111,14 @@ class MyScreen(ScreenNode):
 
 `render_app(..., bind={'root': '/root', ...})` 默认会把控件扁平挂载到一个名为 `root` 的容器节点下；若节点位于 `Scroll` 内部，则直接挂到该 scroll 的 `scroll_content`。
 
+从当前版本开始，`Button` / `Image` / `Input` / `Item` / `Label` 这 5 类 flat 控件在父容器存在对应 typed grid 时，会优先走 grid 批量创建，而不是逐个 `CreateChildControl`。默认要求：
+
+- `root` 和 `scroll_content` 都继承 `PyreactBase.rootBase`
+- `rootBase` 下保留 `buttonGrid` / `imageGrid` / `inputGrid` / `itemGrid` / `textGrid`
+- grid item 模板保持 `xxxPanelBase -> widget@xxxBase` 结构
+
+运行时会先设置 grid item 数量，再在 `ScreenNode.Update()` 的下一帧里初始化生成出来的 `widget`。因此这 5 类 grid 控件的 `size/position` 会作用在 `widget` 子节点上；其中 `Item` 的 `layer` 会设置到它的父 `panel`，避免直接给 `item_renderer` 本体设层级。
+
 `Panel` 现在是**纯布局节点**：它仍然是公开 primitive，用来组织 Flex / 定位 / children，但 runtime 不会为它单独创建原生 `panel` 控件。
 
 如需打印每次更新的 5 段性能日志（组件执行 / VNode 构建 / Diff / 布局 / 原生 UI 应用），可传入 `log_perf=True`。
@@ -131,7 +139,7 @@ class MyScreen(ScreenNode):
 }
 ```
 
-同时需要在资源包 `ui/` 里提供 `PyreactBase.json`，作为运行时创建控件时的基础 type_def（`imageBase` / `textBase` / `buttonBase` / `inputBase` / `scrollBase`，以及按钮/滚动条内部模板依赖的基础定义）。
+同时需要在资源包 `ui/` 里提供 `PyreactBase.json`，作为运行时创建控件时的基础 type_def（`imageBase` / `textBase` / `buttonBase` / `inputBase` / `scrollBase`，以及按钮/滚动条内部模板依赖的基础定义）。如果你使用当前版本的 typed grid 优化，还需要保留 `rootBase` 及其 5 个 grid 定义。
 
 ## 目录结构
 

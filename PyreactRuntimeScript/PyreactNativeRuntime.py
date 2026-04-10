@@ -20,6 +20,28 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         "Input": "inputBase",
         "Scroll": "scrollBase",
     }
+    _GRID_TYPE_CONFIG = {
+        "Button": {
+            "grid_name": "buttonGrid",
+            "template_name": "buttonPanelBase",
+        },
+        "Image": {
+            "grid_name": "imageGrid",
+            "template_name": "imagePanelBase",
+        },
+        "Input": {
+            "grid_name": "inputGrid",
+            "template_name": "inputPanelBase",
+        },
+        "Item": {
+            "grid_name": "itemGrid",
+            "template_name": "itemPanelBase",
+        },
+        "Label": {
+            "grid_name": "textGrid",
+            "template_name": "textPanelBase",
+        },
+    }
     _DEFAULT_WHITE_TEXTURE = "textures/ui/white_bg"
     _MEASURE_LABEL_NAME = "__pyreact_measure_label"
 
@@ -58,6 +80,8 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         self._native_common_style_cache = {}
         self._input_edit_bound = False
         self._input_edit_handler_method_name = None
+        self._screen_update_tasks = []
+        self._render_generation = 0
 
         # Debug logs are enabled by default for example apps.
         app_label = ""

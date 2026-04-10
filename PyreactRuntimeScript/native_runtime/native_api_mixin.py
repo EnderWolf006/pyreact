@@ -13,6 +13,48 @@ except NameError:
 class RuntimeNativeApiMixin(object):
     _TEXT_FONT_SIZE_BASE = 10.0
 
+    def _to_grid_control(self, control, path):
+        if control and hasattr(control, 'asGrid'):
+            try:
+                grid_control = control.asGrid()
+                if grid_control:
+                    return grid_control
+            except Exception:
+                pass
+
+        try:
+            base_control = self._screen.GetBaseUIControl(path)
+            if base_control and hasattr(base_control, 'asGrid'):
+                return base_control.asGrid()
+        except Exception:
+            pass
+        return None
+
+    def _safe_set_grid_dimension(self, path, row_count, col_count=1, control=None):
+        grid_control = self._to_grid_control(control, path)
+        if not grid_control or not hasattr(grid_control, 'SetGridDimension'):
+            return False
+
+        try:
+            rows = int(row_count)
+        except Exception:
+            rows = 1
+        try:
+            cols = int(col_count)
+        except Exception:
+            cols = 0
+
+        if rows <= 0:
+            rows = 1
+        if cols < 0:
+            cols = 0
+
+        try:
+            grid_control.SetGridDimension((rows, cols))
+            return True
+        except Exception:
+            return False
+
     def _ensure_measure_label(self):
         measure_path = self._root_path + "/" + self._MEASURE_LABEL_NAME
         self._measure_label_path = measure_path

@@ -36,11 +36,14 @@ class RuntimeLifecycleMixin(object):
 
     def mount(self):
         self._mounted = True
+        self._bind_screen_update_handler()
         self._ensure_measure_label()
         self.render()
 
     def unmount(self):
         self._mounted = False
+        self._clear_pending_screen_update_tasks()
+        self._unbind_screen_update_handler()
         self._button_callbacks = {}
         self._input_callbacks = {}
         self._input_paths = {}
@@ -77,9 +80,11 @@ class RuntimeLifecycleMixin(object):
         if not self._mounted:
             return
 
+        self._render_generation += 1
         self._render_scheduled = False
         self._is_rendering = True
         try:
+            self._clear_pending_screen_update_tasks()
             self._button_callbacks = {}
             self._input_callbacks = {}
             self._input_paths = {}
@@ -196,6 +201,134 @@ class RuntimeLifecycleMixin(object):
         node_id = self._safe_text(getattr(node, 'node_id', 'node'))
         return "%s%s" % (self._CONTROL_NAME_PREFIX, node_id)
 
+    def _bind_screen_update_handler(self):
+        screen = getattr(self, '_screen', None)
+        if not screen:
+            return
+
+        runtime_list_attr = '_pyreact_update_runtimes'
+        try:
+            runtimes = getattr(screen, runtime_list_attr)
+        except Exception:
+            runtimes = None
+        if not isinstance(runtimes, list):
+            runtimes = []
+            try:
+                setattr(screen, runtime_list_attr, runtimes)
+            except Exception:
+                return
+
+        if self not in runtimes:
+            runtimes.append(self)
+
+        screen_cls = screen.__class__
+        marker_attr = '_pyreact_update_wrapper_installed'
+        if getattr(screen_cls, marker_attr, False):
+            return
+
+        try:
+            original_update = getattr(screen_cls, 'Update', None)
+        except Exception:
+            original_update = None
+
+        def _pyreact_runtime_update(self_screen):
+            try:
+                if callable(original_update):
+                    original_update(self_screen)
+            except Exception:
+                pass
+
+            try:
+                runtime_list = getattr(self_screen, runtime_list_attr, None) or []
+            except Exception:
+                runtime_list = []
+
+            for runtime in list(runtime_list):
+                try:
+                    runtime._run_screen_update_tasks()
+                except Exception:
+                    pass
+
+        try:
+            setattr(screen_cls, 'Update', _pyreact_runtime_update)
+            setattr(screen_cls, marker_attr, True)
+        except Exception:
+            pass
+
+    def _unbind_screen_update_handler(self):
+        screen = getattr(self, '_screen', None)
+        if not screen:
+            return
+
+        try:
+            runtimes = getattr(screen, '_pyreact_update_runtimes', None)
+        except Exception:
+            runtimes = None
+        if not isinstance(runtimes, list):
+            return
+
+        try:
+            while self in runtimes:
+                runtimes.remove(self)
+        except Exception:
+            pass
+
+    def _clear_pending_screen_update_tasks(self):
+        self._screen_update_tasks = []
+
+    def _schedule_screen_update_task(self, callback, retries=3):
+        if not callable(callback):
+            return
+
+        try:
+            retry_count = int(retries)
+        except Exception:
+            retry_count = 0
+        if retry_count < 0:
+            retry_count = 0
+
+        self._screen_update_tasks.append({
+            'callback': callback,
+            'retries': retry_count,
+        })
+
+    def _run_screen_update_tasks(self):
+        if not getattr(self, '_mounted', False):
+            self._clear_pending_screen_update_tasks()
+            return
+
+        tasks = getattr(self, '_screen_update_tasks', None) or []
+        if not tasks:
+            return
+
+        self._screen_update_tasks = []
+        for task in tasks:
+            callback = None
+            retries = 0
+            if isinstance(task, dict):
+                callback = task.get('callback')
+                retries = task.get('retries', 0)
+            if not callable(callback):
+                continue
+
+            should_retry = False
+            try:
+                result = callback()
+                should_retry = (result is False)
+            except Exception:
+                should_retry = False
+
+            if should_retry:
+                try:
+                    retries = int(retries)
+                except Exception:
+                    retries = 0
+                if retries > 0:
+                    self._screen_update_tasks.append({
+                        'callback': callback,
+                        'retries': retries - 1,
+                    })
+
     def _is_virtual_node(self, node_type):
         return node_type == 'Panel'
 
@@ -264,10 +397,19 @@ class RuntimeLifecycleMixin(object):
         entries = []
         self._collect_flat_entries(children, self._make_parent_target('path', root_parent_path), entries)
 
+        pending_grid_entries = []
+        if root_parent_path == self._root_path:
+            self._reset_root_grid_dimensions()
+
         for entry in entries:
-            self._render_flat_entry(entry)
+            pending_grid_entry = self._render_flat_entry(entry)
+            if pending_grid_entry:
+                pending_grid_entries.append(pending_grid_entry)
             if self._needs_render:
                 return
+
+        if pending_grid_entries:
+            self._flush_pending_grid_entries(pending_grid_entries)
 
     def _render_flat_entry(self, entry):
         node = entry.get('node')
@@ -282,6 +424,10 @@ class RuntimeLifecycleMixin(object):
             self._needs_render = True
             return
 
+        grid_entry = self._build_pending_grid_entry(entry, parent_path)
+        if grid_entry is not None:
+            return grid_entry
+
         control = self._screen.GetBaseUIControl(node_path)
         if not control:
             def_name = self._get_def_name(node_type)
@@ -294,6 +440,13 @@ class RuntimeLifecycleMixin(object):
                 self._needs_render = True
                 return
             self._drop_native_common_style_cache(node_path)
+
+        self._apply_rendered_entry(node, node_type, node_id, node_path, control)
+
+    def _apply_rendered_entry(self, node, node_type, node_id, node_path, control, native_layer_path=None):
+        if not control:
+            self._needs_render = True
+            return False
 
         layout = getattr(node, 'layout', None)
         local_x = self._to_float(getattr(layout, 'x', 0.0), 0.0)
@@ -308,10 +461,17 @@ class RuntimeLifecycleMixin(object):
         props = getattr(node, 'props', None)
         if isinstance(props, dict):
             props['__shadow_node__'] = node
+            if native_layer_path:
+                props['__native_layer_path__'] = native_layer_path
         self._apply_node_props(node, node_path, node_type, node_id, control)
         if isinstance(props, dict) and '__shadow_node__' in props:
             try:
                 del props['__shadow_node__']
+            except Exception:
+                pass
+        if isinstance(props, dict) and '__native_layer_path__' in props:
+            try:
+                del props['__native_layer_path__']
             except Exception:
                 pass
 
@@ -321,6 +481,147 @@ class RuntimeLifecycleMixin(object):
             if content_control:
                 self._safe_set_size(content_path, layout.content_width, layout.content_height, content_control)
             self._apply_scroll_props(node, node_path)
+        return True
+
+    def _get_grid_type_config(self, node_type):
+        return self._GRID_TYPE_CONFIG.get(node_type)
+
+    def _get_grid_item_wrapper_name(self, template_name, index):
+        return '%s%s' % (self._safe_text(template_name), int(index))
+
+    def _get_grid_item_paths(self, parent_path, node_type, index):
+        grid_config = self._get_grid_type_config(node_type)
+        if not isinstance(grid_config, dict):
+            return None
+
+        grid_name = self._safe_text(grid_config.get('grid_name'))
+        template_name = self._safe_text(grid_config.get('template_name'))
+        if not grid_name or not template_name:
+            return None
+
+        grid_path = parent_path + '/' + grid_name
+        wrapper_name = self._get_grid_item_wrapper_name(template_name, index)
+        wrapper_path = grid_path + '/' + wrapper_name
+        return {
+            'grid_path': grid_path,
+            'wrapper_name': wrapper_name,
+            'wrapper_path': wrapper_path,
+            'widget_path': wrapper_path + '/widget',
+        }
+
+    def _is_grid_available_for_parent(self, parent_path, node_type):
+        paths = self._get_grid_item_paths(parent_path, node_type, 1)
+        if not isinstance(paths, dict):
+            return False
+        try:
+            return bool(self._screen.GetBaseUIControl(paths.get('grid_path')))
+        except Exception:
+            return False
+
+    def _next_grid_index(self, parent_path, node_type):
+        if not isinstance(getattr(self, '_render_grid_counts', None), dict):
+            self._render_grid_counts = {}
+        key = '%s|%s' % (self._safe_text(parent_path), self._safe_text(node_type))
+        next_index = self._render_grid_counts.get(key, 0) + 1
+        self._render_grid_counts[key] = next_index
+        return next_index
+
+    def _build_pending_grid_entry(self, entry, parent_path):
+        node_type = entry.get('node_type')
+        if not self._get_grid_type_config(node_type):
+            return None
+        if not self._is_grid_available_for_parent(parent_path, node_type):
+            return None
+
+        index = self._next_grid_index(parent_path, node_type)
+        paths = self._get_grid_item_paths(parent_path, node_type, index)
+        if not isinstance(paths, dict):
+            return None
+
+        return {
+            'node': entry.get('node'),
+            'node_type': node_type,
+            'node_id': entry.get('node_id'),
+            'parent_path': parent_path,
+            'grid_path': paths.get('grid_path'),
+            'wrapper_path': paths.get('wrapper_path'),
+            'widget_path': paths.get('widget_path'),
+            'grid_index': index,
+            'generation': self._render_generation,
+        }
+
+    def _flush_pending_grid_entries(self, pending_grid_entries):
+        grid_counts = {}
+        for pending_entry in pending_grid_entries:
+            if not isinstance(pending_entry, dict):
+                continue
+            grid_path = self._safe_text(pending_entry.get('grid_path'))
+            grid_index = pending_entry.get('grid_index', 0)
+            if not grid_path:
+                continue
+            try:
+                grid_index = int(grid_index)
+            except Exception:
+                grid_index = 0
+            if grid_index <= 0:
+                continue
+            prev_count = grid_counts.get(grid_path, 0)
+            if grid_index > prev_count:
+                grid_counts[grid_path] = grid_index
+
+        for grid_path, grid_count in grid_counts.items():
+            self._safe_set_grid_dimension(grid_path, 1, grid_count)
+
+        for pending_entry in pending_grid_entries:
+            self._schedule_grid_entry_apply(pending_entry)
+
+    def _schedule_grid_entry_apply(self, pending_entry):
+        if not isinstance(pending_entry, dict):
+            return
+
+        def _apply_pending_grid_entry():
+            if pending_entry.get('generation') != self._render_generation:
+                return True
+
+            widget_path = self._safe_text(pending_entry.get('widget_path'))
+            wrapper_path = self._safe_text(pending_entry.get('wrapper_path'))
+            if not widget_path or not wrapper_path:
+                return True
+
+            wrapper_control = self._screen.GetBaseUIControl(wrapper_path)
+            widget_control = self._screen.GetBaseUIControl(widget_path)
+            if not wrapper_control or not widget_control:
+                return False
+
+            node_type = pending_entry.get('node_type')
+            native_layer_path = None
+            if node_type == 'Item':
+                native_layer_path = wrapper_path
+
+            self._drop_native_common_style_cache(widget_path)
+            self._drop_native_common_style_cache(wrapper_path)
+            return self._apply_rendered_entry(
+                pending_entry.get('node'),
+                node_type,
+                pending_entry.get('node_id'),
+                widget_path,
+                widget_control,
+                native_layer_path=native_layer_path,
+            )
+
+        self._schedule_screen_update_task(_apply_pending_grid_entry, retries=6)
+
+    def _reset_root_grid_dimensions(self):
+        self._render_grid_counts = {}
+        grid_config_map = getattr(self, '_GRID_TYPE_CONFIG', None) or {}
+        for _, grid_config in grid_config_map.items():
+            if not isinstance(grid_config, dict):
+                continue
+            grid_name = self._safe_text(grid_config.get('grid_name'))
+            if not grid_name:
+                continue
+            grid_path = self._root_path + '/' + grid_name
+            self._safe_set_grid_dimension(grid_path, 1, 0)
 
     def _refresh_button_callbacks(self, shadow_root):
         self._button_callbacks = {}
@@ -368,6 +669,7 @@ class RuntimeLifecycleMixin(object):
 
     def _clear_root_children(self):
         self._drop_native_common_style_cache()
+        self._reset_root_grid_dimensions()
         try:
             names = self._screen.GetChildrenName(self._root_path) or []
         except Exception:

@@ -83,6 +83,8 @@ metadata:
 → Native Runtime
 → 直接挂载到 `root` / `scroll_content` 的 NetEase 原生控件
 
+补充：当前 runtime 会优先把 `Button` / `Image` / `Input` / `Item` / `Label` 这 5 类 flat 控件分发到 `root` / `scroll_content` 下预置的 typed grid（`buttonGrid` / `imageGrid` / `inputGrid` / `itemGrid` / `textGrid`）。所以业务 UI 所在的 JsonUI 容器应继续复用 `PyreactBase.rootBase`，不要删掉这些 grid 定义。
+
 写业务 UI 时，通常只需要关心：
 
 - 组件返回什么树
@@ -98,6 +100,8 @@ metadata:
 2. 调用 `PushScreen(...)`
 3. 在 `ScreenNode.Create()` 内调用 `render_app(...)`
 4. 在 `ScreenNode.Destroy()` 中调用 `PyreactRuntimeClientSystem.UnmountApp(...)`
+
+若你自己维护 screen JSON，请额外确认：`root` 与 scroll 的 `scroll_content` 都继承了 `PyreactBase.rootBase`。否则上述 5 类控件会退回普通 `CreateChildControl` 路径，拿不到 grid 批量创建带来的性能收益。
 
 最小模板：
 

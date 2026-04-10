@@ -557,6 +557,17 @@ class RuntimePropsMixin(object):
             return
 
         layout = getattr(props.get('__shadow_node__'), 'layout', None) if isinstance(props, dict) else None
+        layer_path = node_path
+        layer_control = node_control
+        if isinstance(props, dict):
+            maybe_layer_path = self._safe_text(props.get('__native_layer_path__'))
+            if maybe_layer_path:
+                layer_path = maybe_layer_path
+                if layer_path != node_path:
+                    try:
+                        layer_control = self._screen.GetBaseUIControl(layer_path)
+                    except Exception:
+                        layer_control = None
 
         cache = self._get_native_common_style_cache()
         cached_style = cache.get(node_path, {})
@@ -599,9 +610,9 @@ class RuntimePropsMixin(object):
             layer_value = int(round(self._to_float(layer, 0.0)))
             next_cached_style['layer'] = layer_value
             if cached_style.get('layer') != layer_value:
-                self._safe_set_layer(node_path, layer_value, node_control)
+                self._safe_set_layer(layer_path, layer_value, layer_control)
         elif 'layer' in cached_style:
-            self._safe_set_layer(node_path, 0, node_control)
+            self._safe_set_layer(layer_path, 0, layer_control)
 
         cache[node_path] = next_cached_style
 
