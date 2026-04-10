@@ -24,6 +24,36 @@ except NameError:
 
 class RuntimeNativeApiMixin(object):
     _TEXT_FONT_SIZE_BASE = 10.0
+    _NATIVE_PROP_DEFAULT = object()
+
+    def _reset_native_api_call_counts(self):
+        self._native_api_call_counts = {}
+
+    def _count_native_api_call(self, api_name, count=1):
+        if not getattr(self, '_native_api_counting_active', False):
+            return
+        safe_name = self._safe_text(api_name)
+        if not safe_name:
+            return
+        counts = getattr(self, '_native_api_call_counts', None)
+        if not isinstance(counts, dict):
+            counts = {}
+            self._native_api_call_counts = counts
+        counts[safe_name] = counts.get(safe_name, 0) + int(count)
+
+    def _log_native_api_call_counts(self):
+        if not getattr(self, '_log_perf', False):
+            return
+        counts = getattr(self, '_native_api_call_counts', None)
+        if not isinstance(counts, dict) or not counts:
+            return
+        try:
+            print('=====> PyreactRuntime[perf] 原生接口调用统计: <=====')
+            items = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+            for api_name, call_count in items:
+                print('=====> PyreactRuntime[perf]   %s: %s <=====' % (api_name, call_count))
+        except Exception:
+            pass
 
     def _get_native_layout_cache(self):
         cache = getattr(self, '_native_layout_cache', None)
@@ -339,6 +369,76 @@ class RuntimeNativeApiMixin(object):
             "height": height,
         }
 
+    def _get_native_prop_cache(self):
+        cache = getattr(self, '_native_prop_cache', None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._native_prop_cache = cache
+        return cache
+
+    def _drop_native_prop_cache(self, path_prefix=None):
+        cache = self._get_native_prop_cache()
+        if not path_prefix:
+            cache.clear()
+            return
+
+        prefix = self._safe_text(path_prefix)
+        if not prefix:
+            cache.clear()
+            return
+
+        prefix_with_sep = prefix + '/'
+        for cached_path in list(cache.keys()):
+            safe_cached_path = self._safe_text(cached_path)
+            if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
+                try:
+                    del cache[cached_path]
+                except Exception:
+                    pass
+
+    def _get_native_path_cache_entry(self, path):
+        cache = self._get_native_prop_cache()
+        entry = cache.get(path)
+        if not isinstance(entry, dict):
+            entry = {}
+            cache[path] = entry
+        return entry
+
+    def _should_apply_native_prop(self, path, cache_key, value, default_value=_NATIVE_PROP_DEFAULT):
+        entry = self._get_native_path_cache_entry(path)
+        if entry.get(cache_key, self._NATIVE_PROP_DEFAULT) == value:
+            return False
+        return True
+
+    def _remember_native_prop(self, path, cache_key, value):
+        entry = self._get_native_path_cache_entry(path)
+        entry[cache_key] = value
+
+    def _begin_native_update_batch(self):
+        self._reset_native_api_call_counts()
+        self._native_api_counting_active = bool(getattr(self, '_log_perf', False))
+        self._native_update_batch_active = True
+        self._native_update_batch_dirty = False
+
+    def _mark_native_update_dirty(self):
+        if getattr(self, '_native_update_batch_active', False):
+            self._native_update_batch_dirty = True
+
+    def _flush_native_update_batch(self):
+        should_flush = bool(getattr(self, '_native_update_batch_active', False) and getattr(self, '_native_update_batch_dirty', False))
+        self._native_update_batch_active = False
+        self._native_update_batch_dirty = False
+        try:
+            if should_flush and hasattr(self._screen, 'UpdateScreen'):
+                self._screen.UpdateScreen(True)
+                self._count_native_api_call('UpdateScreen')
+        except Exception:
+            pass
+        try:
+            self._log_native_api_call_counts()
+        finally:
+            self._native_api_counting_active = False
+
     def _safe_set_text(self, path, text, control=None):
         text_value = self._safe_text(text)
         if self._get_cached_native_prop(path, 'text') == text_value:
@@ -399,6 +499,9 @@ class RuntimeNativeApiMixin(object):
             return None
 
     def _safe_set_edit_text(self, path, text, control=None):
+        text_value = self._safe_text(text)
+        if not self._should_apply_native_prop(path, 'editText', text_value, ''):
+            return True
         te = self._to_text_edit_box_control(control, path)
         if not te:
             return False
@@ -420,6 +523,8 @@ class RuntimeNativeApiMixin(object):
             return False
         if max_len <= 0:
             return False
+        if not self._should_apply_native_prop(path, 'editMaxLength', max_len):
+            return True
         try:
             start_time = _perf_now()
             te.SetEditTextMaxLength(max_len)
@@ -543,6 +648,8 @@ class RuntimeNativeApiMixin(object):
             r = 0.0
         if r > 1.0:
             r = 1.0
+        if not self._should_apply_native_prop(path, 'spriteClipRatio', r):
+            return
         try:
             start_time = _perf_now()
             image_control.SetSpriteClipRatio(r)
@@ -551,6 +658,8 @@ class RuntimeNativeApiMixin(object):
             pass
 
     def _safe_set_sprite_uv(self, path, uv, control=None):
+        if not self._should_apply_native_prop(path, 'spriteUV', uv):
+            return
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "SetSpriteUV"):
             try:
@@ -561,6 +670,8 @@ class RuntimeNativeApiMixin(object):
                 pass
 
     def _safe_set_sprite_uv_size(self, path, uv_size, control=None):
+        if not self._should_apply_native_prop(path, 'spriteUVSize', uv_size):
+            return
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "SetSpriteUVSize"):
             try:
@@ -584,6 +695,9 @@ class RuntimeNativeApiMixin(object):
         payload_user_data = user_data
         if isinstance(payload_user_data, dict) and not payload_user_data:
             payload_user_data = None
+        cache_value = (item_name, aux_number, enchant_flag, payload_user_data)
+        if not self._should_apply_native_prop(path, 'uiItem', cache_value):
+            return True
 
         item_control = self._to_item_renderer_control(control, path)
         if item_control and hasattr(item_control, 'SetUiItem'):
@@ -605,6 +719,9 @@ class RuntimeNativeApiMixin(object):
 
     def _safe_set_image_adaption_type(self, path, adaption_type, adaption_data=None, control=None):
         image_control = self._to_image_control(control, path)
+        cache_value = (adaption_type, adaption_data)
+        if not self._should_apply_native_prop(path, 'imageAdaptionType', cache_value):
+            return
         if image_control and hasattr(image_control, "SetImageAdaptionType"):
             try:
                 start_time = _perf_now()
@@ -614,6 +731,9 @@ class RuntimeNativeApiMixin(object):
                 pass
 
     def _safe_rotate(self, path, angle, control=None):
+        angle_value = self._to_float(angle, 0.0)
+        if not self._should_apply_native_prop(path, 'rotation', angle_value, 0.0):
+            return
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "Rotate"):
             try:
@@ -624,6 +744,8 @@ class RuntimeNativeApiMixin(object):
                 pass
 
     def _safe_set_rotate_pivot(self, path, pivot, control=None):
+        if not self._should_apply_native_prop(path, 'rotatePivot', pivot):
+            return
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "SetRotatePivot"):
             try:
@@ -793,6 +915,7 @@ class RuntimeNativeApiMixin(object):
             if cache_entry is not None and cache_entry.get('position') == pos:
                 return
             if control:
+                applied = False
                 used_full = False
                 if hasattr(control, "SetFullPosition"):
                     start_time = _perf_now()
@@ -802,7 +925,7 @@ class RuntimeNativeApiMixin(object):
                     if used_full:
                         self._count_native_api_call('SetFullPosition', 2, elapsed_ms=(_perf_now() - start_time) * 1000.0)
 
-                if hasattr(control, "SetPosition"):
+                if (not used_full) and hasattr(control, "SetPosition"):
                     try:
                         start_time = _perf_now()
                         control.SetPosition(pos)
@@ -840,6 +963,7 @@ class RuntimeNativeApiMixin(object):
             if cache_entry is not None and cache_entry.get('size') == size:
                 return
             if control:
+                applied = False
                 used_full = False
                 if hasattr(control, "SetFullSize"):
                     start_time = _perf_now()
@@ -849,7 +973,7 @@ class RuntimeNativeApiMixin(object):
                     if used_full:
                         self._count_native_api_call('SetFullSize', 2, elapsed_ms=(_perf_now() - start_time) * 1000.0)
 
-                if hasattr(control, "SetSize"):
+                if (not used_full) and hasattr(control, "SetSize"):
                     try:
                         start_time = _perf_now()
                         control.SetSize(size, True)
@@ -876,6 +1000,7 @@ class RuntimeNativeApiMixin(object):
 
     def _safe_set_visible(self, path, visible, control=None, sync_refresh=None):
         try:
+            is_batching = bool(getattr(self, '_native_update_batch_active', False))
             if control and hasattr(control, "SetVisible"):
                 if sync_refresh is None:
                     start_time = _perf_now()
@@ -955,6 +1080,7 @@ class RuntimeNativeApiMixin(object):
                     pass
 
         try:
+            is_batching = bool(getattr(self, '_native_update_batch_active', False))
             if control and hasattr(control, "SetLayer"):
                 start_time = _perf_now()
                 if use_three_args:

@@ -3,6 +3,7 @@ import time
 from .fiber import Fiber
 from .hooks import with_current_fiber
 from .hooks import run_effects
+from ..components.component import is_component
 
 
 def _perf_now():
@@ -54,7 +55,7 @@ class ComponentInstance(object):
     def render(self):
         # Enforce: all module-level components used under render_app root must be
         # decorated with @Component, otherwise key/ref cannot be supported.
-        if callable(self.component_fn) and not getattr(self.component_fn, '__pyreact_component__', False):
+        if callable(self.component_fn) and not is_component(self.component_fn):
             name = getattr(self.component_fn, '__name__', 'component')
             raise TypeError(
                 "Root component '%s' must be decorated with @Component (required for key/ref support)." % name

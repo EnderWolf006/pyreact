@@ -107,6 +107,14 @@ class MyScreen(ScreenNode):
             runtime_system.UnmountApp({'app_id': 'pyreact_counter_demo'})
 ```
 
+## 常用组件约定
+
+- `Label` 的文字相关能力走 props：`content` / `color` / `fontSize` / `textAlign` / `linePadding` / `shadow`
+- `Image` 的贴图能力走 props：`src` / `color` / `uv` / `uvSize` / `nineSlice` / `rotation` 等，不写进 `style`
+- `Item` 用于渲染物品图标，支持扁平 props 或 `itemDict`
+- `Scroll` 的 `showScrollbar` 是公开 prop，`ref` 由 `@Component` 统一透传
+- `FilledButton` 是对 `Button + buttonBuilder` 的便捷封装，适合纯色态按钮
+
 ## JsonUI 约定
 
 `render_app(..., bind={'root': '/root', ...})` 默认会把控件扁平挂载到一个名为 `root` 的容器节点下；若节点位于 `Scroll` 内部，则直接挂到该 scroll 的 `scroll_content`。
@@ -124,6 +132,8 @@ class MyScreen(ScreenNode):
 `Panel` 现在是**纯布局节点**：它仍然是公开 primitive，用来组织 Flex / 定位 / children，但 runtime 不会为它单独创建原生 `panel` 控件。
 
 如需打印每次更新的 5 段性能日志（组件执行 / VNode 构建 / Diff / 布局 / 原生 UI 应用），可传入 `log_perf=True`。
+
+当前 runtime 默认会缓存已应用的 native 属性，并尽量复用已创建控件；因此频繁增删同一路径节点时，通常不会重复创建/销毁 native 控件，而是复用并增量更新属性。
 
 下面是一个最小 Screen JSON（同样可直接参考 `JsonUI/PyreactExample.json`）：
 

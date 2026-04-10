@@ -1,5 +1,7 @@
 import time
 
+from ..components.component import is_component
+
 try:
     from .vnode import VNode
 except Exception:
@@ -78,7 +80,7 @@ class TreeBuilder(object):
     def _assert_component_decorated(self, component_fn, path):
         # Components must be decorated with @Component so they can accept key/ref
         # without forcing the inner function signature.
-        if getattr(component_fn, '__pyreact_component__', False):
+        if is_component(component_fn):
             return
 
         # Provide a clear error location.

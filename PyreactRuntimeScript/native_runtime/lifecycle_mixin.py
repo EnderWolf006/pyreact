@@ -175,6 +175,7 @@ class RuntimeLifecycleMixin(object):
         self._prev_vtree = None
         self._prev_shadow_root = None
         self._measure_label_path = None
+        self._drop_pooled_control_paths()
         self._drop_native_common_style_cache()
         self._clear_root_children(clear_grid_pool=True)
 
@@ -517,7 +518,7 @@ class RuntimeLifecycleMixin(object):
 
     def _collect_flat_entries(self, current_node, parent_target, entries):
         if current_node is None:
-            return
+            return []
 
         if isinstance(current_node, (list, tuple)):
             for child in current_node:
@@ -993,9 +994,9 @@ class RuntimeLifecycleMixin(object):
 
     def _refresh_button_callbacks(self, shadow_root):
         self._button_callbacks = {}
-        self._refresh_button_callbacks_walk([shadow_root], self._root_path)
+        self._refresh_button_callbacks_walk([shadow_root], self._root_path, [])
 
-    def _refresh_button_callbacks_walk(self, current_node, parent_control_path):
+    def _refresh_button_callbacks_walk(self, current_node, parent_control_path, shadow_path):
         if current_node is None:
             return
 
@@ -1031,9 +1032,8 @@ class RuntimeLifecycleMixin(object):
         onclick = props.get("onClick")
         if not callable(onclick):
             return
-        node_id = self._safe_text(getattr(button_node, 'node_id', 'node'))
-        self._button_callbacks[node_id] = onclick
-        self._bind_button_click(button_path, node_id)
+        self._button_callbacks[button_path] = onclick
+        self._bind_button_click(button_path)
 
     def _collect_render_cleanup_state(self, children, root_parent_path):
         entries = []

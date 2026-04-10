@@ -1,6 +1,6 @@
 /KnowledgeBase
-**__pycache__
-**.pyc
+**/__pycache__/
+*.pyc
 .DS_Store
 /.idea
 /.vscode

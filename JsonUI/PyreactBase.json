@@ -234,6 +234,8 @@
         "draggable": "not_draggable",
         "enabled": true,
         "enabled_newline": false,
+        "anchor_from": "top_left",
+        "anchor_to": "top_left",
         "layer": 1,
         "max_length": 512,
         "max_size": [

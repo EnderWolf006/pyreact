@@ -5,6 +5,33 @@ from pyreact.components.color import Color
 
 
 class RuntimePropsMixin(object):
+    def _get_button_slot_vtrees(self):
+        cache = getattr(self, '_button_slot_vtrees', None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._button_slot_vtrees = cache
+        return cache
+
+    def _drop_button_slot_vtrees(self, path_prefix=None):
+        cache = self._get_button_slot_vtrees()
+        if not path_prefix:
+            cache.clear()
+            return
+
+        prefix = self._safe_text(path_prefix)
+        if not prefix:
+            cache.clear()
+            return
+
+        prefix_with_sep = prefix + '/'
+        for cached_path in list(cache.keys()):
+            safe_cached_path = self._safe_text(cached_path)
+            if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
+                try:
+                    del cache[cached_path]
+                except Exception:
+                    pass
+
     def _dbg(self, tag, msg):
         try:
             if not getattr(self, '_debug_input', False):
@@ -26,9 +53,6 @@ class RuntimePropsMixin(object):
             self._track_ref(node_id, node_path, props.get('ref'), node_control)
         except Exception:
             pass
-
-        style = self._extract_node_style(node, props)
-        self._apply_common_style_props(node_path, style, props, node_control)
 
         if node_type == "Image":
             image_props = self._extract_image_props(props)
@@ -58,8 +82,8 @@ class RuntimePropsMixin(object):
         if node_type == "Button":
             onclick = props.get("onClick")
             if callable(onclick):
-                self._button_callbacks[node_id] = onclick
-                self._bind_button_click(node_path, node_id)
+                self._button_callbacks[node_path] = onclick
+                self._bind_button_click(node_path)
 
             self._render_button_state_slots(node, node_path)
             return
@@ -67,6 +91,20 @@ class RuntimePropsMixin(object):
         if node_type == "Input":
             self._apply_input_props(node_path, node_id, props, node_control)
             return
+
+    def _apply_deferred_node_props(self, node, node_path, node_control=None):
+        props = getattr(node, "props", None) or {}
+        if not isinstance(props, dict):
+            return
+        style = self._extract_node_style(node, props)
+        self._apply_common_style_props(node_path, style, props, node_control, deferred_only=True)
+
+    def _apply_immediate_node_props(self, node, node_path, node_control=None):
+        props = getattr(node, "props", None) or {}
+        if not isinstance(props, dict):
+            return
+        style = self._extract_node_style(node, props)
+        self._apply_common_style_props(node_path, style, props, node_control, immediate_only=True)
 
     def _get_native_common_style_cache(self):
         cache = getattr(self, '_native_common_style_cache', None)
@@ -337,6 +375,7 @@ class RuntimePropsMixin(object):
             slot_path = button_path + "/" + state
             slot_control = self._screen.GetBaseUIControl(slot_path)
             if not slot_control:
+                self._drop_button_slot_vtrees(slot_path)
                 continue
 
             self._safe_set_position(slot_path, 0, 0, slot_control)
@@ -344,6 +383,8 @@ class RuntimePropsMixin(object):
 
             state_element = self._call_button_builder(builder, state)
             if state_element is None:
+                self._clear_prefixed_children(slot_path)
+                self._drop_button_slot_vtrees(slot_path)
                 continue
 
             if self._is_pure_image_element(state_element):
@@ -424,6 +465,8 @@ class RuntimePropsMixin(object):
 
         state_children = self._normalize_children_for_builder(state_element)
         if not state_children:
+            self._clear_prefixed_children(slot_path)
+            self._drop_button_slot_vtrees(slot_path)
             return
 
         state_root = Panel(
@@ -507,7 +550,6 @@ class RuntimePropsMixin(object):
         prop_keys = (
             "color",
             "fontSize",
-            "font",
             "textAlign",
             "linePadding",
             "shadow",
@@ -596,7 +638,7 @@ class RuntimePropsMixin(object):
             node_control,
         )
 
-    def _apply_common_style_props(self, node_path, style, props, node_control):
+    def _apply_common_style_props(self, node_path, style, props, node_control, deferred_only=False, immediate_only=False):
         if not isinstance(style, dict):
             return
 
@@ -618,34 +660,39 @@ class RuntimePropsMixin(object):
         next_cached_style = {}
 
         display = self._safe_text(style.get("display")).strip().lower()
-        if display == "none":
-            next_cached_style['display'] = display
-            if cached_style.get('display') != display:
-                self._safe_set_visible(node_path, False, node_control)
+        if not immediate_only:
+            if display == "none":
+                next_cached_style['display'] = display
+                if cached_style.get('display') != display:
+                    self._safe_set_visible(node_path, False, node_control)
+            elif display:
+                next_cached_style['display'] = display
+                if cached_style.get('display') != display:
+                    self._safe_set_visible(node_path, True, node_control)
+            elif 'display' in cached_style:
+                self._safe_set_visible(node_path, True, node_control)
         elif display:
             next_cached_style['display'] = display
-            if cached_style.get('display') != display:
-                self._safe_set_visible(node_path, True, node_control)
-        elif 'display' in cached_style:
-            self._safe_set_visible(node_path, True, node_control)
 
         opacity = style.get("opacity")
         color = props.get("color")  # type: Color
 
-        if opacity is not None or color is not None:
-            base_opacity = self._to_float(opacity, 1.0) if opacity is not None else 1.0
-            color_alpha = color.alpha if color is not None else 1.0
-            final_alpha = base_opacity * color_alpha
-            if final_alpha < 0.0:
-                final_alpha = 0.0
-            elif final_alpha > 1.0:
-                final_alpha = 1.0
-            next_cached_style['opacity'] = final_alpha
-            if cached_style.get('opacity') != final_alpha:
-                self._safe_set_alpha(node_path, final_alpha, node_control)
-
+        if not deferred_only:
+            if opacity is not None or color is not None:
+                base_opacity = self._to_float(opacity, 1.0) if opacity is not None else 1.0
+                color_alpha = color.alpha if color is not None else 1.0
+                final_alpha = base_opacity * color_alpha
+                if final_alpha < 0.0:
+                    final_alpha = 0.0
+                elif final_alpha > 1.0:
+                    final_alpha = 1.0
+                next_cached_style['opacity'] = final_alpha
+                if cached_style.get('opacity') != final_alpha:
+                    self._safe_set_alpha(node_path, final_alpha, node_control)
+            elif 'opacity' in cached_style:
+                self._safe_set_alpha(node_path, 1.0, node_control)
         elif 'opacity' in cached_style:
-            self._safe_set_alpha(node_path, 1.0, node_control)
+            next_cached_style['opacity'] = cached_style.get('opacity')
 
         layer = getattr(layout, 'final_layer', None)
         if layer is None:
@@ -707,7 +754,7 @@ class RuntimePropsMixin(object):
         if rotate_pivot is not None:
             self._safe_set_rotate_pivot(node_path, rotate_pivot, node_control)
 
-    def _bind_button_click(self, button_path, node_id):
+    def _bind_button_click(self, button_path):
         control = self._screen.GetBaseUIControl(button_path)
         if not control:
             return
@@ -722,14 +769,14 @@ class RuntimePropsMixin(object):
                 pass
 
             def _callback(args=None):
-                self._dispatch_click(node_id)
+                self._dispatch_click(button_path)
 
             button_control.SetButtonTouchUpCallback(_callback)
         except Exception:
             pass
 
-    def _dispatch_click(self, node_id):
-        callback = self._button_callbacks.get(node_id)
+    def _dispatch_click(self, button_path):
+        callback = self._button_callbacks.get(button_path)
         if callback:
             callback()
 

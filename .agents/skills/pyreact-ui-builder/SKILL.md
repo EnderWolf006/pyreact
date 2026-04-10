@@ -70,7 +70,8 @@ metadata:
 
 - 组件装饰器：`Component`
 - primitive 组件：`Panel`、`Image`、`Label`、`Item`、`Button`、`Input`、`Scroll`
-- 样式与枚举：`Style`、`AlignItems`、`JustifyContent`、`FlexDirection`、`FontSize`、`Position`、`ButtonState`
+- 组合组件：`FilledButton`
+- 样式与枚举：`Style`、`AlignItems`、`JustifyContent`、`FlexDirection`、`FlexWrap`、`FontSize`、`TextAlign`、`Position`、`ButtonState`
 - 颜色：`Color`、`Colors`
 - hooks：`useState`、`useEffect`、`useMemo`、`useCallback`、`useRef`
 - 挂载入口：`render_app`
@@ -91,6 +92,8 @@ metadata:
 - `style` 怎么写
 - 某些属性应该写进 props 还是 `style`
 - 页面如何挂载/卸载
+
+补充理解：当前 runtime 已带 native 节点池化与属性缓存。业务 UI 不需要自己做“隐藏后手动复用控件”的框架级优化；正常声明式增删节点即可，runtime 会优先复用同一路径下已存在的 native 控件，并只补设置发生变化的属性。
 
 ## 标准挂载流程
 
@@ -173,9 +176,13 @@ def UserCard(name, level):
 
 - `style`
 - `children`
-- `onClick`
 
 适合：横纵布局、包裹子节点、绝对定位容器。
+
+说明：
+
+- `Panel` 当前不是公开点击控件，不要写 `Panel(onClick=...)`。
+- 需要点击反馈时优先用 `Button`；若只是给图片加点击，可用 `Image(onClick=...)`。
 
 ### 2. `Image`
 
@@ -210,7 +217,6 @@ def UserCard(name, level):
 - `content`
 - `color`
 - `fontSize`
-- `font`
 - `textAlign`
 - `linePadding`
 - `shadow`
@@ -258,6 +264,25 @@ def UserCard(name, level):
 - 若传 `buttonBuilder`，一般写成 `lambda state: Image(...)` 或函数 `def builder(state): ...`。
 - `buttonBuilder` 可根据 `ButtonState.default/hover/pressed` 返回不同背景。
 
+### 5.1 `FilledButton`
+
+用途：快速创建纯色三态按钮。
+
+常用 props：
+
+- `default`
+- `hover`
+- `pressed`
+- `style`
+- `children`
+- `onClick`
+
+要点：
+
+- `FilledButton` 是公开组合组件，内部基于 `Button + buttonBuilder`。
+- 若只传 `default`，hover / pressed 会自动回落到同一颜色。
+- 适合快速搭建业务按钮，不需要每次手写 `buttonBuilder`。
+
 ### 6. `Input`
 
 用途：文本输入。
@@ -289,7 +314,8 @@ def UserCard(name, level):
 要点：
 
 - 常和长列表搭配使用。
-- 若需要滚动到顶部/底部，给 `Scroll(ref=...)`，再通过 `ref.current.asScrollView()` 调原生滚动接口。
+- 若需要滚动到顶部/底部，可直接写 `Scroll(ref=...)`；这里的 `ref` 不是 `Scroll` 显式函数参数，而是由 `@Component` 包装层统一透传。
+- 再通过 `ref.current.asScrollView()` 调原生滚动接口。
 
 ## `props` 与 `style` 的分工
 
@@ -327,7 +353,6 @@ def UserCard(name, level):
 - `content`
 - `color`
 - `fontSize`
-- `font`
 - `textAlign`
 - `linePadding`
 - `shadow`
