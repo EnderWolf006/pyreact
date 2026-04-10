@@ -14,7 +14,9 @@
         ],
         "controls": [
             {
-                "widget@PyreactBase.buttonBase": {}
+                "widget@PyreactBase.buttonBase": {
+                    "visible": false
+                }
             }
         ]
     },
@@ -62,13 +64,13 @@
         "clips_children": false,
         "controls": [
             {
-                "default@PyreactBase.panelBase": {}
+                "default@PyreactBase.imageBase": {}
             },
             {
-                "hover@PyreactBase.panelBase": {}
+                "hover@PyreactBase.imageBase": {}
             },
             {
-                "pressed@PyreactBase.panelBase": {}
+                "pressed@PyreactBase.imageBase": {}
             }
         ],
         "draggable": "not_draggable",
@@ -162,7 +164,7 @@
             0,
             0
         ],
-        "texture": "",
+        "texture": "textures/ui/white_bg",
         "uv": [
             0,
             0
@@ -187,7 +189,9 @@
         ],
         "controls": [
             {
-                "widget@PyreactBase.imageBase": {}
+                "widget@PyreactBase.imageBase": {
+                    "visible": false
+                }
             }
         ]
     },
@@ -267,7 +271,9 @@
         ],
         "controls": [
             {
-                "widget@PyreactBase.inputBase": {}
+                "widget@PyreactBase.inputBase": {
+                    "visible": false
+                }
             }
         ]
     },
@@ -322,7 +328,9 @@
         ],
         "controls": [
             {
-                "widget@PyreactBase.itemBase": {}
+                "widget@PyreactBase.itemBase": {
+                    "visible": false
+                }
             }
         ]
     },
@@ -463,7 +471,9 @@
         ],
         "controls": [
             {
-                "widget@PyreactBase.textBase": {}
+                "widget@PyreactBase.textBase": {
+                    "visible": false
+                }
             }
         ]
     },

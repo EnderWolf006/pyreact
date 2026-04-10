@@ -341,18 +341,67 @@ class RuntimePropsMixin(object):
 
             self._safe_set_position(slot_path, 0, 0, slot_control)
             self._safe_set_size(slot_path, button_width, button_height, slot_control)
-            self._clear_prefixed_children(slot_path)
 
             state_element = self._call_button_builder(builder, state)
             if state_element is None:
                 continue
 
-            self._render_state_element_into_slot(
-                state_element=state_element,
-                slot_path=slot_path,
-                slot_width=button_width,
-                slot_height=button_height,
-            )
+            if self._is_pure_image_element(state_element):
+                self._render_pure_image_button_slot(
+                    state_element=state_element,
+                    slot_path=slot_path,
+                    slot_control=slot_control,
+                )
+            else:
+                self._safe_set_alpha(slot_path, 0.0, slot_control)
+                self._clear_prefixed_children(slot_path)
+                self._render_state_element_into_slot(
+                    state_element=state_element,
+                    slot_path=slot_path,
+                    slot_width=button_width,
+                    slot_height=button_height,
+                )
+
+    def _is_pure_image_element(self, element):
+        if element is None:
+            return False
+        node_type = getattr(element, 'node_type', None)
+        if node_type != 'Image':
+            return False
+        children = getattr(element, 'children', None)
+        if children is None:
+            children = []
+        if isinstance(element, dict):
+            children = element.get('children', [])
+        if isinstance(children, (list, tuple)):
+            return len(children) == 0
+        return False
+
+    def _render_pure_image_button_slot(self, state_element, slot_path, slot_control):
+        props = getattr(state_element, 'props', None)
+        if not isinstance(props, dict):
+            props = {}
+
+        image_control = slot_control
+        image_path = slot_path
+
+        # Extract and apply common style props (opacity, display, layer, etc.)
+        style = self._extract_node_style(state_element, props)
+        
+        # Prepare props dict with __shadow_node__ for layout access
+        props_for_common = dict(props)
+        props_for_common['__shadow_node__'] = state_element
+        
+        self._apply_common_style_props(image_path, style, props_for_common, image_control)
+
+        # Apply image-specific props
+        image_props = self._extract_image_props(props)
+        self._apply_image_style_props(image_path, image_props, image_control)
+
+        src = self._safe_text(image_props.get('src', ''))
+        default_texture = 'textures/ui/white_bg'
+        if src and src != default_texture:
+            self._safe_set_sprite(image_path, src, image_control)
 
     def _call_button_builder(self, builder, state):
         try:

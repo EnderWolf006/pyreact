@@ -768,14 +768,21 @@ class RuntimeLifecycleMixin(object):
             if not widget_path or not wrapper_path:
                 return True
 
-            wrapper_control = self._screen.GetBaseUIControl(wrapper_path)
             widget_control = self._screen.GetBaseUIControl(widget_path)
-            if not wrapper_control or not widget_control:
+            if not widget_control:
                 return False
 
             node_type = pending_entry.get('node_type')
-            self._safe_set_visible(wrapper_path, True, wrapper_control)
-            self._safe_set_visible(widget_path, True, widget_control)
+            
+            # Only set visible if not already visible (states tracked in _grid_slot_visible_states)
+            if not isinstance(getattr(self, '_grid_slot_visible_states', None), dict):
+                self._grid_slot_visible_states = {}
+            slot_states = self._grid_slot_visible_states
+            slot_key = self._safe_text(widget_path)
+            if slot_states.get(slot_key) != True:
+                self._safe_set_visible(widget_path, True, widget_control)
+                slot_states[slot_key] = True
+            
             self._reset_pooled_widget_native_state(widget_path, node_type, widget_control)
             native_layer_path = None
             if node_type == 'Item':
@@ -870,6 +877,9 @@ class RuntimeLifecycleMixin(object):
             return True
 
         if self._safe_set_grid_dimension(grid_path, 1, target_capacity):
+            # Hide newly created slots beyond current capacity
+            if target_capacity > current_capacity:
+                self._set_grid_entry_visibility_range(grid_path, node_type, current_capacity + 1, target_capacity, False)
             state['capacity'] = target_capacity
             state['initialized'] = True
             return True
@@ -929,18 +939,25 @@ class RuntimeLifecycleMixin(object):
         if begin <= 0 or end < begin:
             return
 
+        # Track visible states to avoid redundant SetVisible calls
+        if not isinstance(getattr(self, '_grid_slot_visible_states', None), dict):
+            self._grid_slot_visible_states = {}
+        slot_states = self._grid_slot_visible_states
+
         for index in range(begin, end + 1):
             paths = self._get_grid_item_paths_by_grid_path(grid_path, node_type, index)
             if not isinstance(paths, dict):
                 continue
-            wrapper_path = paths.get('wrapper_path')
             widget_path = paths.get('widget_path')
-            wrapper_control = self._screen.GetBaseUIControl(wrapper_path) if wrapper_path else None
             widget_control = self._screen.GetBaseUIControl(widget_path) if widget_path else None
-            if wrapper_control:
-                self._safe_set_visible(wrapper_path, visible, wrapper_control, sync_refresh=False)
-            if widget_control:
+            if not widget_control:
+                continue
+            
+            slot_key = self._safe_text(widget_path)
+            current_state = slot_states.get(slot_key)
+            if current_state != visible:
                 self._safe_set_visible(widget_path, visible, widget_control, sync_refresh=False)
+                slot_states[slot_key] = visible
 
     def _get_grid_item_paths_by_grid_path(self, grid_path, node_type, index):
         grid_config = self._get_grid_type_config(node_type)
