@@ -610,9 +610,9 @@ class RuntimePropsMixin(object):
             layer_value = int(round(self._to_float(layer, 0.0)))
             next_cached_style['layer'] = layer_value
             if cached_style.get('layer') != layer_value:
-                self._safe_set_layer(layer_path, layer_value, layer_control, sync_refresh=False)
+                self._safe_set_layer(layer_path, layer_value, layer_control, sync_refresh=False, force_update=False)
         elif 'layer' in cached_style:
-            self._safe_set_layer(layer_path, 0, layer_control, sync_refresh=False)
+            self._safe_set_layer(layer_path, 0, layer_control, sync_refresh=False, force_update=False)
 
         cache[node_path] = next_cached_style
 

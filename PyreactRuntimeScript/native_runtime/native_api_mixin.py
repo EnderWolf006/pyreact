@@ -810,23 +810,28 @@ class RuntimeNativeApiMixin(object):
         except Exception:
             pass
 
-    def _safe_set_layer(self, path, layer, control=None, sync_refresh=None):
+    def _safe_set_layer(self, path, layer, control=None, sync_refresh=None, force_update=None):
         try:
             layer_value = int(round(self._to_float(layer, 0.0)))
         except Exception:
             return
 
+        use_three_args = sync_refresh is not None or force_update is not None
+        if use_three_args:
+            sync_val = bool(sync_refresh) if sync_refresh is not None else False
+            force_val = bool(force_update) if force_update is not None else False
+
         try:
             if control and hasattr(control, "SetLayer"):
                 start_time = time.time()
-                if sync_refresh is None:
-                    control.SetLayer(layer_value)
+                if use_three_args:
+                    control.SetLayer(layer_value, sync_val, force_val)
                 else:
-                    control.SetLayer(layer_value, bool(sync_refresh))
+                    control.SetLayer(layer_value)
                 self._count_native_api_call('SetLayer', elapsed_ms=(time.time() - start_time) * 1000.0)
                 return
         except Exception:
-            if sync_refresh is None:
+            if not use_three_args:
                 pass
             else:
                 try:
@@ -842,14 +847,14 @@ class RuntimeNativeApiMixin(object):
             base = self._screen.GetBaseUIControl(path)
             if base and hasattr(base, "SetLayer"):
                 start_time = time.time()
-                if sync_refresh is None:
-                    base.SetLayer(layer_value)
+                if use_three_args:
+                    base.SetLayer(layer_value, sync_val, force_val)
                 else:
-                    base.SetLayer(layer_value, bool(sync_refresh))
+                    base.SetLayer(layer_value)
                 self._count_native_api_call('SetLayer', elapsed_ms=(time.time() - start_time) * 1000.0)
                 return
         except Exception:
-            if sync_refresh is None:
+            if not use_three_args:
                 pass
             else:
                 try:
