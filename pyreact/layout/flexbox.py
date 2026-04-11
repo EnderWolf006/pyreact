@@ -244,6 +244,8 @@ def _resolve_own_size(node, style, available_width, available_height, forced_wid
 
 def compute_layout(node, x, y, available_width, available_height, forced_width=None, forced_height=None, text_measurer=None, measure_pass=False, mount_origin_x=0.0, mount_origin_y=0.0):
     style = normalize_style(node.style)
+    node._measured_shrunk = False
+    node._subtree_measured_shrunk = False
     abs_x = x
     abs_y = y
     local_x = abs_x - mount_origin_x
@@ -692,6 +694,8 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             mount_origin_x=child_mount_origin_x,
             mount_origin_y=child_mount_origin_y,
         )
+        if getattr(item["child"], '_subtree_measured_shrunk', False):
+            node._subtree_measured_shrunk = True
 
     for item in absolute_items:
         child_style = item["style"]
@@ -755,6 +759,8 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             mount_origin_x=child_mount_origin_x,
             mount_origin_y=child_mount_origin_y,
         )
+        if getattr(item["child"], '_subtree_measured_shrunk', False):
+            node._subtree_measured_shrunk = True
 
     explicit_width = parse_length(style.get("width"), available_width)
     explicit_height = parse_length(style.get("height"), available_height)
@@ -802,6 +808,7 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
                     node.layout.width = max(0.0, intrinsic_width)
                     node.layout.height = max(0.0, intrinsic_height)
                     node._measured_shrunk = True
+                    node._subtree_measured_shrunk = True
                 elif parent_is_scroll and explicit_height is None:
                     # Scroll's direct child with no explicit height should fit content
                     node.layout.height = max(0.0, intrinsic_height)

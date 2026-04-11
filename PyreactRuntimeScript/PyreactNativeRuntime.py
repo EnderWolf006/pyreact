@@ -24,32 +24,32 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         "Button": {
             "grid_name": "buttonGrid",
             "template_name": "buttonPanelBase",
-            "initial_pool_size": 32,
-            "max_pool_size": 64,
+            "initial_pool_size": 64,
+            "max_pool_size": 128,
         },
         "Image": {
             "grid_name": "imageGrid",
             "template_name": "imagePanelBase",
-            "initial_pool_size": 32,
-            "max_pool_size": 64,
+            "initial_pool_size": 64,
+            "max_pool_size": 128,
         },
         "Input": {
             "grid_name": "inputGrid",
             "template_name": "inputPanelBase",
-            "initial_pool_size": 32,
-            "max_pool_size": 64,
+            "initial_pool_size": 64,
+            "max_pool_size": 128,
         },
         "Item": {
             "grid_name": "itemGrid",
             "template_name": "itemPanelBase",
-            "initial_pool_size": 32,
-            "max_pool_size": 64,
+            "initial_pool_size": 64,
+            "max_pool_size": 128,
         },
         "Label": {
             "grid_name": "textGrid",
             "template_name": "textPanelBase",
-            "initial_pool_size": 32,
-            "max_pool_size": 64,
+            "initial_pool_size": 64,
+            "max_pool_size": 128,
         },
     }
     _DEFAULT_WHITE_TEXTURE = "textures/ui/white_bg"

@@ -75,25 +75,87 @@ class RuntimePropsMixin(object):
             self._native_common_style_cache = cache
         return cache
 
-    def _drop_native_common_style_cache(self, path_prefix=None):
+    def _should_keep_grid_slot_common_style_cache(self, cached_path):
+        safe_cached_path = self._safe_text(cached_path)
+        if not safe_cached_path:
+            return False
+        if '/widget' in safe_cached_path:
+            return True
+
+        grid_type_config = getattr(self, '_GRID_TYPE_CONFIG', None)
+        if not isinstance(grid_type_config, dict):
+            return False
+
+        for grid_config in grid_type_config.values():
+            if not isinstance(grid_config, dict):
+                continue
+            grid_name = self._safe_text(grid_config.get('grid_name'))
+            if not grid_name:
+                continue
+            if ('/' + grid_name + '/') in safe_cached_path:
+                return True
+        return False
+
+    def _drop_native_common_style_cache(self, path_prefix=None, keep_grid_slots=False):
         cache = self._get_native_common_style_cache()
-        if not path_prefix:
+        if not path_prefix and not keep_grid_slots:
             cache.clear()
             return
 
-        prefix = self._safe_text(path_prefix)
-        if not prefix:
-            cache.clear()
-            return
+        prefix = self._safe_text(path_prefix) if path_prefix else None
+        prefix_with_sep = (prefix + '/') if prefix else None
 
-        prefix_with_sep = prefix + '/'
         for cached_path in list(cache.keys()):
             safe_cached_path = self._safe_text(cached_path)
-            if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
+
+            # Keep grid slot caches when reusing pooled items
+            if keep_grid_slots and self._should_keep_grid_slot_common_style_cache(safe_cached_path):
+                continue
+
+            if prefix:
+                if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
+                    try:
+                        del cache[cached_path]
+                    except Exception:
+                        pass
+            elif not keep_grid_slots:
+                # Clear all if no prefix specified and not keeping grid slots
                 try:
                     del cache[cached_path]
                 except Exception:
                     pass
+
+    def _drop_native_common_style_cache_fields(self, path, field_names):
+        safe_path = self._safe_text(path)
+        if not safe_path:
+            return
+        if not isinstance(field_names, (list, tuple)):
+            return
+
+        cache = self._get_native_common_style_cache()
+        cached_style = cache.get(safe_path)
+        if not isinstance(cached_style, dict):
+            return
+
+        changed = False
+        for field_name in field_names:
+            safe_field_name = self._safe_text(field_name)
+            if safe_field_name and safe_field_name in cached_style:
+                try:
+                    del cached_style[safe_field_name]
+                    changed = True
+                except Exception:
+                    pass
+
+        if not changed:
+            return
+        if cached_style:
+            cache[safe_path] = cached_style
+        else:
+            try:
+                del cache[safe_path]
+            except Exception:
+                pass
 
     def _set_ref_value(self, ref_obj, value):
         if ref_obj is None:

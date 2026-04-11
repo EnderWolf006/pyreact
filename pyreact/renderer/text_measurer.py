@@ -20,6 +20,8 @@ class TextMeasurer(object):
 
     def __init__(self, native_measure=None):
         self._native_measure = native_measure
+        self._measure_cache = {}
+        self._measure_cache_limit = 512
 
     def measure_text(self, content, style, max_width=None):
         """
@@ -27,6 +29,13 @@ class TextMeasurer(object):
         Returns a dict: {"width": float, "height": float}
         """
         text = self._to_text(content)
+        cache_key = self._make_cache_key(text, style, max_width)
+        cached = self._measure_cache.get(cache_key)
+        if isinstance(cached, dict):
+            return {
+                "width": self._safe_float(cached.get("width"), 0.0),
+                "height": self._safe_float(cached.get("height"), 0.0),
+            }
         
         # Always prefer native measurement if available
         if callable(self._native_measure):
@@ -36,7 +45,9 @@ class TextMeasurer(object):
                     width = self._safe_float(measured.get("width"), 0.0)
                     height = self._safe_float(measured.get("height"), 0.0)
                     if width > 0 and height > 0:
-                        return {"width": width, "height": height}
+                        result = {"width": width, "height": height}
+                        self._store_measure_cache(cache_key, result)
+                        return result
             except Exception:
                 pass
 
@@ -62,9 +73,32 @@ class TextMeasurer(object):
             line_count = int(width / max_w) + 1
             width = max_w
             
-        return {
+        result = {
             "width": width,
             "height": line_count * (font_size * 1.2)
+        }
+        self._store_measure_cache(cache_key, result)
+        return result
+
+    def _make_cache_key(self, text, style, max_width):
+        if not isinstance(style, dict):
+            style = {}
+        return (
+            self._to_text(text),
+            self._safe_float(max_width, 0.0),
+            self._to_text(style.get("fontSize")),
+            self._to_text(style.get("font")),
+            self._to_text(style.get("textAlign")),
+            self._to_text(style.get("linePadding")),
+            bool(style.get("shadow")),
+        )
+
+    def _store_measure_cache(self, cache_key, result):
+        if len(self._measure_cache) >= self._measure_cache_limit:
+            self._measure_cache = {}
+        self._measure_cache[cache_key] = {
+            "width": self._safe_float(result.get("width"), 0.0),
+            "height": self._safe_float(result.get("height"), 0.0),
         }
 
     def _get_font_size_scale(self, style):

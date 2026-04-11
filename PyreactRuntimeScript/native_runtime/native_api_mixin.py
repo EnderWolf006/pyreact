@@ -879,6 +879,9 @@ class RuntimeNativeApiMixin(object):
                     used_full = bool(ret_x) and bool(ret_y)
                     if used_full:
                         self._count_native_api_call('SetFullPosition', 2, elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                        if cache_entry is not None:
+                            cache_entry['position'] = pos
+                        return
 
                 if hasattr(control, "SetPosition"):
                     try:
@@ -926,6 +929,9 @@ class RuntimeNativeApiMixin(object):
                     used_full = bool(ret_w) and bool(ret_h)
                     if used_full:
                         self._count_native_api_call('SetFullSize', 2, elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                        if cache_entry is not None:
+                            cache_entry['size'] = size
+                        return
 
                 if hasattr(control, "SetSize"):
                     try:

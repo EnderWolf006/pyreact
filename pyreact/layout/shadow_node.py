@@ -65,6 +65,7 @@ class ShadowNode(object):
         self.depth = int(depth)
         self.layout = None
         self._measured_shrunk = False
+        self._subtree_measured_shrunk = False
 
     def add_child(self, child):
         _ = self.children.append(child)

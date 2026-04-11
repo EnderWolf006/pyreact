@@ -720,12 +720,13 @@ class RuntimeLifecycleMixin(object):
             if self._needs_render:
                 return
 
+        deferred_count = 0
         if pending_grid_entries:
-            self._flush_pending_grid_entries(pending_grid_entries)
+            deferred_count = self._flush_pending_grid_entries(pending_grid_entries)
         elif root_parent_path == self._root_path:
             self._hide_unused_grid_entries({}, {})
 
-        return len(pending_grid_entries)
+        return deferred_count
 
     def _render_flat_entry(self, entry):
         node = entry.get('node')
@@ -911,13 +912,40 @@ class RuntimeLifecycleMixin(object):
                 grid_counts[grid_path] = grid_index
                 grid_types[grid_path] = node_type
 
+        # Check which grids need capacity expansion (requires async frame wait)
+        grids_needing_expansion = {}
+        for grid_path, grid_count in grid_counts.items():
+            node_type = grid_types.get(grid_path)
+            state = self._ensure_grid_pool_state(grid_path, node_type)
+            current_capacity = int(state.get('capacity', 0)) if isinstance(state, dict) else 0
+            needs_expansion = grid_count > current_capacity
+            if needs_expansion:
+                grids_needing_expansion[grid_path] = True
+
+        # Expand capacity for grids that need it (async path)
         for grid_path, grid_count in grid_counts.items():
             self._ensure_grid_pool_capacity(grid_path, grid_types.get(grid_path), grid_count)
 
         self._hide_unused_grid_entries(grid_counts, grid_types)
 
-        for pending_entry in pending_grid_entries:
-            self._schedule_grid_entry_apply(pending_entry)
+        # Sync path: if no grids need expansion, apply all entries synchronously
+        sync_apply = not grids_needing_expansion
+
+        if sync_apply:
+            # No SetGridDimension needed - all entries can be processed synchronously
+            sync_native_start = _perf_now()
+            sync_apply_count = 0
+            for pending_entry in pending_grid_entries:
+                if self._apply_grid_entry_sync(pending_entry):
+                    sync_apply_count += 1
+            # Return 0 for deferred count (all processed synchronously)
+            # Grid count for logging purposes still returned
+            return 0
+        else:
+            # Async path: some grids need expansion, schedule for next frame
+            for pending_entry in pending_grid_entries:
+                self._schedule_grid_entry_apply(pending_entry)
+            return len(pending_grid_entries)
 
     def _schedule_grid_entry_apply(self, pending_entry):
         if not isinstance(pending_entry, dict):
@@ -955,13 +983,11 @@ class RuntimeLifecycleMixin(object):
             needs_native_reset = needs_reactivate or node_type == 'Label'
             if needs_native_reset:
                 self._reset_pooled_widget_native_state(widget_path, node_type, widget_control)
+                self._drop_native_common_style_cache_fields(widget_path, ('opacity',))
             native_layer_path = None
             if node_type == 'Item':
                 native_layer_path = wrapper_path
 
-            if needs_native_reset:
-                self._drop_native_common_style_cache(widget_path)
-                self._drop_native_common_style_cache(wrapper_path)
             applied = self._apply_rendered_entry(
                 pending_entry.get('node'),
                 node_type,
@@ -975,6 +1001,50 @@ class RuntimeLifecycleMixin(object):
             return applied
 
         self._schedule_screen_update_task(_apply_pending_grid_entry, retries=6, on_give_up=_mark_pending_grid_entry_failed)
+
+    def _apply_grid_entry_sync(self, pending_entry):
+        """Apply grid entry synchronously without waiting for next frame."""
+        if not isinstance(pending_entry, dict):
+            return True
+
+        widget_path = self._safe_text(pending_entry.get('widget_path'))
+        wrapper_path = self._safe_text(pending_entry.get('wrapper_path'))
+        if not widget_path:
+            return True
+
+        widget_control = self._screen.GetBaseUIControl(widget_path)
+        if not widget_control:
+            return False
+
+        node_type = pending_entry.get('node_type')
+
+        # Track visible states
+        if not isinstance(getattr(self, '_grid_slot_visible_states', None), dict):
+            self._grid_slot_visible_states = {}
+        slot_states = self._grid_slot_visible_states
+        slot_key = self._safe_text(widget_path)
+        needs_reactivate = slot_states.get(slot_key) != True
+        if needs_reactivate:
+            self._safe_set_visible(widget_path, True, widget_control, sync_refresh=False)
+            slot_states[slot_key] = True
+
+        needs_native_reset = needs_reactivate or node_type == 'Label'
+        if needs_native_reset:
+            self._reset_pooled_widget_native_state(widget_path, node_type, widget_control)
+            self._drop_native_common_style_cache_fields(widget_path, ('opacity',))
+        native_layer_path = None
+        if node_type == 'Item':
+            native_layer_path = wrapper_path
+
+        applied = self._apply_rendered_entry(
+            pending_entry.get('node'),
+            node_type,
+            pending_entry.get('node_id'),
+            widget_path,
+            widget_control,
+            native_layer_path=native_layer_path,
+        )
+        return applied
 
     def _get_grid_pool_limit(self, node_type, field_name, fallback=0):
         grid_config = self._get_grid_type_config(node_type)
@@ -1317,7 +1387,9 @@ class RuntimeLifecycleMixin(object):
                 self._prune_preserved_host_subtree(scroll_content_path, expected_children_by_parent)
 
     def _clear_root_children(self, clear_grid_pool=False, expected_children_by_parent=None, current_root_scroll_hosts=None):
-        self._drop_native_common_style_cache()
+        # OPTIMIZATION: Only clear non-grid caches; grid items are pooled and reused,
+        # so keeping their layer cache reduces SetLayer calls on subsequent renders.
+        self._drop_native_common_style_cache(keep_grid_slots=clear_grid_pool is False)
         self._render_grid_counts = {}
         if clear_grid_pool:
             self._hide_all_used_grid_entries()
