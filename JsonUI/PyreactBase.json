@@ -198,6 +198,8 @@
     "inputBase@common.text_edit_box": {
         "$edit_box_default_texture": "textures/ui/edit_box_indent",
         "$edit_box_hover_texture": "textures/ui/edit_box_indent_hover",
+        "anchor_from": "top_left",
+        "anchor_to": "top_left",
         "$font_scale_factor": 1,
         "$is_new_nine_slice": false,
         "$nine_slice_buttom": 0,
