@@ -1,5 +1,7 @@
 # pyright: reportMissingParameterType=false, reportUnknownParameterType=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
 
+import time
+
 from .flexbox import compute_layout, normalize_style
 from .shadow_node import ShadowNode
 
@@ -7,6 +9,8 @@ from .shadow_node import ShadowNode
 class LayoutEngine(object):
     def __init__(self, text_measurer=None):
         self._text_measurer = text_measurer
+        self._last_perf_stats = {}
+        self._shadow_node_count = 0
 
     def _extract_style(self, vnode):
         props = getattr(vnode, "props", None)
@@ -71,6 +75,8 @@ class LayoutEngine(object):
         if path is None:
             path = []
 
+        self._shadow_node_count += 1
+
         shadow_node = ShadowNode(
             node_id=self._extract_node_id(vnode, path),
             node_type=self._extract_node_type(vnode),
@@ -88,10 +94,29 @@ class LayoutEngine(object):
             index += 1
         return shadow_node
 
+    def get_last_perf_stats(self):
+        if not isinstance(self._last_perf_stats, dict):
+            return {}
+        return dict(self._last_perf_stats)
+
     def calculate(self, vnode_tree, screen_width, screen_height):
+        self._shadow_node_count = 0
+        perf_stats = {
+            'shadow_build_ms': 0.0,
+            'pass1_ms': 0.0,
+            'pass2_ms': 0.0,
+            'pass3_ms': 0.0,
+            'needs_third_pass': False,
+            'shadow_node_count': 0,
+        }
+
+        build_start_time = time.time()
         root = self._build_shadow_tree(vnode_tree)
+        perf_stats['shadow_build_ms'] = (time.time() - build_start_time) * 1000.0
+        perf_stats['shadow_node_count'] = self._shadow_node_count
 
         # First pass: measure all children to get intrinsic sizes
+        pass1_start_time = time.time()
         compute_layout(
             root,
             x=0.0,
@@ -103,8 +128,10 @@ class LayoutEngine(object):
             text_measurer=self._text_measurer,
             measure_pass=True,
         )
+        perf_stats['pass1_ms'] = (time.time() - pass1_start_time) * 1000.0
 
         # Second pass: apply final layout with measured sizes
+        pass2_start_time = time.time()
         compute_layout(
             root,
             x=0.0,
@@ -116,13 +143,16 @@ class LayoutEngine(object):
             text_measurer=self._text_measurer,
             measure_pass=False,
         )
+        perf_stats['pass2_ms'] = (time.time() - pass2_start_time) * 1000.0
 
         # Third pass: only needed when there are shrink-to-fit containers.
         # Skip for most cases to improve performance (66% reduction in layout passes).
         needs_third_pass = getattr(root, '_subtree_measured_shrunk', False)
+        perf_stats['needs_third_pass'] = bool(needs_third_pass)
 
         if needs_third_pass:
             # Stabilize parent alignment after child intrinsic sizes are resolved.
+            pass3_start_time = time.time()
             compute_layout(
                 root,
                 x=0.0,
@@ -134,5 +164,8 @@ class LayoutEngine(object):
                 text_measurer=self._text_measurer,
                 measure_pass=False,
             )
+            perf_stats['pass3_ms'] = (time.time() - pass3_start_time) * 1000.0
+
+        self._last_perf_stats = perf_stats
 
         return root

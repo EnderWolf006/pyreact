@@ -243,7 +243,10 @@ def _resolve_own_size(node, style, available_width, available_height, forced_wid
 
 
 def compute_layout(node, x, y, available_width, available_height, forced_width=None, forced_height=None, text_measurer=None, measure_pass=False, mount_origin_x=0.0, mount_origin_y=0.0):
-    style = normalize_style(node.style)
+    if isinstance(node.style, dict):
+        style = node.style
+    else:
+        style = normalize_style(node.style)
     node._measured_shrunk = False
     node._subtree_measured_shrunk = False
     abs_x = x
@@ -311,6 +314,20 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
     if not node.children:
         return node
 
+    explicit_width = parse_length(style.get("width"), available_width)
+    explicit_height = parse_length(style.get("height"), available_height)
+    parent_is_scroll = hasattr(node, '_parent_is_scroll') and node._parent_is_scroll
+    needs_child_bounds = bool(node.children)
+    if node.node_type != "Scroll" and explicit_width is not None and explicit_height is not None:
+        needs_child_bounds = False
+    elif parent_is_scroll and explicit_height is None:
+        needs_child_bounds = True
+
+    min_x = None
+    min_y = None
+    max_x = None
+    max_y = None
+
     flex_direction = style.get("flexDirection", "column")
     if flex_direction in ("rowReverse", "columnReverse"):
         if flex_direction == "rowReverse":
@@ -360,7 +377,10 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
     flow_items = []
     absolute_items = []
     for child in node.children:
-        child_style = normalize_style(child.style)
+        if isinstance(child.style, dict):
+            child_style = child.style
+        else:
+            child_style = normalize_style(child.style)
         c_min_w, c_max_w, c_min_h, c_max_h = _resolve_min_max(child_style, content_width, content_height)
 
         c_margin_top, c_margin_right, c_margin_bottom, c_margin_left = parse_box(
@@ -694,6 +714,20 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             mount_origin_x=child_mount_origin_x,
             mount_origin_y=child_mount_origin_y,
         )
+        if needs_child_bounds and item["child"].layout:
+            child_left = item["child"].layout.abs_x
+            child_top = item["child"].layout.abs_y
+            child_right = child_left + item["child"].layout.width
+            child_bottom = child_top + item["child"].layout.height
+
+            if min_x is None or child_left < min_x:
+                min_x = child_left
+            if min_y is None or child_top < min_y:
+                min_y = child_top
+            if max_x is None or child_right > max_x:
+                max_x = child_right
+            if max_y is None or child_bottom > max_y:
+                max_y = child_bottom
         if getattr(item["child"], '_subtree_measured_shrunk', False):
             node._subtree_measured_shrunk = True
 
@@ -759,35 +793,25 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             mount_origin_x=child_mount_origin_x,
             mount_origin_y=child_mount_origin_y,
         )
+        if needs_child_bounds and item["child"].layout:
+            child_left = item["child"].layout.abs_x
+            child_top = item["child"].layout.abs_y
+            child_right = child_left + item["child"].layout.width
+            child_bottom = child_top + item["child"].layout.height
+
+            if min_x is None or child_left < min_x:
+                min_x = child_left
+            if min_y is None or child_top < min_y:
+                min_y = child_top
+            if max_x is None or child_right > max_x:
+                max_x = child_right
+            if max_y is None or child_bottom > max_y:
+                max_y = child_bottom
         if getattr(item["child"], '_subtree_measured_shrunk', False):
             node._subtree_measured_shrunk = True
 
-    explicit_width = parse_length(style.get("width"), available_width)
-    explicit_height = parse_length(style.get("height"), available_height)
-
-    # Calculate content bounding box for all nodes with children.
-    if node.children:
-        min_x = None
-        min_y = None
-        max_x = None
-        max_y = None
-
-        for child in node.children:
-            if child.layout:
-                child_left = child.layout.abs_x
-                child_top = child.layout.abs_y
-                child_right = child_left + child.layout.width
-                child_bottom = child_top + child.layout.height
-
-                if min_x is None or child_left < min_x:
-                    min_x = child_left
-                if min_y is None or child_top < min_y:
-                    min_y = child_top
-                if max_x is None or child_right > max_x:
-                    max_x = child_right
-                if max_y is None or child_bottom > max_y:
-                    max_y = child_bottom
-
+    # Calculate content bounding box only when content size may affect the container.
+    if needs_child_bounds:
         if min_x is not None and max_x is not None:
             intrinsic_width = (max_x - abs_x) + padding_right
             intrinsic_height = (max_y - abs_y) + padding_bottom
@@ -803,7 +827,6 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             # If node has no explicit size, it shrinks to fit children (except for Label which handles itself).
             # Scroll children should always shrink to content, never inherit the large measure space
             if node.node_type != "Label" and node.node_type != "Scroll":
-                parent_is_scroll = hasattr(node, '_parent_is_scroll') and node._parent_is_scroll
                 if explicit_width is None and explicit_height is None:
                     node.layout.width = max(0.0, intrinsic_width)
                     node.layout.height = max(0.0, intrinsic_height)

@@ -15,7 +15,7 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
     _TYPE_DEF_SUFFIX_MAP = {
         "Image": "imageBase",
         "Label": "textBase",
-        "Item": "itemBase",
+        "Item": "itemPanelBase",
         "Button": "buttonBase",
         "Input": "inputBase",
         "Scroll": "scrollBase",

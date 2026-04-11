@@ -45,6 +45,9 @@ class RuntimeNativeApiMixin(object):
         v = self._to_float(value, 0.0)
         return '%.3f ms' % v
 
+    def _describe_native_api_name(self, api_name):
+        return self._safe_text(api_name)
+
     def _log_native_api_nested(self, title, total_ms, overhead_ms, counts, indent='    '):
         if not getattr(self, '_log_perf', False):
             return
@@ -54,34 +57,27 @@ class RuntimeNativeApiMixin(object):
             total_count, _, items = self._get_native_api_call_summary(counts)
             if total_count <= 0:
                 return
-            overhead_display = '%.3f' % overhead_ms if overhead_ms >= 0.001 else '0.000'
-            self._perf_log('%s└─ %s | %s [损耗: %s ms, 原生: %s]' % (
+            overhead_display = ('%.3f ms' % overhead_ms) if overhead_ms >= 0.001 else '0.000 ms'
+            self._perf_log('%s└─ %s | %s [脚本损耗: %s, 原生调用: %s]' % (
                 indent,
                 self._format_perf_ms(total_ms + overhead_ms),
                 self._safe_text(title),
                 overhead_display,
                 self._format_perf_ms_short(total_ms),
             ))
-            for api_name, api_stats in items:
-                self._perf_log('%s     ├─ %s | %s(%s 次)' % (
-                    indent,
+            child_indent = indent + '   '
+            item_count = len(items)
+            for index, (api_name, api_stats) in enumerate(items):
+                branch = '└─' if index == (item_count - 1) else '├─'
+                self._perf_log('%s%s %s | %s(%s 次)' % (
+                    child_indent,
+                    branch,
                     self._format_perf_ms(api_stats.get('total_ms', 0.0)),
-                    self._safe_text(api_name),
+                    self._describe_native_api_name(api_name),
                     int(api_stats.get('count', 0)),
                 ))
         except Exception:
             pass
-
-    def _perf_label_with_tabs(self, label, min_tabs=2):
-        safe_label = self._safe_text(label)
-        try:
-            label_len = len(safe_label)
-        except Exception:
-            label_len = 0
-        tab_count = 7 - int(label_len / 6)
-        if tab_count < min_tabs:
-            tab_count = min_tabs
-        return '%s%s' % (safe_label, '\t' * tab_count)
 
     def _get_native_api_call_summary(self, counts):
         total_count = 0
@@ -249,10 +245,13 @@ class RuntimeNativeApiMixin(object):
                 total_count,
                 self._format_perf_ms(total_ms),
             ))
-            for api_name, api_stats in items:
-                self._perf_log(u'  ├─ %s%s / %s 次' % (
-                    self._perf_label_with_tabs(api_name, min_tabs=2),
+            item_count = len(items)
+            for index, (api_name, api_stats) in enumerate(items):
+                branch = u'└─' if index == (item_count - 1) else u'├─'
+                self._perf_log(u'  %s %s | %s（%s 次）' % (
+                    branch,
                     self._format_perf_ms(api_stats.get('total_ms', 0.0)),
+                    self._describe_native_api_name(api_name),
                     int(api_stats.get('count', 0)),
                 ))
             self._perf_blank_line()
@@ -663,12 +662,29 @@ class RuntimeNativeApiMixin(object):
         if isinstance(payload_user_data, dict) and not payload_user_data:
             payload_user_data = None
 
+        cached_payload = payload_user_data
+        if isinstance(cached_payload, dict):
+            try:
+                cached_payload = tuple(sorted(cached_payload.items()))
+            except Exception:
+                cached_payload = repr(cached_payload)
+        elif isinstance(cached_payload, list):
+            try:
+                cached_payload = tuple(cached_payload)
+            except Exception:
+                cached_payload = repr(cached_payload)
+        cache_value = (item_name, aux_number, enchant_flag, cached_payload)
+        if self._get_cached_native_prop(path, 'ui_item') == cache_value:
+            return True
+
         item_control = self._to_item_renderer_control(control, path)
         if item_control and hasattr(item_control, 'SetUiItem'):
             try:
                 start_time = _perf_now()
                 ok = item_control.SetUiItem(item_name, aux_number, enchant_flag, payload_user_data) is not False
                 self._count_native_api_call('SetUiItem', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                if ok:
+                    self._set_cached_native_prop(path, 'ui_item', cache_value)
                 return ok
             except Exception:
                 pass
@@ -677,6 +693,8 @@ class RuntimeNativeApiMixin(object):
             start_time = _perf_now()
             ok = self._screen.SetUiItem(path, item_name, aux_number, enchant_flag, payload_user_data) is not False
             self._count_native_api_call('SetUiItem', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+            if ok:
+                self._set_cached_native_prop(path, 'ui_item', cache_value)
             return ok
         except Exception:
             return False

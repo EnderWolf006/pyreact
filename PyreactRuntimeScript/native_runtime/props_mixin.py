@@ -12,7 +12,7 @@ class RuntimePropsMixin(object):
         except Exception:
             return
         try:
-            print('=====> PyreactRuntime[%s] %s <=====' % (self._safe_text(tag), self._safe_text(msg)))
+            print('=====> Pyreact运行时[%s] %s <=====' % (self._safe_text(tag), self._safe_text(msg)))
         except Exception:
             pass
 
@@ -52,7 +52,12 @@ class RuntimePropsMixin(object):
 
         if node_type == "Item":
             item_props = self._resolve_item_props(props)
-            self._apply_item_native_props(node_path, item_props, node_control)
+            item_widget_path = self._safe_text(props.get('__native_item_widget_path__')) if isinstance(props, dict) else ''
+            item_widget_control = props.get('__native_item_widget_control__') if isinstance(props, dict) else None
+            if item_widget_path:
+                self._apply_item_native_props(item_widget_path, item_props, item_widget_control)
+            else:
+                self._apply_item_native_props(node_path, item_props, node_control)
             return
 
         if node_type == "Button":
@@ -233,7 +238,7 @@ class RuntimePropsMixin(object):
                 current = self._safe_text(current)
             if current != desired:
                 ok = self._safe_set_edit_text(node_path, desired, node_control)
-                self._dbg('Input.set', 'controlled path=%s id=%s current=%r desired=%r ok=%s' % (
+                self._dbg('输入框设置', '受控路径=%s 节点=%s 当前=%r 目标=%r 结果=%s' % (
                     node_path, node_id, current, desired, ok,
                 ))
             self._input_last_values[node_id] = desired
@@ -254,7 +259,7 @@ class RuntimePropsMixin(object):
         # If the control was recreated (full rerender), its current text may be empty.
         if current != cached:
             ok = self._safe_set_edit_text(node_path, cached, node_control)
-            self._dbg('Input.set', 'uncontrolled restore path=%s id=%s current=%r cached=%r ok=%s' % (
+            self._dbg('输入框设置', '非受控恢复 路径=%s 节点=%s 当前=%r 缓存=%r 结果=%s' % (
                 node_path, node_id, current, cached, ok,
             ))
 
@@ -664,18 +669,28 @@ class RuntimePropsMixin(object):
         if not isinstance(style, dict):
             return
 
-        layout = getattr(props.get('__shadow_node__'), 'layout', None) if isinstance(props, dict) else None
+        shadow_node = props.get('__shadow_node__') if isinstance(props, dict) else None
+        layout = getattr(shadow_node, 'layout', None) if shadow_node is not None else None
+        shadow_node_type = self._safe_text(getattr(shadow_node, 'node_type', '')) if shadow_node is not None else ''
         layer_path = node_path
         layer_control = node_control
         if isinstance(props, dict):
             maybe_layer_path = self._safe_text(props.get('__native_layer_path__'))
             if maybe_layer_path:
                 layer_path = maybe_layer_path
-                if layer_path != node_path:
-                    try:
-                        layer_control = self._screen.GetBaseUIControl(layer_path)
-                    except Exception:
-                        layer_control = None
+            maybe_layer_control = props.get('__native_layer_control__')
+            if maybe_layer_control:
+                layer_control = maybe_layer_control
+        if shadow_node_type == 'Item':
+            if layer_path.endswith('/widget'):
+                layer_path = layer_path[:-len('/widget')]
+            elif node_path.endswith('/widget'):
+                layer_path = node_path[:-len('/widget')]
+            elif node_control and hasattr(node_control, 'asItemRenderer'):
+                layer_path = self._safe_text(node_path)
+                if layer_path.endswith('/widget'):
+                    layer_path = layer_path[:-len('/widget')]
+            layer_control = None
 
         cache = self._get_native_common_style_cache()
         cached_style = cache.get(node_path, {})
@@ -720,6 +735,14 @@ class RuntimePropsMixin(object):
             layer_value = int(round(self._to_float(layer, 0.0)))
             next_cached_style['layer'] = layer_value
             if cached_style.get('layer') != layer_value:
+                if layer_path != node_path and not layer_control:
+                    try:
+                        if hasattr(self, '_get_cached_control'):
+                            layer_control = self._get_cached_control(layer_path, refresh=True, bucket='layer_lookup')
+                        else:
+                            layer_control = self._screen.GetBaseUIControl(layer_path)
+                    except Exception:
+                        layer_control = None
                 self._safe_set_layer(layer_path, layer_value, layer_control, sync_refresh=False, force_update=False)
         elif 'layer' in cached_style:
             self._safe_set_layer(layer_path, 0, layer_control, sync_refresh=False, force_update=False)
