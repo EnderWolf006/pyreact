@@ -94,6 +94,10 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         self._input_edit_bound = False
         self._input_edit_handler_method_name = None
         self._screen_update_tasks = []
+        self._pending_screen_refresh = False
+        self._pending_screen_refresh_sync = False
+        self._pending_screen_refresh_use_current = True
+        self._screen_refresh_task_scheduled = False
         self._render_generation = 0
         self._deferred_perf_state = None
 

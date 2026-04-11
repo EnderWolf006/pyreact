@@ -150,6 +150,7 @@ class RuntimeLifecycleMixin(object):
 
     def mount(self):
         self._mounted = True
+        self._clear_pending_screen_refresh(clear_request=True)
         self._bind_screen_update_handler()
         self._ensure_measure_label()
         self.render()
@@ -157,6 +158,7 @@ class RuntimeLifecycleMixin(object):
     def unmount(self):
         self._mounted = False
         self._clear_pending_screen_update_tasks()
+        self._clear_pending_screen_refresh(clear_request=True)
         self._clear_deferred_perf_state()
         self._unbind_screen_update_handler()
         self._button_callbacks = {}
@@ -201,6 +203,7 @@ class RuntimeLifecycleMixin(object):
         try:
             self._cancel_pending_deferred_perf_state()
             self._clear_pending_screen_update_tasks()
+            self._clear_pending_screen_refresh(clear_request=True)
             self._button_callbacks = {}
             self._input_callbacks = {}
             self._input_paths = {}
@@ -234,6 +237,7 @@ class RuntimeLifecycleMixin(object):
                     except Exception:
                         pass
                     self._clear_root_children(clear_grid_pool=True)
+                    self._schedule_pending_screen_refresh()
                 finally:
                     native_call_counts = self._finish_native_api_call_batch()
                 native_ms = (_perf_now() - native_start_time) * 1000.0
@@ -271,6 +275,7 @@ class RuntimeLifecycleMixin(object):
                     current_root_scroll_hosts=current_root_scroll_hosts,
                 )
                 deferred_grid_count = self._render_flat_tree([shadow_root], self._root_path)
+                self._schedule_pending_screen_refresh()
             finally:
                 native_call_counts = self._finish_native_api_call_batch()
             native_ms = (_perf_now() - native_start_time) * 1000.0
@@ -407,6 +412,62 @@ class RuntimeLifecycleMixin(object):
 
     def _clear_pending_screen_update_tasks(self):
         self._screen_update_tasks = []
+        self._clear_pending_screen_refresh(clear_request=False)
+
+    def _clear_pending_screen_refresh(self, clear_request=True):
+        self._screen_refresh_task_scheduled = False
+        if not clear_request:
+            return
+        self._pending_screen_refresh = False
+        self._pending_screen_refresh_sync = False
+        self._pending_screen_refresh_use_current = True
+
+    def _request_screen_refresh(self, sync_refresh=False, use_current=True):
+        self._pending_screen_refresh = True
+        if sync_refresh:
+            self._pending_screen_refresh_sync = True
+        if not hasattr(self, '_pending_screen_refresh_use_current'):
+            self._pending_screen_refresh_use_current = True
+        self._pending_screen_refresh_use_current = bool(self._pending_screen_refresh_use_current and use_current)
+
+    def _flush_pending_screen_refresh(self):
+        self._screen_refresh_task_scheduled = False
+        if not getattr(self, '_mounted', False):
+            self._clear_pending_screen_refresh(clear_request=True)
+            return True
+        if not getattr(self, '_pending_screen_refresh', False):
+            return True
+
+        sync_refresh = bool(getattr(self, '_pending_screen_refresh_sync', False))
+        use_current = bool(getattr(self, '_pending_screen_refresh_use_current', True))
+        self._pending_screen_refresh = False
+        self._pending_screen_refresh_sync = False
+        self._pending_screen_refresh_use_current = True
+
+        screen = getattr(self, '_screen', None)
+        if not screen or not hasattr(screen, 'UpdateScreen'):
+            return True
+
+        try:
+            start_time = _perf_now()
+            screen.UpdateScreen(sync_refresh, use_current)
+            self._count_native_api_call('UpdateScreen', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+            return True
+        except Exception:
+            self._request_screen_refresh(sync_refresh=sync_refresh, use_current=use_current)
+            return False
+
+    def _schedule_pending_screen_refresh(self):
+        if not getattr(self, '_pending_screen_refresh', False):
+            return
+        if getattr(self, '_screen_refresh_task_scheduled', False):
+            return
+        self._screen_refresh_task_scheduled = True
+        self._schedule_screen_update_task(
+            self._flush_pending_screen_refresh,
+            retries=3,
+            on_give_up=self._clear_pending_screen_refresh,
+        )
 
     def _schedule_screen_update_task(self, callback, retries=3, on_give_up=None):
         if not callable(callback):
@@ -487,6 +548,8 @@ class RuntimeLifecycleMixin(object):
             self._finalize_deferred_perf_state(perf_state)
         else:
             self._finish_native_api_call_batch()
+
+        self._schedule_pending_screen_refresh()
 
     def _is_virtual_node(self, node_type):
         return node_type == 'Panel'
@@ -844,7 +907,7 @@ class RuntimeLifecycleMixin(object):
             slot_key = self._safe_text(widget_path)
             needs_reactivate = slot_states.get(slot_key) != True
             if needs_reactivate:
-                self._safe_set_visible(widget_path, True, widget_control)
+                self._safe_set_visible(widget_path, True, widget_control, sync_refresh=False)
                 slot_states[slot_key] = True
 
             needs_native_reset = needs_reactivate or node_type == 'Label'
@@ -1251,7 +1314,7 @@ class RuntimeLifecycleMixin(object):
                 if is_preserved_scroll:
                     preserved_root_scroll_hosts[child_path] = True
                     if child_path in current_root_scroll_hosts:
-                        self._safe_set_visible(child_path, True, child_control)
+                        self._safe_set_visible(child_path, True, child_control, sync_refresh=False)
                         self._prune_preserved_host_subtree(child_path, expected_children_by_parent)
                         scroll_content_path = self._get_scroll_content_path(child_path)
                         if scroll_content_path and scroll_content_path != child_path:
@@ -1282,7 +1345,7 @@ class RuntimeLifecycleMixin(object):
 
         track_path = self._get_scrollbar_track_path(node_path)
         if track_path:
-            self._safe_set_visible(track_path, show_scrollbar)
+            self._safe_set_visible(track_path, show_scrollbar, sync_refresh=False)
 
     def _get_real_scroll_view_path(self, scroll_node_path):
         if not scroll_node_path:

@@ -623,13 +623,13 @@ class RuntimePropsMixin(object):
         if display == "none":
             next_cached_style['display'] = display
             if cached_style.get('display') != display:
-                self._safe_set_visible(node_path, False, node_control)
+                self._safe_set_visible(node_path, False, node_control, sync_refresh=False)
         elif display:
             next_cached_style['display'] = display
             if cached_style.get('display') != display:
-                self._safe_set_visible(node_path, True, node_control)
+                self._safe_set_visible(node_path, True, node_control, sync_refresh=False)
         elif 'display' in cached_style:
-            self._safe_set_visible(node_path, True, node_control)
+            self._safe_set_visible(node_path, True, node_control, sync_refresh=False)
 
         opacity = style.get("opacity")
         color = props.get("color")  # type: Color

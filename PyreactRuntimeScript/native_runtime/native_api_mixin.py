@@ -875,39 +875,46 @@ class RuntimeNativeApiMixin(object):
             pass
 
     def _safe_set_visible(self, path, visible, control=None, sync_refresh=None):
+        visible_value = bool(visible)
+        if self._get_cached_native_prop(path, 'visible') == visible_value:
+            return
+
+        requested_sync_refresh = sync_refresh
+        if requested_sync_refresh is None:
+            requested_sync_refresh = False
+        requested_sync_refresh = bool(requested_sync_refresh)
+
         try:
             if control and hasattr(control, "SetVisible"):
-                if sync_refresh is None:
-                    start_time = _perf_now()
-                    control.SetVisible(bool(visible))
-                else:
-                    start_time = _perf_now()
-                    control.SetVisible(bool(visible), bool(sync_refresh))
+                start_time = _perf_now()
+                control.SetVisible(visible_value, requested_sync_refresh)
                 self._count_native_api_call('SetVisible', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'visible', visible_value)
+                if not requested_sync_refresh:
+                    self._request_screen_refresh(sync_refresh=False)
                 return
             base = self._screen.GetBaseUIControl(path)
             if base and hasattr(base, "SetVisible"):
-                if sync_refresh is None:
-                    start_time = _perf_now()
-                    base.SetVisible(bool(visible))
-                else:
-                    start_time = _perf_now()
-                    base.SetVisible(bool(visible), bool(sync_refresh))
+                start_time = _perf_now()
+                base.SetVisible(visible_value, requested_sync_refresh)
                 self._count_native_api_call('SetVisible', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                self._set_cached_native_prop(path, 'visible', visible_value)
+                if not requested_sync_refresh:
+                    self._request_screen_refresh(sync_refresh=False)
         except Exception:
-            if sync_refresh is None:
-                return
             try:
                 if control and hasattr(control, "SetVisible"):
                     start_time = _perf_now()
-                    control.SetVisible(bool(visible))
+                    control.SetVisible(visible_value)
                     self._count_native_api_call('SetVisible', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                    self._set_cached_native_prop(path, 'visible', visible_value)
                     return
                 base = self._screen.GetBaseUIControl(path)
                 if base and hasattr(base, "SetVisible"):
                     start_time = _perf_now()
-                    base.SetVisible(bool(visible))
+                    base.SetVisible(visible_value)
                     self._count_native_api_call('SetVisible', elapsed_ms=(_perf_now() - start_time) * 1000.0)
+                    self._set_cached_native_prop(path, 'visible', visible_value)
             except Exception:
                 pass
 
