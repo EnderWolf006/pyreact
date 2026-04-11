@@ -17,6 +17,8 @@ class LayoutResult(object):
                  margin_bottom=0.0,
                  margin_left=0.0,
                  final_layer=0,
+                 native_depth=None,
+                 native_final_layer=None,
                  content_width=0.0,
                  content_height=0.0):
         self.x = float(x)
@@ -36,6 +38,11 @@ class LayoutResult(object):
         self.margin_bottom = float(margin_bottom)
         self.margin_left = float(margin_left)
         self.final_layer = int(final_layer)
+        self.native_depth = native_depth
+        if native_final_layer is None:
+            self.native_final_layer = None
+        else:
+            self.native_final_layer = int(native_final_layer)
 
         self.content_width = float(content_width)
         self.content_height = float(content_height)

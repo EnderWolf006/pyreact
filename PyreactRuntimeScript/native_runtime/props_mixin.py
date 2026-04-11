@@ -456,6 +456,8 @@ class RuntimePropsMixin(object):
                     if isinstance(style, dict):
                         z_index = int(round(self._to_float(style.get("zIndex"), 0.0)))
                     layout.final_layer = z_index
+                    layout.native_depth = 0
+                    layout.native_final_layer = z_index
                 except Exception:
                     pass
 
@@ -647,7 +649,9 @@ class RuntimePropsMixin(object):
         elif 'opacity' in cached_style:
             self._safe_set_alpha(node_path, 1.0, node_control)
 
-        layer = getattr(layout, 'final_layer', None)
+        layer = getattr(layout, 'native_final_layer', None)
+        if layer is None:
+            layer = getattr(layout, 'final_layer', None)
         if layer is None:
             layer = style.get("zIndex")
         if layer is not None:

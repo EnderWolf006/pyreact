@@ -515,13 +515,46 @@ class RuntimeLifecycleMixin(object):
             return self._get_scroll_content_path(path)
         return path or self._root_path
 
-    def _collect_flat_entries(self, current_node, parent_target, entries):
+    def _compute_native_layer_value(self, node, native_depth, layer_anchor=None, layer_depth=0):
+        try:
+            resolved_native_depth = int(native_depth)
+        except Exception:
+            resolved_native_depth = 0
+        try:
+            resolved_layer_depth = int(layer_depth)
+        except Exception:
+            resolved_layer_depth = 0
+
+        try:
+            style = getattr(node, 'style', None) or {}
+            position_value = ''
+            z_index = 0
+            if isinstance(style, dict):
+                position_value = self._safe_text(style.get('position')).strip().lower()
+                z_index = int(round(self._to_float(style.get('zIndex'), 0.0)))
+        except Exception:
+            position_value = ''
+            z_index = 0
+
+        if layer_anchor is not None:
+            try:
+                resolved_anchor = int(layer_anchor)
+            except Exception:
+                resolved_anchor = 0
+            return resolved_anchor + (resolved_layer_depth * 10) + z_index
+
+        native_layer = (resolved_native_depth * 1000) + z_index
+        if position_value == 'absolute' and z_index != 0:
+            native_layer = (z_index * 10000) + resolved_native_depth
+        return native_layer
+
+    def _collect_flat_entries(self, current_node, parent_target, entries, native_depth=0, layer_anchor=None, layer_depth=0):
         if current_node is None:
             return
 
         if isinstance(current_node, (list, tuple)):
             for child in current_node:
-                self._collect_flat_entries(child, parent_target, entries)
+                self._collect_flat_entries(child, parent_target, entries, native_depth, layer_anchor, layer_depth)
             return
 
         node_type = self._safe_text(getattr(current_node, 'node_type', 'Panel') or 'Panel')
@@ -529,28 +562,43 @@ class RuntimeLifecycleMixin(object):
 
         if self._is_virtual_node(node_type):
             for child in children:
-                self._collect_flat_entries(child, parent_target, entries)
+                self._collect_flat_entries(child, parent_target, entries, native_depth, layer_anchor, layer_depth)
             return
 
         child_name = self._get_control_name(current_node)
+        entry_native_depth = native_depth + 1
+        entry_layer_depth = layer_depth + 1 if layer_anchor is not None else 0
+        entry_native_layer = self._compute_native_layer_value(
+            current_node,
+            entry_native_depth,
+            layer_anchor=layer_anchor,
+            layer_depth=entry_layer_depth,
+        )
         entries.append({
             'node': current_node,
             'node_type': node_type,
             'node_id': self._safe_text(getattr(current_node, 'node_id', 'node')),
             'parent_target': parent_target,
             'child_name': child_name,
+            'native_depth': entry_native_depth,
+            'native_final_layer': entry_native_layer,
         })
 
         next_parent_target = parent_target
+        next_layer_anchor = layer_anchor
+        next_layer_depth = entry_layer_depth
         if node_type == 'Scroll':
             next_parent_target = {
                 'kind': 'scroll_content_of_entry',
                 'parent_target': parent_target,
                 'scroll_child_name': child_name,
             }
+        if node_type == 'Button':
+            next_layer_anchor = entry_native_layer + 10
+            next_layer_depth = 0
 
         for child in children:
-            self._collect_flat_entries(child, next_parent_target, entries)
+            self._collect_flat_entries(child, next_parent_target, entries, entry_native_depth, next_layer_anchor, next_layer_depth)
 
     def _render_flat_tree(self, children, root_parent_path):
         entries = []
@@ -581,6 +629,19 @@ class RuntimeLifecycleMixin(object):
         node_id = entry.get('node_id')
         child_name = entry.get('child_name')
         node_path = parent_path + '/' + child_name
+        layout = getattr(node, 'layout', None)
+        if layout is not None:
+            existing_native_layer = getattr(layout, 'native_final_layer', None)
+            existing_native_depth = getattr(layout, 'native_depth', None)
+            if existing_native_layer is None:
+                try:
+                    native_depth = int(entry.get('native_depth', 0))
+                except Exception:
+                    native_depth = 0
+                layout.native_depth = native_depth
+                layout.native_final_layer = entry.get('native_final_layer')
+            elif existing_native_depth is None:
+                layout.native_depth = 0
 
         parent_control = self._screen.GetBaseUIControl(parent_path)
         if not parent_control:
