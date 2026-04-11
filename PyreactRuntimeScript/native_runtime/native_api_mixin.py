@@ -25,6 +25,83 @@ except NameError:
 class RuntimeNativeApiMixin(object):
     _TEXT_FONT_SIZE_BASE = 10.0
 
+    def _perf_log(self, message):
+        try:
+            print('[Pyreact] %s' % self._safe_text(message))
+        except Exception:
+            pass
+
+    def _perf_blank_line(self):
+        try:
+            print('')
+        except Exception:
+            pass
+
+    def _format_perf_ms(self, value):
+        v = self._to_float(value, 0.0)
+        return '%02.3f ms' % v
+
+    def _format_perf_ms_short(self, value):
+        v = self._to_float(value, 0.0)
+        return '%.3f ms' % v
+
+    def _log_native_api_nested(self, title, total_ms, overhead_ms, counts, indent='    '):
+        if not getattr(self, '_log_perf', False):
+            return
+        if not isinstance(counts, dict) or not counts:
+            return
+        try:
+            total_count, _, items = self._get_native_api_call_summary(counts)
+            if total_count <= 0:
+                return
+            overhead_display = '%.3f' % overhead_ms if overhead_ms >= 0.001 else '0.000'
+            self._perf_log('%s└─ %s | %s [损耗: %s ms, 原生: %s]' % (
+                indent,
+                self._format_perf_ms(total_ms + overhead_ms),
+                self._safe_text(title),
+                overhead_display,
+                self._format_perf_ms_short(total_ms),
+            ))
+            for api_name, api_stats in items:
+                self._perf_log('%s     ├─ %s | %s(%s 次)' % (
+                    indent,
+                    self._format_perf_ms(api_stats.get('total_ms', 0.0)),
+                    self._safe_text(api_name),
+                    int(api_stats.get('count', 0)),
+                ))
+        except Exception:
+            pass
+
+    def _perf_label_with_tabs(self, label, min_tabs=2):
+        safe_label = self._safe_text(label)
+        try:
+            label_len = len(safe_label)
+        except Exception:
+            label_len = 0
+        tab_count = 7 - int(label_len / 6)
+        if tab_count < min_tabs:
+            tab_count = min_tabs
+        return '%s%s' % (safe_label, '\t' * tab_count)
+
+    def _get_native_api_call_summary(self, counts):
+        total_count = 0
+        total_ms = 0.0
+        items = []
+        if not isinstance(counts, dict):
+            return total_count, total_ms, items
+
+        for api_name, api_stats in counts.items():
+            entry = self._normalize_native_api_call_stats(api_stats)
+            count_value = int(entry.get('count', 0))
+            if count_value <= 0:
+                continue
+            total_count += count_value
+            total_ms += self._to_float(entry.get('total_ms', 0.0), 0.0)
+            items.append((self._safe_text(api_name), entry))
+
+        items = sorted(items, key=lambda item: (-item[1].get('total_ms', 0.0), -item[1].get('count', 0), item[0]))
+        return total_count, total_ms, items
+
     def _get_native_layout_cache(self):
         cache = getattr(self, '_native_layout_cache', None)
         if not isinstance(cache, dict):
@@ -164,20 +241,21 @@ class RuntimeNativeApiMixin(object):
         if not isinstance(counts, dict) or not counts:
             return
         try:
-            print('=====> PyreactRuntime[perf] %s: <=====' % self._safe_text(title))
-            items = []
-            for api_name, api_stats in counts.items():
-                entry = self._normalize_native_api_call_stats(api_stats)
-                if entry.get('count', 0) <= 0:
-                    continue
-                items.append((self._safe_text(api_name), entry))
-            items = sorted(items, key=lambda item: (-item[1].get('count', 0), -item[1].get('total_ms', 0.0), item[0]))
+            total_count, total_ms, items = self._get_native_api_call_summary(counts)
+            if total_count <= 0:
+                return
+            self._perf_log(u'█ %s (共 %s 次 / %s)' % (
+                self._safe_text(title),
+                total_count,
+                self._format_perf_ms(total_ms),
+            ))
             for api_name, api_stats in items:
-                print('=====> PyreactRuntime[perf]    %s: %s次, %.3fms <=====' % (
-                    api_name,
+                self._perf_log(u'  ├─ %s%s / %s 次' % (
+                    self._perf_label_with_tabs(api_name, min_tabs=2),
+                    self._format_perf_ms(api_stats.get('total_ms', 0.0)),
                     int(api_stats.get('count', 0)),
-                    self._to_float(api_stats.get('total_ms', 0.0), 0.0),
                 ))
+            self._perf_blank_line()
         except Exception:
             pass
 

@@ -123,7 +123,7 @@ class MyScreen(ScreenNode):
 
 `Panel` 现在是**纯布局节点**：它仍然是公开 primitive，用来组织 Flex / 定位 / children，但 runtime 不会为它单独创建原生 `panel` 控件。
 
-如需打印每次更新的 5 段性能日志（组件执行 / VNode 构建 / Diff / 布局 / 原生 UI 应用），可传入 `log_perf=True`。
+如需打印分区式性能日志（按 `Mount/Update` 区分，展示主流程阶段、原生接口调用统计，以及存在延迟 grid 时的跨帧异步统计），可传入 `log_perf=True`。
 
 下面是一个最小 Screen JSON（同样可直接参考 `JsonUI/PyreactExample.json`）：
 

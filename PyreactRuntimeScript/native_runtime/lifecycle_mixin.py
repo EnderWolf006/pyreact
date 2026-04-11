@@ -8,22 +8,49 @@ from PyreactRuntimeScript.native_runtime.native_api_mixin import _perf_now
 
 
 class RuntimeLifecycleMixin(object):
-    def _log_render_stage_timings(self, component_ms, build_ms, diff_ms, layout_ms, native_ms, deferred_grid_count=0, native_call_counts=None):
+    def _get_perf_render_kind(self):
+        next_kind = self._safe_text(getattr(self, '_next_render_perf_kind', ''))
+        self._next_render_perf_kind = None
+        if next_kind:
+            return next_kind
+        if getattr(self, '_render_generation', 0) <= 1:
+            return 'Mount'
+        return 'Update'
+
+    def _calc_perf_ratio(self, part, total):
+        total_value = self._to_float(total, 0.0)
+        if total_value <= 0.0:
+            return 0
+        return int(round((self._to_float(part, 0.0) / total_value) * 100.0))
+
+    def _log_render_stage_timings(self, render_kind, component_ms, build_ms, diff_ms, layout_ms, native_ms, deferred_grid_count=0, native_call_counts=None):
         if not getattr(self, '_log_perf', False):
             return
         try:
-            print('=====> PyreactRuntime[perf] 1. 组件函数执行: %.3fms <=====' % component_ms)
-            print('=====> PyreactRuntime[perf] 2. 构建VNode树: %.3fms <=====' % build_ms)
-            print('=====> PyreactRuntime[perf] 3. Diff计算: %.3fms <=====' % diff_ms)
-            print('=====> PyreactRuntime[perf] 4. 布局计算: %.3fms <=====' % layout_ms)
+            sync_total_ms = component_ms + build_ms + diff_ms + layout_ms + native_ms
+            overhead_ms = native_ms
+            native_total_ms = 0.0
+            if isinstance(native_call_counts, dict):
+                _, native_total_ms, _ = self._get_native_api_call_summary(native_call_counts)
+            overhead_ms = max(0.0, native_ms - native_total_ms)
+            app_id = self._safe_text(getattr(self, 'app_id', 'unknown')) or 'unknown'
+            self._perf_log(u'━━━ 渲染管线帧耗时统计 (%s: %s) ━━━' % (self._safe_text(render_kind), app_id))
+            self._perf_blank_line()
             if deferred_grid_count > 0:
-                print('=====> PyreactRuntime[perf] 5. 应用到原生UI(本帧提交): %.3fms <=====' % native_ms)
-                print('=====> PyreactRuntime[perf]    Grid跨帧初始化待完成: %s项 <=====' % deferred_grid_count)
+                self._perf_log(u'█ 主流程阶段 [合计: %s]' % self._format_perf_ms(sync_total_ms))
             else:
-                print('=====> PyreactRuntime[perf] 5. 应用到原生UI: %.3fms <=====' % native_ms)
+                self._perf_log(u'█ 主流程阶段 [合计: %s]' % self._format_perf_ms(sync_total_ms))
+            self._perf_log(u'   ├─ %s | 组件执行' % self._format_perf_ms(component_ms))
+            self._perf_log(u'   ├─ %s | 构建 VNode' % self._format_perf_ms(build_ms))
+            self._perf_log(u'   ├─ %s | Diff 计算' % self._format_perf_ms(diff_ms))
+            self._perf_log(u'   ├─ %s | 布局计算' % self._format_perf_ms(layout_ms))
+            if deferred_grid_count > 0:
+                self._log_native_api_nested('提交原生UI [延迟 Grid %s 项]' % deferred_grid_count, native_total_ms, overhead_ms, native_call_counts, indent='   ')
+            else:
+                self._log_native_api_nested('提交原生UI', native_total_ms, overhead_ms, native_call_counts, indent='   ')
+            self._perf_blank_line()
         except Exception:
             pass
-        self._log_native_api_call_counts('原生接口调用统计(本帧)', native_call_counts)
 
     def _clear_deferred_perf_state(self):
         self._deferred_perf_state = None
@@ -43,7 +70,7 @@ class RuntimeLifecycleMixin(object):
             self._mark_deferred_grid_entry_done(generation, succeeded=False)
             remaining -= 1
 
-    def _begin_deferred_perf_tracking(self, generation, deferred_grid_count, native_submit_ms, native_start_time):
+    def _begin_deferred_perf_tracking(self, generation, deferred_grid_count, native_submit_ms, native_start_time, sync_total_ms):
         if not getattr(self, '_log_perf', False):
             return
         if deferred_grid_count <= 0:
@@ -52,12 +79,14 @@ class RuntimeLifecycleMixin(object):
 
         self._deferred_perf_state = {
             'generation': generation,
+            'render_kind': self._safe_text(getattr(self, '_active_render_perf_kind', 'Update')) or 'Update',
             'remaining': deferred_grid_count,
             'total': deferred_grid_count,
             'completed': 0,
             'failed': 0,
             'native_submit_ms': native_submit_ms,
             'native_start_time': native_start_time,
+            'sync_total_ms': self._to_float(sync_total_ms, 0.0),
             'update_ticks': 0,
             'native_call_counts': {},
         }
@@ -115,20 +144,28 @@ class RuntimeLifecycleMixin(object):
         if total_elapsed_ms < native_submit_ms:
             total_elapsed_ms = native_submit_ms
         deferred_wait_ms = total_elapsed_ms - native_submit_ms
-
         try:
-            print('=====> PyreactRuntime[perf] 6. Grid跨帧初始化完成: %.3fms (额外等待: %.3fms, Update帧: %s, 项数: %s, 成功: %s, 失败: %s) <=====' % (
-                total_elapsed_ms,
-                deferred_wait_ms,
-                perf_state.get('update_ticks', 0),
-                perf_state.get('total', 0),
-                perf_state.get('completed', 0),
-                perf_state.get('failed', 0),
+            sync_total_ms = self._to_float(perf_state.get('sync_total_ms', 0.0), 0.0)
+            total_pipeline_ms = sync_total_ms + total_elapsed_ms
+            async_ratio = self._calc_perf_ratio(total_elapsed_ms, total_pipeline_ms)
+            native_total_ms = 0.0
+            native_counts = perf_state.get('native_call_counts')
+            if isinstance(native_counts, dict):
+                _, native_total_ms, _ = self._get_native_api_call_summary(native_counts)
+            native_overhead_ms = max(0.0, native_submit_ms - native_total_ms)
+            update_ticks = perf_state.get('update_ticks', 0)
+            self._perf_log(u'█ 跨帧异步任务 [合计: %s / 占比: %s%%]' % (
+                self._format_perf_ms(total_elapsed_ms),
+                async_ratio,
             ))
+            self._perf_log(u'   ├─ %s | 等待主流程帧完成以及帧间隔 [共等 %s 帧]' % (
+                self._format_perf_ms(deferred_wait_ms),
+                update_ticks,
+            ))
+            self._log_native_api_nested('提交原生UI', native_total_ms, native_overhead_ms, native_counts, indent='   ')
+            self._perf_blank_line()
         except Exception:
             pass
-
-        self._log_native_api_call_counts('原生接口调用统计(跨帧)', perf_state.get('native_call_counts'))
 
         self._clear_deferred_perf_state()
 
@@ -150,6 +187,7 @@ class RuntimeLifecycleMixin(object):
 
     def mount(self):
         self._mounted = True
+        self._next_render_perf_kind = 'Mount'
         self._clear_pending_screen_refresh(clear_request=True)
         self._bind_screen_update_handler()
         self._ensure_measure_label()
@@ -183,6 +221,7 @@ class RuntimeLifecycleMixin(object):
     def request_render(self):
         if not self._mounted:
             return
+        self._next_render_perf_kind = 'Update'
         if self._is_rendering:
             self._needs_render = True
             return
@@ -198,6 +237,7 @@ class RuntimeLifecycleMixin(object):
             return
 
         self._render_generation += 1
+        self._active_render_perf_kind = self._get_perf_render_kind()
         self._render_scheduled = False
         self._is_rendering = True
         try:
@@ -241,7 +281,7 @@ class RuntimeLifecycleMixin(object):
                 finally:
                     native_call_counts = self._finish_native_api_call_batch()
                 native_ms = (_perf_now() - native_start_time) * 1000.0
-                self._log_render_stage_timings(component_ms, build_ms, diff_ms, 0.0, native_ms, native_call_counts=native_call_counts)
+                self._log_render_stage_timings(self._active_render_perf_kind, component_ms, build_ms, diff_ms, 0.0, native_ms, native_call_counts=native_call_counts)
                 return
 
             width, height = self._get_root_size()
@@ -281,9 +321,10 @@ class RuntimeLifecycleMixin(object):
             native_ms = (_perf_now() - native_start_time) * 1000.0
 
             if deferred_grid_count > 0:
-                self._begin_deferred_perf_tracking(self._render_generation, deferred_grid_count, native_ms, native_start_time)
+                sync_total_ms = component_ms + build_ms + diff_ms + layout_ms + native_ms
+                self._begin_deferred_perf_tracking(self._render_generation, deferred_grid_count, native_ms, native_start_time, sync_total_ms)
 
-            self._log_render_stage_timings(component_ms, build_ms, diff_ms, layout_ms, native_ms, deferred_grid_count, native_call_counts=native_call_counts)
+            self._log_render_stage_timings(self._active_render_perf_kind, component_ms, build_ms, diff_ms, layout_ms, native_ms, deferred_grid_count, native_call_counts=native_call_counts)
 
             self._prev_vtree = new_vtree
             self._prev_shadow_root = shadow_root
@@ -296,6 +337,7 @@ class RuntimeLifecycleMixin(object):
             except Exception:
                 pass
         finally:
+            self._active_render_perf_kind = None
             self._is_rendering = False
             if self._needs_render:
                 self._needs_render = False
