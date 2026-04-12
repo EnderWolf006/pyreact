@@ -156,12 +156,12 @@ class YourScreenNode(ScreenNode):
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `width` | `int | str` | 宽度，可写数值或 `'100%'` |
-| `height` | `int | str` | 高度，可写数值或 `'100%'` |
-| `minWidth` | `int | str` | 最小宽度 |
-| `maxWidth` | `int | str` | 最大宽度 |
-| `minHeight` | `int | str` | 最小高度 |
-| `maxHeight` | `int | str` | 最大高度 |
+| `width` | `int / str` | 宽度，可写数值或 `'100%'` |
+| `height` | `int / str` | 高度，可写数值或 `'100%'` |
+| `minWidth` | `int / str` | 最小宽度 |
+| `maxWidth` | `int / str` | 最大宽度 |
+| `minHeight` | `int / str` | 最小高度 |
+| `maxHeight` | `int / str` | 最大高度 |
 | `minSize` | `tuple` | 最小尺寸，通常是 `(width, height)` |
 | `maxSize` | `tuple` | 最大尺寸，通常是 `(width, height)` |
 
@@ -169,22 +169,22 @@ class YourScreenNode(ScreenNode):
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `padding` | `int | float` | 统一内边距 |
-| `paddingTop` | `int | float` | 上内边距 |
-| `paddingRight` | `int | float` | 右内边距 |
-| `paddingBottom` | `int | float` | 下内边距 |
-| `paddingLeft` | `int | float` | 左内边距 |
-| `margin` | `int | float` | 统一外边距 |
-| `marginTop` | `int | float` | 上外边距 |
-| `marginRight` | `int | float` | 右外边距 |
-| `marginBottom` | `int | float` | 下外边距 |
-| `marginLeft` | `int | float` | 左外边距 |
+| `padding` | `int / float` | 统一内边距 |
+| `paddingTop` | `int / float` | 上内边距 |
+| `paddingRight` | `int / float` | 右内边距 |
+| `paddingBottom` | `int / float` | 下内边距 |
+| `paddingLeft` | `int / float` | 左内边距 |
+| `margin` | `int / float` | 统一外边距 |
+| `marginTop` | `int / float` | 上外边距 |
+| `marginRight` | `int / float` | 右外边距 |
+| `marginBottom` | `int / float` | 下外边距 |
+| `marginLeft` | `int / float` | 左外边距 |
 
 Flex 相关：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `flex` | `int | float` | Flex 比例 |
+| `flex` | `int / float` | Flex 比例 |
 | `flexDirection` | `str` | 主轴方向，通常为 `FlexDirection.row` / `column` |
 | `justifyContent` | `str` | 主轴对齐 |
 | `alignItems` | `str` | 交叉轴对齐 |
@@ -196,10 +196,10 @@ Flex 相关：
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `position` | `str` | 定位方式，通常为 `Position.relative` / `absolute` |
-| `top` | `int | float` | 顶部偏移 |
-| `left` | `int | float` | 左侧偏移 |
-| `right` | `int | float` | 右侧偏移 |
-| `bottom` | `int | float` | 底部偏移 |
+| `top` | `int / float` | 顶部偏移 |
+| `left` | `int / float` | 左侧偏移 |
+| `right` | `int / float` | 右侧偏移 |
+| `bottom` | `int / float` | 底部偏移 |
 | `opacity` | `float` | 透明度 |
 | `display` | `str` | 显示状态，例如 `'none'` |
 | `zIndex` | `int` | 层级 |
