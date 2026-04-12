@@ -1,75 +1,85 @@
 # Pyreact
 
-面向 **网易我的世界（基岩版）ModSDK** 的 Python UI 声明式渲染框架（实验性）。
+面向 **网易我的世界（基岩版）ModSDK** 的 Python UI 声明式渲染框架。
 
-它提供类似 React 的组件函数 + Hooks 写法，把组件树（VNode）经过 Diff 与布局计算后，渲染为 **直接挂载到 `root` / `scroll_content` 的原生控件集合**。
+提供类似 React 的组件函数 + Hooks 写法，将组件树（VNode）经过 Diff 与布局计算后，渲染为原生控件集合。
 
 ## 特性
 
-- **函数式组件**：通过 `@Component` 声明组件
-- **Hooks**：`useState` / `useEffect` / `useMemo` / `useCallback` / `useRef`
-- **基础控件**（Primitives）：`Panel` / `Image` / `Label` / `Item` / `Button` / `Input` / `Scroll`
-- **布局**：Flexbox 风格布局（子集），支持 `width/height/padding/margin/flexDirection/justifyContent/alignItems/...`
-- **运行时桥接**：将组件树扁平渲染到 NetEase UI（通过 Runtime 系统统一管理挂载/卸载/重渲染）
+- **函数式组件** - 通过 `@Component` 装饰器声明组件
+- **Hooks** - `useState` / `useEffect` / `useMemo` / `useCallback` / `useRef`
+- **Flexbox 布局** - 支持 `width/height/padding/margin/flexDirection/justifyContent/alignItems` 等
+- **基础控件** - `Panel` / `Image` / `Label` / `Button` / `Input` / `Scroll` / `Item`
+- **运行时优化** - Typed Grid 批量创建、控件池复用、跨帧延迟渲染
 
+---
 
-## 快速开始（在 ModSDK AddOn 中使用）
-> 如你只想用example体验一下，可以直接改一下 `sync_to_test.cmd` 中的参数，一键开始体验
-### 1) 拷贝文件到你的 AddOn
+## 快速开始
 
-把以下目录拷贝到 **行为包（behavior_pack）** 下：
+### 1. 集成到你的 AddOn
 
-- `pyreact/`
-- `PyreactRuntimeScript/`
+**行为包（behavior_pack）添加：**
+```
+pyreact/                    # 框架核心
+PyreactRuntimeScript/       # 运行时系统
+```
 
-把以下 JSON 拷贝到 **资源包（resource_pack）** 的 `ui/` 目录下：
+**资源包（resource_pack）的 `ui/` 目录添加：**
+```
+PyreactBase.json            # 基础控件模板
+YourScreen.json             # 你的 Screen 定义
+```
 
-- `JsonUI/PyreactBase.json`
-- 你的 Screen JSON（可参考 `JsonUI/PyreactExample.json`）
-
-### 2) 确保 Runtime 系统被注册
-
-`PyreactRuntimeScript/modMain.py` 会注册 `PyreactRuntimeClientSystem`。确保该脚本作为你的 AddOn 的一部分被加载。
-
-### 3) 注册 UI 并 PushScreen
-
-可参考：`PyreactExampleScript/PyreactExampleClientSystem.py`
-
-典型流程（示意）：
-
-1. `RegisterUI(...)`
-2. `PushScreen(...)`
-
-### 4) 在 ScreenNode 中挂载 Pyreact App
-
-可参考：`PyreactExampleScript/PyreactExampleUi.py`
-
-一个最小计数器示例（保持 Python2 写法）：
+### 2. 注册 UI 并显示
 
 ```python
 # -*- coding: utf-8 -*-
+# YourClientSystem.py
+
+import mod.client.extraClientApi as clientApi
+ClientSystem = clientApi.GetClientSystemCls()
+
+class YourClientSystem(ClientSystem):
+    def __init__(self, namespace, systemName):
+        ClientSystem.__init__(self, namespace, systemName)
+        self.ListenForEvent(
+            clientApi.GetEngineNamespace(),
+            clientApi.GetEngineSystemName(),
+            'UiInitFinished', self, self.OnUiInitFinished
+        )
+
+    def OnUiInitFinished(self, args):
+        # 注册 UI
+        clientApi.RegisterUI(
+            'YourMod', 'YourUI',
+            "YourMod.YourScreen.YourScreenNode",
+            "YourNamespace.main"
+        )
+        # 在需要显示的时机显示界面
+        clientApi.PushScreen('YourMod', 'YourUI', {"isHud": 1, "data": {}})
+```
+
+### 4. 编写组件并挂载
+
+```python
+# -*- coding: utf-8 -*-
+# YourScreen.py
 
 import mod.client.extraClientApi as clientApi
 from pyreact import (
-    Component,
-    Panel,
-    Label,
-    Button,
-    Style,
-    AlignItems,
-    JustifyContent,
-    Colors,
-    useState,
-    render_app,
+    Component, Panel, Label, Button, Scroll,
+    Style, Color, Colors, FontSize,
+    AlignItems, JustifyContent, FlexDirection,
+    useState, useRef, render_app,
 )
 
 ScreenNode = clientApi.GetScreenNodeCls()
 
-
 @Component
 def CounterApp():
+    """计数器示例组件"""
     count, set_count = useState(0)
-
+    
     return Panel(
         style=Style(
             width='100%',
@@ -78,91 +88,217 @@ def CounterApp():
             justifyContent=JustifyContent.center,
         ),
         children=[
-            Label(content='Count: %s' % count, color=Colors.white),
+            Label(
+                content='Count: %d' % count,
+                color=Colors.white,
+                fontSize=FontSize.extraLarge,
+            ),
             Button(
-                style=Style(width=140, height=34, marginTop=10),
-                onClick=(lambda: set_count(count + 1)),
-                children=[Label(content='Increment', color=Colors.white)],
+                style=Style(width=120, height=36, marginTop=16),
+                onClick=lambda: set_count(count + 1),
+                children=[
+                    Label(content='Click Me', color=Colors.white)
+                ],
             ),
         ],
     )
 
 
-class MyScreen(ScreenNode):
+class YourScreenNode(ScreenNode):
+    def __init__(self, namespace, name, param):
+        ScreenNode.__init__(self, namespace, name, param)
+        self.app_id = 'your_app_id'
+
     def Create(self):
         render_app(
             root=CounterApp,
             bind={
                 'screen': self,
                 'root': '/root',
-                'app_id': 'pyreact_counter_demo',
+                'app_id': self.app_id,
                 'base_namespace': 'PyreactBase',
             },
-            log_perf=False,
         )
 
     def Destroy(self):
-        runtime_system = clientApi.GetSystem('PyreactRuntimeMod', 'PyreactRuntimeClientSystem')
-        if runtime_system is not None:
-            runtime_system.UnmountApp({'app_id': 'pyreact_counter_demo'})
+        runtime = clientApi.GetSystem('PyreactRuntimeMod', 'PyreactRuntimeClientSystem')
+        if runtime:
+            runtime.UnmountApp({'app_id': self.app_id})
 ```
 
-## JsonUI 约定
+---
 
-`render_app(..., bind={'root': '/root', ...})` 默认会把控件扁平挂载到一个名为 `root` 的容器节点下；若节点位于 `Scroll` 内部，则直接挂到该 scroll 的 `scroll_content`。
+## 核心 API
 
-从当前版本开始，`Button` / `Image` / `Input` / `Item` / `Label` 这 5 类 flat 控件在父容器存在对应 typed grid 时，会优先走 grid 批量创建，而不是逐个 `CreateChildControl`。默认要求：
+### 控件（Primitives）
 
-- `root` 和 `scroll_content` 都继承 `PyreactBase.rootBase`
-- `rootBase` 下保留 `buttonGrid` / `imageGrid` / `inputGrid` / `itemGrid` / `textGrid`
-- grid item 模板保持 `xxxPanelBase -> widget@xxxBase` 结构
+| 控件 | 说明 | 常用属性 |
+|------|------|----------|
+| `Panel` | 布局容器（纯布局节点，不创建原生控件） | `style`, `children` |
+| `Image` | 图片/色块 | `style`, `src`, `color` |
+| `Label` | 文本 | `style`, `content`, `color`, `fontSize` |
+| `Button` | 按钮（支持三态） | `style`, `onClick`, `buttonBuilder`, `children` |
+| `Input` | 输入框 | `style`, `value`, `onChange`, `placeholder` |
+| `Scroll` | 滚动容器 | `style`, `children`, `ref` |
+| `Item` | 物品图标 | `style`, `identifier`, `aux`, `itemDict`, `enchant` |
 
-这 5 类 typed grid 默认会在 `JsonUI/PyreactBase.json` 里各自预分配 32 个槽位，运行时优先复用这些槽位，而不是每次 render 都把 `grid_dimensions` 重设为当前数量。只有当某类控件数量首次超过当前池容量，且仍未超过 runtime 里的该类最大池化上限时，才会额外调用一次 `SetGridDimension` 扩容。
+### Hooks
 
-运行时仍会在 `ScreenNode.Update()` 的下一帧里初始化新扩出来的 `widget`。因此这 5 类 grid 控件的 `size/position` 会作用在 `widget` 子节点上；其中 `Item` 的 `layer` 会设置到它的父 `panel`，避免直接给 `item_renderer` 本体设层级。上一帧用过、这一帧未使用的池化槽位会通过 `SetVisible(False, False)` 隐藏；从未使用过的预分配槽位保持 JSON 默认 `size=[0, 0]`，不会额外触发隐藏调用。对于 `Scroll` 内部的 typed grid，runtime 现在也会尽量保留已创建的 scroll 宿主与其 `scrolling_content` 子树，在 tab / 列表切换时优先复用已有 grid 实例，而不是每次都把整个宿主删掉后再重新 `SetGridDimension`。
+```python
+# 状态管理
+count, set_count = useState(0)
 
-`Panel` 现在是**纯布局节点**：它仍然是公开 primitive，用来组织 Flex / 定位 / children，但 runtime 不会为它单独创建原生 `panel` 控件。
+# 副作用（可选依赖数组）
+useEffect(lambda: (print('mounted'), lambda: print('unmount')), [])
+useEffect(lambda: print('count changed'), [count])
 
-如需打印分区式性能日志（按 `Mount/Update` 区分，展示主流程阶段、原生接口调用统计，以及存在延迟 grid 时的跨帧异步统计），可传入 `log_perf=True`。
+# 缓存计算
+memo_value = useMemo(lambda: expensive_calc(dep), [dep])
 
-下面是一个最小 Screen JSON（同样可直接参考 `JsonUI/PyreactExample.json`）：
+# 缓存回调
+handler = useCallback(lambda x: process(x, dep), [dep])
 
-```json
-{
-  "main": {
-    "type": "screen",
-    "controls": [
-      {
-        "root": { "type": "panel", "layer": 1 }
-      }
-    ]
-  },
-  "namespace": "YourNamespace"
-}
+# 引用原生控件
+scroll_ref = useRef(None)
+scroll_ref.current.asScrollView().SetScrollViewPercentValue(0)
 ```
 
-同时需要在资源包 `ui/` 里提供 `PyreactBase.json`，作为运行时创建控件时的基础 type_def（`imageBase` / `textBase` / `buttonBase` / `inputBase` / `scrollBase`，以及按钮/滚动条内部模板依赖的基础定义）。如果你使用当前版本的 typed grid 优化，还需要保留 `rootBase` 及其 5 个 grid 定义，并让 JSON 里的初始 `grid_dimensions` 与 runtime 中 `_GRID_TYPE_CONFIG` 的默认池容量保持一致（当前默认初始 32、最大池化 64）。
+### 样式（Style）
+
+```python
+Style(
+    # 尺寸
+    width=200,              # 数值或 '100%'
+    height=100,
+    
+    # 间距
+    padding=10,             # 统一内边距
+    paddingLeft=8,          # 单侧内边距
+    margin=12,              # 统一外边距
+    marginTop=16,           # 单侧外边距
+    
+    # Flex 布局
+    flexDirection=FlexDirection.row,    # row / column
+    justifyContent=JustifyContent.center,  # flex-start / center / flex-end / space-between
+    alignItems=AlignItems.center,       # flex-start / center / flex-end / stretch
+    
+    # 定位
+    position=Position.absolute,         # relative / absolute
+    left=10,
+    top=20,
+    
+    # 层级
+    zIndex=10,
+)
+```
+
+### 颜色
+
+```python
+# 预定义颜色遵循CSS颜色数值
+Colors.white          # 白色
+Colors.black          # 黑色
+
+# 自定义颜色（ARGB 格式）
+Color(0xFF2563EB)     # 蓝色
+Color(0x80FF0000)     # 半透明红色
+```
+
+### Button 三态
+
+```python
+def button_bg_builder(state):
+    """按钮背景构建器"""
+    colors = {
+        ButtonState.default: Color(0xFF2563EB),
+        ButtonState.hover: Color(0xFF1D4ED8),
+        ButtonState.pressed: Color(0xFF1E40AF),
+    }
+    return Image(style=Style(width='100%', height='100%'), color=colors[state])
+
+Button(
+    style=Style(width=100, height=36),
+    buttonBuilder=button_bg_builder,
+    onClick=lambda: do_something(),
+    children=[Label(content='Click', color=Colors.white)],
+)
+# 注: 纯色按钮可以用FilledButton组件简化
+```
+
+---
 
 ## 目录结构
 
 ```
-.
-├── pyreact/                 # 框架：组件、hooks、diff、布局等
-├── PyreactRuntimeScript/    # 运行时：ScreenNode 渲染桥接 & 系统
-├── PyreactExampleScript/    # 示例：注册 UI、PushScreen、挂载示例 App
-├── JsonUI/                  # UI JSON（基础 type_def + 示例 screen）
-└── sync_to_test.cmd         # 本地同步脚本（可用参数覆盖默认路径）
+pyreact/
+├── dsl/                   # DSL 定义（控件、样式、颜色）
+├── core/                  # 核心（VNode、Reconciler、Hooks）
+├── layout/                # 布局引擎（Flexbox 计算）
+└── utils/                 # 工具函数
+
+PyreactRuntimeScript/
+├── modMain.py             # 运行时入口
+├── PyreactNativeRuntime.py # 原生渲染桥接
+└── native_runtime/        # 渲染细节（扁平渲染、属性映射、生命周期）
+
+PyreactExampleScript/
+├── modMain.py             # 示例入口
+├── PyreactExampleClientSystem.py
+├── PyreactExampleUi.py
+└── examples/              # 示例组件
+    ├── FriendApp.py       # 好友面板（筛选、搜索、详情）
+    ├── BedwarStoreApp.py  # 商店界面（分类、Scroll、Item）
+    └── BattlePassApp.py   # 战令界面（双档位、任务、奖励）
 ```
+
+---
 
 ## 示例页面
 
-`PyreactExampleScript/examples/` 里目前自带 3 个业务 UI 示例，可直接在 `PyreactExampleScript/PyreactExampleUi.py` 中切换挂载：
+切换示例：修改 `PyreactExampleScript/PyreactExampleUi.py` 中的 `render_app` 调用：
 
-- `FriendApp.py`：好友面板，演示筛选、搜索、详情联动
-- `BedwarStoreApp.py`：商店界面，演示分类切换、Scroll、`Item` 商品卡片
-- `BattlePassApp.py`：战令界面，演示高级版/进阶版双档位、任务卡片、等级奖励轨道、`Item` 奖励展示
+```python
+# 切换挂载不同的示例
+render_app(root=BattlePassApp, bind=bind)
+render_app(root=FriendApp, bind=bind)
+render_app(root=BedwarStoreApp, bind=bind)
+```
 
-## 现状
+| 示例 | 演示内容 |
+|------|----------|
+| `FriendApp` | Tab 切换、搜索筛选、列表选择、详情面板、Scroll 滚动、useRef 控制 |
+| `BedwarStoreApp` | 商品分类、Item 物品展示、价格标签、购买交互 |
+| `BattlePassApp` | 多档位切换、任务列表、等级奖励轨道、Item 奖励 |
 
-项目处于开发中，API/目录结构可能调整。欢迎根据示例脚本逐步集成与扩展。
+---
+
+## JsonUI 配置
+
+### 最简 Screen JSON
+
+你要挂载pyreact的控件一定要继承@PyreactBase.rootBase才能使用
+```json
+{
+    "main": {
+        "type": "screen",
+        "controls": [
+            {
+                "root@PyreactBase.rootBase": {}
+            }
+        ]
+    },
+    "namespace": "YourNamespace"
+}
+```
+
+
+---
+
+## 同步测试
+
+```cmd
+sync_to_test.cmd
+```
+
+修改脚本参数可覆盖默认同步路径。
 
