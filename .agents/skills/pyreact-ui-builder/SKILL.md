@@ -163,7 +163,7 @@ def UserCard(name, level):
 
 ## 组件总览
 
-### 基础组件（Components）
+### 基础组件（Primitives）
 
 #### 1. `Panel`
 
@@ -322,57 +322,6 @@ def UserCard(name, level):
 - `rotation`、`screen_scale` 这类 JSON 模板字段目前没有暴露为业务 props；需要时先确认文档和 runtime 映射再扩展。
 - 当前 `PaperDoll` 已纳入 runtime grid 池，业务层仍然只需要按普通 primitive 使用；动态层级由外层 wrapper panel 承担，不要把 widget 静态 layer 当作业务能力。
 
-参数速查：
-
-| 参数 | 说明 |
-| --- | --- |
-| `renderType` | `RenderType.entity / skeleton / blockGeometry`，可省略后自动推断 |
-| `entityId` / `entityIdentifier` | 实体渲染输入，优先推荐 `entityIdentifier` |
-| `skeletonModelName` | 骨骼模型名 |
-| `animation` / `animationLooped` | 骨骼动画与是否循环 |
-| `blockGeometryModelName` | 方块几何模型名 |
-| `scale` | 模型缩放 |
-| `renderDepth` | 渲染深度微调 |
-| `initRotX/Y/Z` | 初始旋转 |
-| `molangDict` | Molang 参数字典 |
-| `rotationAxis` | 旋转轴向量 `(x, y, z)` |
-| `lightDirection` | 光照方向，仅 skeleton 模式有效 |
-
-推荐写法：
-
-```python
-PaperDoll(
-    style=Style(width=120, height=120),
-    renderType=RenderType.entity,
-    entityIdentifier='minecraft:cow',
-    scale=0.8,
-    renderDepth=-15,
-    initRotY=60,
-)
-```
-
-骨骼模型示例：
-
-```python
-PaperDoll(
-    style=Style(width=140, height=140),
-    renderType=RenderType.skeleton,
-    skeletonModelName='custom.skin_preview',
-    animation='idle',
-    animationLooped=True,
-    scale=1.0,
-    initRotY=45,
-    lightDirection=(0.0, 1.0, 0.0),
-)
-```
-
-使用建议：
-
-- 必须显式给 `style.width` / `style.height`，不要依赖默认尺寸。
-- 预览框里常一起调整 `scale`、`renderDepth`、`initRotY` 来把模型摆正。
-- 需要切换模型类型时，优先通过不同 props 组合驱动同一个 `PaperDoll`，不要混用多套未文档确认的底层 renderer 参数。
-- 如果显示位置异常，先检查布局容器尺寸和 `PaperDoll` 自身 `style`，再看渲染参数；不要先假设是网易接口问题。
-
 ### 组合组件（Composites）
 
 组合组件基于基础组件封装，提供更高级的抽象，简化常见使用场景。
@@ -398,21 +347,52 @@ PaperDoll(
 - 若 `hover` / `pressed` 缺失，组件会自动回退到已提供的颜色，不需要三态都手写。
 - 只需要纯色切换时优先用 `FilledButton`；需要复杂背景或不同状态下返回不同结构时，用 `Button(buttonBuilder=...)`。
 
+#### `ImageButton`
+
+用途：通过三态贴图值 + `imageBuilder(src)` / `imageBuilder(src, state)` render props，快速构建图片按钮。
+
+常用 props：
+
+- `default`
+- `hover`
+- `pressed`
+- `imageBuilder`
+- `style`
+- `children`
+- `onClick`
+
+要点：
+
+- `default` / `hover` / `pressed` 只负责提供三态贴图路径。
+- `imageBuilder(src)` 是更常用的主写法；如果需要根据状态分支，再写成 `imageBuilder(src, state)`。
+- 无论哪种写法，都必须返回 `Image(...)` 组件；这里的 `src` 是当前状态对应的贴图路径，`state` 是 `ButtonState.default/hover/pressed`。
+- `ImageButton` 会自动给返回的 `Image` 注入 `width='100%'`、`height='100%'`，通常不需要重复写满尺寸样式。
+- 这样三态数据和节点构造逻辑分离，图片样式、颜色蒙版、nine-slice 等都可以统一写在 `imageBuilder` 里。
+- fallback 规则与 `FilledButton` 一致：缺哪个态，就用另一个已知态补齐。
+- 如果你需要每个状态连 children 结构都不同，不要硬塞进 `ImageButton`，直接用 `Button(buttonBuilder=...)`。
+
+## `clone_component`
+
+用途：基于已有 `ComponentNode` 快速生成一个新节点，并覆盖部分 props，适合模板复用场景。
+
+要点：
+
+- 可直接 `from pyreact import clone_component`
+- 它不会原地修改传入组件，而是创建副本后再应用覆盖参数
+- 会递归复制常见嵌套结构（`dict` / `list` / `tuple` / 子组件节点），比手写浅拷贝更适合做模板变体
+- 典型场景：给同一张基础图片模板切换不同 `src`，或基于一套基础 children 派生多个轻微差异节点
+
 示例：
 
 ```python
-FilledButton(
-    style=Style(
-        width=22,
-        height=22,
-        alignItems=AlignItems.center,
-        justifyContent=JustifyContent.center,
-    ),
-    default=Colors.black.withAlpha(0.2),
-    pressed=Colors.black.withAlpha(0.1),
-    children=[
-        Label(content='x')
-    ],
+base_image = Image(
+    style=Style(width='100%', height='100%'),
+    src='textures/ui/store/button_default',
+)
+
+hover_image = clone_component(
+    base_image,
+    src='textures/ui/store/button_hover',
 )
 ```
 

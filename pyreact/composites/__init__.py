@@ -1,5 +1,6 @@
-from .button_variants import FilledButton
+from .button_variants import FilledButton, ImageButton
 
 __all__ = [
-    "FilledButton"
+    "FilledButton",
+    "ImageButton",
 ]

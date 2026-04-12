@@ -2,7 +2,7 @@ from .style import Style
 from .enums import AlignItems, JustifyContent, FlexDirection, FontSize, Position, ButtonState, TextAlign, FlexWrap, RenderType
 from .color import Color, Colors
 from .node_base import ComponentNode
-from .primitives import Panel, Image, Label, Item, Button, Input, Scroll, PaperDoll
+from .primitives import Panel, Image, Label, Item, Button, Input, Scroll, PaperDoll, clone_component
 from .component import Component
 
 
@@ -29,4 +29,5 @@ __all__ = [
     "Input",
     "Scroll",
     "PaperDoll",
+    "clone_component",
 ]

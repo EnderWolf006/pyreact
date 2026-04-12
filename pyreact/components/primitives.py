@@ -21,6 +21,21 @@ def _normalize_children(children):
     return [children]
 
 
+def _clone_value(value):
+    if isinstance(value, ComponentNode):
+        return clone_component(value)
+    if isinstance(value, dict):
+        cloned = {}
+        for key, item in value.items():
+            cloned[key] = _clone_value(item)
+        return cloned
+    if isinstance(value, list):
+        return [_clone_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple([_clone_value(item) for item in value])
+    return value
+
+
 def _build_node(node_type, values):
     props = {}
     for key, value in values.items():
@@ -50,6 +65,34 @@ def _build_node(node_type, values):
             pass
 
     return node
+
+
+def clone_component(component, **overrides):
+    # type: (ComponentNode, **object) -> ComponentNode
+    if not isinstance(component, ComponentNode):
+        raise TypeError("clone_component(component, ...) requires a ComponentNode")
+
+    props = getattr(component, 'props', None)
+    if not isinstance(props, dict):
+        raise TypeError("clone_component(component, ...) requires component.props to be dict")
+
+    cloned_props = {}
+    for key, value in props.items():
+        cloned_props[key] = _clone_value(value)
+
+    for key, value in overrides.items():
+        cloned_props[key] = value
+
+    cloned = _build_node(component.node_type, cloned_props)
+
+    key = getattr(component, 'key', None)
+    if 'key' not in overrides and key is not None:
+        try:
+            cloned.key = key
+        except Exception:
+            pass
+
+    return cloned
 
 
 @Component
@@ -86,7 +129,7 @@ def Image(
     children=None,
     onClick=None,
 ):
-    # type: (object, object, object, object, object, object, object, object, object, object, object, object, object, object, object) -> ComponentNode
+    # type: (object, str, Color, bool, float, tuple, tuple, str, str, tuple, str, float, tuple, object, object) -> ComponentNode
     """Create an Image node.
 
     Image render params are passed as props instead of style.
@@ -124,7 +167,7 @@ def Label(
     linePadding=None,
     shadow=None,
 ):
-    # type: (object, object, object, object, object, object, object, object) -> ComponentNode
+    # type: (object, object, str, Color, int, str, float, bool) -> ComponentNode
     """Create a Label node."""
     return _build_node(
         "Label",
@@ -143,7 +186,7 @@ def Label(
 
 @Component
 def Item(style=None, children=None, identifier=None, aux=None, enchant=None, userData=None, itemDict=None):
-    # type: (object, object, object, object, object, object, object) -> ComponentNode
+    # type: (object, object, str, int, bool, object, dict) -> ComponentNode
     """Create an Item node backed by inventory_item_renderer."""
     return _build_node(
         "Item",
@@ -176,7 +219,7 @@ def Button(style=None, children=None, onClick=None, buttonBuilder=None):
 
 @Component
 def Input(style=None, value=None, onChange=None, placeholder=None, children=None):
-    # type: (object, object, object, object, object) -> ComponentNode
+    # type: (object, str, object, str, object) -> ComponentNode
     """Create an Input node."""
     return _build_node(
         "Input",
@@ -227,7 +270,7 @@ def PaperDoll(
     rotationAxis=None,
     lightDirection=None,
 ):
-    # type: (object, object, object, object, object, object, object, object, object, object, object, object, object, object, object, object) -> ComponentNode
+    # type: (object, str, int, str, str, str, bool, str, float, float, float, float, float, dict, tuple, tuple) -> ComponentNode
     """Create a PaperDoll node backed by netease_paper_doll_renderer.
 
     Render props mirror the documented NetEase paper doll APIs and are mapped

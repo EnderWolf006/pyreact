@@ -20,6 +20,7 @@ from .components import (
     Input,
     Scroll,
     PaperDoll,
+    clone_component,
     FlexWrap,
 )
 
@@ -33,6 +34,7 @@ from .core import (
 
 from .composites import (
     FilledButton,
+    ImageButton,
 )
 
 
@@ -106,6 +108,7 @@ __all__ = [
     "Input",
     "Scroll",
     "PaperDoll",
+    "clone_component",
     "useState",
     "useEffect",
     "useMemo",
@@ -113,4 +116,5 @@ __all__ = [
     "useRef",
     "render_app",
     "FilledButton",
+    "ImageButton",
 ]
