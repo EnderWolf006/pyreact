@@ -8,7 +8,7 @@
 
 - **函数式组件**：通过 `@Component` 声明组件
 - **Hooks**：`useState` / `useEffect` / `useMemo` / `useCallback` / `useRef`
-- **基础控件**（Primitives）：`Panel` / `Image` / `Label` / `Button` / `Input` / `Scroll`
+- **基础控件**（Primitives）：`Panel` / `Image` / `Label` / `Item` / `Button` / `Input` / `Scroll`
 - **布局**：Flexbox 风格布局（子集），支持 `width/height/padding/margin/flexDirection/justifyContent/alignItems/...`
 - **运行时桥接**：将组件树扁平渲染到 NetEase UI（通过 Runtime 系统统一管理挂载/卸载/重渲染）
 
@@ -153,6 +153,14 @@ class MyScreen(ScreenNode):
 ├── JsonUI/                  # UI JSON（基础 type_def + 示例 screen）
 └── sync_to_test.cmd         # 本地同步脚本（可用参数覆盖默认路径）
 ```
+
+## 示例页面
+
+`PyreactExampleScript/examples/` 里目前自带 3 个业务 UI 示例，可直接在 `PyreactExampleScript/PyreactExampleUi.py` 中切换挂载：
+
+- `FriendApp.py`：好友面板，演示筛选、搜索、详情联动
+- `BedwarStoreApp.py`：商店界面，演示分类切换、Scroll、`Item` 商品卡片
+- `BattlePassApp.py`：战令界面，演示高级版/进阶版双档位、任务卡片、等级奖励轨道、`Item` 奖励展示
 
 ## 现状
 
