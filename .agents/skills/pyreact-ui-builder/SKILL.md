@@ -21,7 +21,7 @@ metadata:
 
 - 新建或修改基于 Pyreact 的页面、弹窗、HUD、列表、表单、详情面板。
 - 需要决定某个能力应该写在 `style` 还是组件 props 上。
-- 需要在业务 UI 中正确使用 `Label` / `Image` / `Button` / `Input` / `Scroll` / `Item`。
+- 需要在业务 UI 中正确使用 `Label` / `Image` / `Button` / `Input` / `Scroll` / `Item` / `PaperDoll`。
 - 需要把 Pyreact 页面挂载到 NetEase `ScreenNode` 上。
 
 不要在以下场景只依赖本 skill：
@@ -69,7 +69,7 @@ metadata:
 可直接使用的核心导出包括：
 
 - 组件装饰器：`Component`
-- primitive 组件：`Panel`、`Image`、`Label`、`Item`、`Button`、`Input`、`Scroll`
+- primitive 组件：`Panel`、`Image`、`Label`、`Item`、`Button`、`Input`、`Scroll`、`PaperDoll`
 - 样式与枚举：`Style`、`AlignItems`、`JustifyContent`、`FlexDirection`、`FontSize`、`Position`、`ButtonState`
 - 颜色：`Color`、`Colors`
 - hooks：`useState`、`useEffect`、`useMemo`、`useCallback`、`useRef`
@@ -290,6 +290,86 @@ def UserCard(name, level):
 
 - 常和长列表搭配使用。
 - 若需要滚动到顶部/底部，给 `Scroll(ref=...)`，再通过 `ref.current.asScrollView()` 调原生滚动接口。
+
+### 8. `PaperDoll`
+
+用途：渲染网易纸娃娃控件，用于实体 / 骨骼模型 / 网格体预览。
+
+常用 props：
+
+- `style`
+- `renderType`
+- `entityId` / `entityIdentifier`
+- `skeletonModelName`
+- `animation` / `animationLooped`
+- `blockGeometryModelName`
+- `scale`
+- `renderDepth`
+- `initRotX` / `initRotY` / `initRotZ`
+- `molangDict`
+- `rotationAxis`
+- `lightDirection`
+
+要点：
+
+- `PaperDoll` 走 `netease_paper_doll_renderer`，不是普通 `Image` / `Panel`。
+- 运行时只映射本地文档已确认的 `RenderEntity` / `RenderSkeletonModel` / `RenderBlockGeometryModel` 参数。
+- `lightDirection` 只对骨骼模型渲染有效。
+- 若不传 `renderType`，runtime 会按 `entityId/entityIdentifier`、`skeletonModelName`、`blockGeometryModelName` 自动推断。
+- 业务侧优先使用 `RenderType.entity / skeleton / blockGeometry`，不要手写裸字符串。
+- `rotation`、`screen_scale` 这类 JSON 模板字段目前没有暴露为业务 props；需要时先确认文档和 runtime 映射再扩展。
+- 当前 `PaperDoll` 已纳入 runtime grid 池，业务层仍然只需要按普通 primitive 使用；动态层级由外层 wrapper panel 承担，不要把 widget 静态 layer 当作业务能力。
+
+参数速查：
+
+| 参数 | 说明 |
+| --- | --- |
+| `renderType` | `RenderType.entity / skeleton / blockGeometry`，可省略后自动推断 |
+| `entityId` / `entityIdentifier` | 实体渲染输入，优先推荐 `entityIdentifier` |
+| `skeletonModelName` | 骨骼模型名 |
+| `animation` / `animationLooped` | 骨骼动画与是否循环 |
+| `blockGeometryModelName` | 方块几何模型名 |
+| `scale` | 模型缩放 |
+| `renderDepth` | 渲染深度微调 |
+| `initRotX/Y/Z` | 初始旋转 |
+| `molangDict` | Molang 参数字典 |
+| `rotationAxis` | 旋转轴向量 `(x, y, z)` |
+| `lightDirection` | 光照方向，仅 skeleton 模式有效 |
+
+推荐写法：
+
+```python
+PaperDoll(
+    style=Style(width=120, height=120),
+    renderType=RenderType.entity,
+    entityIdentifier='minecraft:cow',
+    scale=0.8,
+    renderDepth=-15,
+    initRotY=60,
+)
+```
+
+骨骼模型示例：
+
+```python
+PaperDoll(
+    style=Style(width=140, height=140),
+    renderType=RenderType.skeleton,
+    skeletonModelName='custom.skin_preview',
+    animation='idle',
+    animationLooped=True,
+    scale=1.0,
+    initRotY=45,
+    lightDirection=(0.0, 1.0, 0.0),
+)
+```
+
+使用建议：
+
+- 必须显式给 `style.width` / `style.height`，不要依赖默认尺寸。
+- 预览框里常一起调整 `scale`、`renderDepth`、`initRotY` 来把模型摆正。
+- 需要切换模型类型时，优先通过不同 props 组合驱动同一个 `PaperDoll`，不要混用多套未文档确认的底层 renderer 参数。
+- 如果显示位置异常，先检查布局容器尺寸和 `PaperDoll` 自身 `style`，再看渲染参数；不要先假设是网易接口问题。
 
 ## `props` 与 `style` 的分工
 

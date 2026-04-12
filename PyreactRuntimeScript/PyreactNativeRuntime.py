@@ -19,6 +19,7 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         "Button": "buttonBase",
         "Input": "inputBase",
         "Scroll": "scrollBase",
+        "PaperDoll": "paperDollBase",
     }
     _GRID_TYPE_CONFIG = {
         "Button": {
@@ -44,6 +45,12 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
             "template_name": "itemPanelBase",
             "initial_pool_size": 64,
             "max_pool_size": 128,
+        },
+        "PaperDoll": {
+            "grid_name": "paperDollGrid",
+            "template_name": "paperDollPanelBase",
+            "initial_pool_size": 1,
+            "max_pool_size": 8,
         },
         "Label": {
             "grid_name": "textGrid",

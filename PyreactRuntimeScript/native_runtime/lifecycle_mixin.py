@@ -1571,7 +1571,7 @@ class RuntimeLifecycleMixin(object):
             self._drop_native_common_style_cache_fields(widget_path, ('opacity',))
 
         native_layer_path = None
-        if node_type == 'Item':
+        if node_type in ('Item', 'PaperDoll'):
             native_layer_path = wrapper_path
 
         applied = self._apply_rendered_entry(

@@ -9,7 +9,7 @@
 - **函数式组件** - 通过 `@Component` 装饰器声明组件
 - **Hooks** - `useState` / `useEffect` / `useMemo` / `useCallback` / `useRef`
 - **Flexbox 布局** - 支持 `width/height/padding/margin/flexDirection/justifyContent/alignItems` 等
-- **基础控件** - `Panel` / `Image` / `Label` / `Button` / `Input` / `Scroll` / `Item`
+- **基础控件** - `Panel` / `Image` / `Label` / `Button` / `Input` / `Scroll` / `Item` / `PaperDoll`
 - **运行时优化** - Typed Grid 批量创建、控件池复用、跨帧延迟渲染
 
 ---
@@ -141,6 +141,105 @@ class YourScreenNode(ScreenNode):
 | `Input` | 输入框 | `style`, `value`, `onChange`, `placeholder` |
 | `Scroll` | 滚动容器 | `style`, `children`, `ref` |
 | `Item` | 物品图标 | `style`, `identifier`, `aux`, `itemDict`, `enchant` |
+| `PaperDoll` | 纸娃娃 / 实体预览 | `style`, `renderType`, `entityId`, `entityIdentifier`, `skeletonModelName`, `blockGeometryModelName` |
+
+### `PaperDoll`
+
+`PaperDoll` 对应 `netease_paper_doll_renderer`，运行时会按本地文档映射到以下接口之一：
+
+- `RenderEntity`
+- `RenderSkeletonModel`
+- `RenderBlockGeometryModel`
+
+参数说明：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `style` | `Style` | 控件尺寸/布局，常见至少设置 `width`、`height` |
+| `renderType` | `str` | 可选：`RenderType.entity` / `RenderType.skeleton` / `RenderType.blockGeometry` |
+| `entityId` | `int` | 通过实体 id 渲染实体模型 |
+| `entityIdentifier` | `str` | 通过实体 identifier 渲染实体模型，例如 `minecraft:cow` |
+| `skeletonModelName` | `str` | 骨骼模型名，用于 `RenderSkeletonModel` |
+| `animation` | `str` | 骨骼模型动画名 |
+| `animationLooped` | `bool` | 骨骼动画是否循环 |
+| `blockGeometryModelName` | `str` | 方块几何模型名，用于 `RenderBlockGeometryModel` |
+| `scale` | `float` | 模型缩放 |
+| `renderDepth` | `float` | 渲染深度/前后关系调整 |
+| `initRotX` | `float` | 初始 X 轴旋转 |
+| `initRotY` | `float` | 初始 Y 轴旋转 |
+| `initRotZ` | `float` | 初始 Z 轴旋转 |
+| `molangDict` | `dict` | Molang 参数字典 |
+| `rotationAxis` | `tuple/list[3]` | 旋转轴向量 `(x, y, z)` |
+| `lightDirection` | `tuple/list[3]` | 光照方向，仅骨骼模型渲染有效 |
+
+当前公开支持的 Pyreact props：
+
+- `renderType=RenderType.entity | RenderType.skeleton | RenderType.blockGeometry`
+- `entityId` / `entityIdentifier`
+- `skeletonModelName`
+- `animation` / `animationLooped`
+- `blockGeometryModelName`
+- `scale`
+- `renderDepth`
+- `initRotX` / `initRotY` / `initRotZ`
+- `molangDict`
+- `rotationAxis`
+- `lightDirection`（仅骨骼模型渲染有效）
+
+若不显式传 `renderType`，runtime 会按参数自动推断：`entityId/entityIdentifier` > `skeletonModelName` > `blockGeometryModelName`。
+
+常见用法：
+
+#### 1. 实体预览
+
+```python
+PaperDoll(
+    style=Style(width=120, height=120),
+    renderType=RenderType.entity,
+    entityIdentifier='minecraft:cow',
+    scale=0.8,
+    renderDepth=-15,
+    initRotY=60,
+)
+```
+
+#### 2. 骨骼模型预览
+
+```python
+PaperDoll(
+    style=Style(width=140, height=140),
+    renderType=RenderType.skeleton,
+    skeletonModelName='custom.skin_preview',
+    animation='idle',
+    animationLooped=True,
+    scale=1.0,
+    initRotY=45,
+    lightDirection=(0.0, 1.0, 0.0),
+)
+```
+
+#### 3. 方块几何模型预览
+
+```python
+PaperDoll(
+    style=Style(width=96, height=96),
+    renderType=RenderType.blockGeometry,
+    blockGeometryModelName='geometry.custom_hat',
+    scale=0.9,
+    initRotY=30,
+)
+```
+
+使用建议：
+
+- 业务侧优先用 `RenderType` 枚举，不要手写裸字符串，避免拼写错误。
+- 业务侧优先把 `PaperDoll` 当作“预览控件”使用，始终显式传 `style.width` / `style.height`。
+- 实体预览常用 `entityIdentifier`，只有你手里已经有实体 id 时才传 `entityId`。
+- `renderDepth`、`scale`、`initRotY` 往往需要一起调，常用于把模型摆进预览框中央。
+- 当前 `PaperDoll` 已纳入 runtime grid 池，层级由外层 wrapper panel 承担，不应再依赖 widget 模板里的静态 layer。
+- 若出现位置或显示异常，优先检查外层布局尺寸，再检查 `scale` / `renderDepth` / `initRot*`，不要先猜网易 renderer 参数。
+
+注意：当前只暴露了本地文档中确认过的渲染接口参数。`rotation`、`screen_scale` 这类 JSON 模板字段仍由 `PyreactBase.paperDollBase` 固定提供，没有在 Pyreact props 中做动态映射。
 
 ### Hooks
 
@@ -301,4 +400,3 @@ sync_to_test.cmd
 ```
 
 修改脚本参数可覆盖默认同步路径。
-

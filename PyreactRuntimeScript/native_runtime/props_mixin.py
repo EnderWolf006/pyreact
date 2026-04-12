@@ -73,6 +73,11 @@ class RuntimePropsMixin(object):
             self._apply_input_props(node_path, node_id, props, node_control)
             return
 
+        if node_type == "PaperDoll":
+            paper_doll_props = self._extract_paper_doll_props(props)
+            self._apply_paper_doll_native_props(node_path, paper_doll_props, node_control)
+            return
+
     def _get_native_common_style_cache(self):
         cache = getattr(self, '_native_common_style_cache', None)
         if not isinstance(cache, dict):
@@ -611,6 +616,125 @@ class RuntimePropsMixin(object):
 
         return resolved
 
+    def _extract_paper_doll_props(self, props):
+        paper_doll_props = {}
+        prop_keys = (
+            'renderType',
+            'entityId',
+            'entityIdentifier',
+            'skeletonModelName',
+            'animation',
+            'animationLooped',
+            'blockGeometryModelName',
+            'scale',
+            'renderDepth',
+            'initRotX',
+            'initRotY',
+            'initRotZ',
+            'molangDict',
+            'rotationAxis',
+            'lightDirection',
+        )
+        for key in prop_keys:
+            if isinstance(props, dict) and props.get(key) is not None:
+                paper_doll_props[key] = props.get(key)
+        return paper_doll_props
+
+    def _resolve_paper_doll_render_type(self, paper_doll_props):
+        render_type = self._safe_text(paper_doll_props.get('renderType')).strip().lower()
+        if render_type in ('entity', 'skeleton', 'blockgeometry', 'block_geometry'):
+            return render_type
+        if paper_doll_props.get('entityId') is not None or paper_doll_props.get('entityIdentifier') is not None:
+            return 'entity'
+        if paper_doll_props.get('skeletonModelName') is not None:
+            return 'skeleton'
+        if paper_doll_props.get('blockGeometryModelName') is not None:
+            return 'blockgeometry'
+        return ''
+
+    def _resolve_paper_doll_render_params(self, paper_doll_props):
+        if not isinstance(paper_doll_props, dict):
+            return None, None
+
+        render_type = self._resolve_paper_doll_render_type(paper_doll_props)
+        if not render_type:
+            return None, None
+
+        params = {}
+
+        entity_id = paper_doll_props.get('entityId')
+        if entity_id is not None:
+            params['entity_id'] = entity_id
+
+        entity_identifier = self._safe_text(paper_doll_props.get('entityIdentifier'))
+        if entity_identifier:
+            params['entity_identifier'] = entity_identifier
+
+        skeleton_model_name = self._safe_text(paper_doll_props.get('skeletonModelName'))
+        if skeleton_model_name:
+            params['skeleton_model_name'] = skeleton_model_name
+
+        block_geometry_model_name = self._safe_text(paper_doll_props.get('blockGeometryModelName'))
+        if block_geometry_model_name:
+            params['block_geometry_model_name'] = block_geometry_model_name
+
+        animation = self._safe_text(paper_doll_props.get('animation'))
+        if animation:
+            params['animation'] = animation
+
+        if paper_doll_props.get('animationLooped') is not None:
+            params['animation_looped'] = self._to_bool(paper_doll_props.get('animationLooped'))
+
+        numeric_fields = (
+            ('scale', 'scale'),
+            ('renderDepth', 'render_depth'),
+            ('initRotX', 'init_rot_x'),
+            ('initRotY', 'init_rot_y'),
+            ('initRotZ', 'init_rot_z'),
+        )
+        for prop_key, native_key in numeric_fields:
+            value = paper_doll_props.get(prop_key)
+            if value is not None:
+                params[native_key] = self._to_float(value, 0.0)
+
+        molang_dict = paper_doll_props.get('molangDict')
+        if isinstance(molang_dict, dict):
+            params['molang_dict'] = molang_dict
+
+        rotation_axis = self._parse_vec3(paper_doll_props.get('rotationAxis'))
+        if rotation_axis is not None:
+            params['rotation_axis'] = rotation_axis
+
+        light_direction = self._parse_vec3(paper_doll_props.get('lightDirection'))
+        if light_direction is not None:
+            params['light_direction'] = light_direction
+
+        if render_type == 'entity':
+            if params.get('entity_id') is None and not params.get('entity_identifier'):
+                return None, None
+            return 'entity', params
+
+        if render_type == 'skeleton':
+            if not params.get('skeleton_model_name'):
+                return None, None
+            return 'skeleton', params
+
+        if render_type in ('blockgeometry', 'block_geometry'):
+            if not params.get('block_geometry_model_name'):
+                return None, None
+            return 'block_geometry', params
+
+        return None, None
+
+    def _parse_vec3(self, value):
+        if not isinstance(value, (list, tuple)) or len(value) != 3:
+            return None
+        return (
+            self._to_float(value[0], 0.0),
+            self._to_float(value[1], 0.0),
+            self._to_float(value[2], 0.0),
+        )
+
     def _build_item_props_from_dict(self, item_dict):
         resolved = {
             'identifier': None,
@@ -665,6 +789,37 @@ class RuntimePropsMixin(object):
             node_control,
         )
 
+    def _apply_paper_doll_native_props(self, node_path, paper_doll_props, node_control=None):
+        render_type, params = self._resolve_paper_doll_render_params(paper_doll_props)
+        if not render_type or not isinstance(params, dict):
+            return
+
+        control = node_control
+        if not control:
+            try:
+                control = self._screen.GetBaseUIControl(node_path)
+            except Exception:
+                control = None
+        if not control:
+            return
+
+        try:
+            paper_doll = control.asNeteasePaperDoll()
+        except Exception:
+            paper_doll = None
+        if not paper_doll:
+            return
+
+        try:
+            if render_type == 'entity':
+                paper_doll.RenderEntity(params)
+            elif render_type == 'skeleton':
+                paper_doll.RenderSkeletonModel(params)
+            elif render_type == 'block_geometry':
+                paper_doll.RenderBlockGeometryModel(params)
+        except Exception:
+            pass
+
     def _apply_common_style_props(self, node_path, style, props, node_control):
         if not isinstance(style, dict):
             return
@@ -681,12 +836,12 @@ class RuntimePropsMixin(object):
             maybe_layer_control = props.get('__native_layer_control__')
             if maybe_layer_control:
                 layer_control = maybe_layer_control
-        if shadow_node_type == 'Item':
+        if shadow_node_type in ('Item', 'PaperDoll'):
             if layer_path.endswith('/widget'):
                 layer_path = layer_path[:-len('/widget')]
             elif node_path.endswith('/widget'):
                 layer_path = node_path[:-len('/widget')]
-            elif node_control and hasattr(node_control, 'asItemRenderer'):
+            elif node_control and ((shadow_node_type == 'Item' and hasattr(node_control, 'asItemRenderer')) or (shadow_node_type == 'PaperDoll' and hasattr(node_control, 'asNeteasePaperDoll'))):
                 layer_path = self._safe_text(node_path)
                 if layer_path.endswith('/widget'):
                     layer_path = layer_path[:-len('/widget')]

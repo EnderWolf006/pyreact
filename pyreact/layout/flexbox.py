@@ -855,12 +855,18 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
                 node.layout.content_width = max(0.0, intrinsic_width)
                 node.layout.content_height = max(0.0, intrinsic_height)
 
-            # If node has no explicit size, it shrinks to fit children (except for Label which handles itself).
-            # Scroll children should always shrink to content, never inherit the large measure space
+            # If node has auto-sized axes, shrink those axes to fit children
+            # (except for Label which handles itself). Scroll children should
+            # always shrink height to content, never inherit the large measure space.
             if node.node_type != "Label" and node.node_type != "Scroll":
-                if explicit_width is None and explicit_height is None:
+                did_shrink = False
+                if explicit_width is None:
                     node.layout.width = max(0.0, intrinsic_width)
+                    did_shrink = True
+                if explicit_height is None:
                     node.layout.height = max(0.0, intrinsic_height)
+                    did_shrink = True
+                if did_shrink:
                     node._measured_shrunk = True
                     node._subtree_measured_shrunk = True
                 elif parent_is_scroll and explicit_height is None:

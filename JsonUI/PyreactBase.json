@@ -385,12 +385,33 @@
             100,
             100
         ],
-        "layer": 1000,
+        "layer": 0,
         "alpha": 1.0,
         "visible": true,
         "init_rot_y": 60.0,
         "rotation": "none",
         "screen_scale": 1.0
+    },
+    "paperDollPanelBase": {
+        "type": "panel",
+        "layer": 0,
+        "anchor_from": "top_left",
+        "anchor_to": "top_left",
+        "offset": [
+            0,
+            0
+        ],
+        "size": [
+            0,
+            0
+        ],
+        "controls": [
+            {
+                "widget@PyreactBase.paperDollBase": {
+                    "visible": false
+                }
+            }
+        ]
     },
     "scrollBase@common.scrolling_panel": {
         "$scrolling_content": "PyreactBase.scroll_content_panel",
@@ -553,6 +574,24 @@
                         32
                     ],
                     "grid_item_template": "PyreactBase.itemPanelBase"
+                }
+            },
+            {
+                "paperDollGrid": {
+                    "type": "grid",
+                    "anchor_from": "top_left",
+                    "anchor_to": "top_left",
+                    "size": [
+                        0.0,
+                        0.0
+                    ],
+                    "layer": 0,
+                    "collection_name": "test_grid",
+                    "grid_dimensions": [
+                        1,
+                        1
+                    ],
+                    "grid_item_template": "PyreactBase.paperDollPanelBase"
                 }
             },
             {

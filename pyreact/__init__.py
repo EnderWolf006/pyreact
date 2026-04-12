@@ -9,6 +9,7 @@ from .components import (
     Colors,
     Position,
     ButtonState,
+    RenderType,
     ComponentNode,
     Component,
     Panel,
@@ -18,6 +19,7 @@ from .components import (
     Button,
     Input,
     Scroll,
+    PaperDoll,
     FlexWrap,
 )
 
@@ -93,6 +95,7 @@ __all__ = [
     "FlexWrap",
     "Position",
     "ButtonState",
+    "RenderType",
     "ComponentNode",
     "Component",
     "Panel",
@@ -102,6 +105,7 @@ __all__ = [
     "Button",
     "Input",
     "Scroll",
+    "PaperDoll",
     "useState",
     "useEffect",
     "useMemo",

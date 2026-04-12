@@ -206,3 +206,51 @@ def Scroll(
             "showScrollbar": showScrollbar,
         },
     )
+
+
+@Component
+def PaperDoll(
+    style=None,
+    renderType=None,
+    entityId=None,
+    entityIdentifier=None,
+    skeletonModelName=None,
+    animation=None,
+    animationLooped=None,
+    blockGeometryModelName=None,
+    scale=None,
+    renderDepth=None,
+    initRotX=None,
+    initRotY=None,
+    initRotZ=None,
+    molangDict=None,
+    rotationAxis=None,
+    lightDirection=None,
+):
+    # type: (object, object, object, object, object, object, object, object, object, object, object, object, object, object, object, object) -> ComponentNode
+    """Create a PaperDoll node backed by netease_paper_doll_renderer.
+
+    Render props mirror the documented NetEase paper doll APIs and are mapped
+    to RenderEntity / RenderSkeletonModel / RenderBlockGeometryModel at runtime.
+    """
+    return _build_node(
+        "PaperDoll",
+        {
+            "style": style,
+            "renderType": renderType,
+            "entityId": entityId,
+            "entityIdentifier": entityIdentifier,
+            "skeletonModelName": skeletonModelName,
+            "animation": animation,
+            "animationLooped": animationLooped,
+            "blockGeometryModelName": blockGeometryModelName,
+            "scale": scale,
+            "renderDepth": renderDepth,
+            "initRotX": initRotX,
+            "initRotY": initRotY,
+            "initRotZ": initRotZ,
+            "molangDict": molangDict,
+            "rotationAxis": rotationAxis,
+            "lightDirection": lightDirection,
+        },
+    )
