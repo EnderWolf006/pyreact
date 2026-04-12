@@ -59,7 +59,7 @@ GOODS_DATA = {
     # === 方块 ===
     "羊毛": {"name": "羊毛", "count": 16, "price": 4, "currency": "铁锭", "identifier": "wool"},
     "樱花树叶": {"name": "樱花树叶", "count": 15, "price": 4, "currency": "铁锭", "identifier": "cherry_leaves"},
-    "硬化粘土": {"name": "硬化粘土", "count": 16, "price": 12, "currency": "铁锭", "identifier": "terracotta"},
+    "硬化粘土": {"name": "硬化粘土", "count": 16, "price": 12, "currency": "铁锭", "identifier": "clay"},
     "防爆玻璃": {"name": "防爆玻璃", "count": 8, "price": 12, "currency": "铁锭", "identifier": "glass"},
     "末地石": {"name": "末地石", "count": 12, "price": 24, "currency": "铁锭", "identifier": "end_stone"},
     "梯子": {"name": "梯子", "count": 16, "price": 4, "currency": "铁锭", "identifier": "ladder"},
