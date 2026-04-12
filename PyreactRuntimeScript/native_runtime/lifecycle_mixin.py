@@ -876,6 +876,95 @@ class RuntimeLifecycleMixin(object):
             parent_target_cache[cache_key] = resolved_path
         return resolved_path
 
+    def _get_real_scroll_view_path_for_cleanup(self, scroll_node_path, cleanup_scroll_view_cache=None):
+        safe_path = self._safe_text(scroll_node_path)
+        if not safe_path:
+            return ''
+        if isinstance(cleanup_scroll_view_cache, dict) and safe_path in cleanup_scroll_view_cache:
+            return cleanup_scroll_view_cache.get(safe_path) or ''
+
+        resolved_path = self._get_real_scroll_view_path(safe_path)
+        if isinstance(cleanup_scroll_view_cache, dict):
+            cleanup_scroll_view_cache[safe_path] = resolved_path or ''
+        return resolved_path
+
+    def _get_scroll_content_path_for_cleanup(self, scroll_node_path, cleanup_scroll_content_cache=None, cleanup_scroll_view_cache=None):
+        safe_path = self._safe_text(scroll_node_path)
+        if not safe_path:
+            return self._root_path
+        if isinstance(cleanup_scroll_content_cache, dict) and safe_path in cleanup_scroll_content_cache:
+            return cleanup_scroll_content_cache.get(safe_path) or safe_path
+
+        real_scroll_view_path = self._get_real_scroll_view_path_for_cleanup(safe_path, cleanup_scroll_view_cache)
+        if "/scroll_touch/" in real_scroll_view_path:
+            content_path = real_scroll_view_path + "/panel/background_and_viewport/scrolling_view_port/scrolling_content"
+        elif "/scroll_mouse/" in real_scroll_view_path:
+            content_path = real_scroll_view_path + "/stack_panel/background_and_viewport/scrolling_view_port/scrolling_content"
+        else:
+            content_path = safe_path
+
+        if isinstance(cleanup_scroll_content_cache, dict):
+            cleanup_scroll_content_cache[safe_path] = content_path
+        return content_path
+
+    def _resolve_parent_target_for_cleanup(self, parent_target, cleanup_parent_target_cache=None, cleanup_scroll_content_cache=None, cleanup_scroll_view_cache=None):
+        if not isinstance(parent_target, dict):
+            return self._root_path
+
+        cache_key = id(parent_target)
+        if isinstance(cleanup_parent_target_cache, dict) and cache_key in cleanup_parent_target_cache:
+            return cleanup_parent_target_cache.get(cache_key) or self._root_path
+
+        kind = parent_target.get('kind')
+        if kind == 'scroll_content_of_entry':
+            scroll_parent_path = self._resolve_parent_target_for_cleanup(
+                parent_target.get('parent_target'),
+                cleanup_parent_target_cache,
+                cleanup_scroll_content_cache,
+                cleanup_scroll_view_cache,
+            )
+            scroll_child_name = self._safe_text(parent_target.get('scroll_child_name'))
+            if not scroll_child_name:
+                resolved_path = scroll_parent_path or self._root_path
+            else:
+                scroll_node_path = (scroll_parent_path or self._root_path) + '/' + scroll_child_name
+                resolved_path = self._get_scroll_content_path_for_cleanup(
+                    scroll_node_path,
+                    cleanup_scroll_content_cache,
+                    cleanup_scroll_view_cache,
+                )
+        else:
+            path = parent_target.get('path')
+            if kind == 'scroll_content':
+                resolved_path = self._get_scroll_content_path_for_cleanup(
+                    path,
+                    cleanup_scroll_content_cache,
+                    cleanup_scroll_view_cache,
+                )
+            else:
+                resolved_path = path or self._root_path
+
+        if isinstance(cleanup_parent_target_cache, dict):
+            cleanup_parent_target_cache[cache_key] = resolved_path
+        return resolved_path
+
+    def _is_grid_available_for_parent_for_cleanup(self, parent_path, node_type, cleanup_grid_availability_cache=None):
+        cache_key = '%s|%s' % (self._safe_text(parent_path), self._safe_text(node_type))
+        if isinstance(cleanup_grid_availability_cache, dict) and cache_key in cleanup_grid_availability_cache:
+            return bool(cleanup_grid_availability_cache.get(cache_key))
+
+        available = self._is_grid_available_for_parent(parent_path, node_type)
+        if isinstance(cleanup_grid_availability_cache, dict):
+            cleanup_grid_availability_cache[cache_key] = bool(available)
+        return available
+
+    def _get_entry_grid_render_index_for_cleanup(self, parent_path, node_type, grid_index_map=None, cleanup_grid_availability_cache=None):
+        if not self._get_grid_type_config(node_type):
+            return 0
+        if not self._is_grid_available_for_parent_for_cleanup(parent_path, node_type, cleanup_grid_availability_cache):
+            return 0
+        return self._get_entry_grid_render_index(parent_path, node_type, grid_index_map)
+
     def _compute_native_layer_value(self, node, native_depth, layer_anchor=None, layer_depth=0):
         try:
             resolved_native_depth = int(native_depth)
@@ -970,12 +1059,21 @@ class RuntimeLifecycleMixin(object):
         expected_children_by_parent = {}
         current_root_scroll_hosts = {}
         grid_index_map = {}
+        cleanup_parent_target_cache = {}
+        cleanup_scroll_content_cache = {}
+        cleanup_scroll_view_cache = {}
+        cleanup_grid_availability_cache = {}
 
         for entry in entries:
             if not isinstance(entry, dict):
                 continue
 
-            parent_path = self._resolve_parent_target(entry.get('parent_target'))
+            parent_path = self._resolve_parent_target_for_cleanup(
+                entry.get('parent_target'),
+                cleanup_parent_target_cache,
+                cleanup_scroll_content_cache,
+                cleanup_scroll_view_cache,
+            )
             node_type = self._safe_text(entry.get('node_type'))
             child_name = self._safe_text(entry.get('child_name'))
             if not parent_path or not child_name:
@@ -990,7 +1088,12 @@ class RuntimeLifecycleMixin(object):
             if not child_name.startswith(self._CONTROL_NAME_PREFIX):
                 continue
 
-            grid_index = self._get_entry_grid_render_index(parent_path, node_type, grid_index_map)
+            grid_index = self._get_entry_grid_render_index_for_cleanup(
+                parent_path,
+                node_type,
+                grid_index_map,
+                cleanup_grid_availability_cache,
+            )
             if grid_index > 0:
                 entry['render_in_grid'] = True
                 entry['grid_index'] = grid_index
@@ -1857,6 +1960,10 @@ class RuntimeLifecycleMixin(object):
                 self._drop_grid_slot_visible_states_under_path(child_path)
                 self._drop_native_common_style_cache(child_path)
                 self._drop_native_layout_cache(child_path)
+                try:
+                    self._drop_button_binding_cache(child_path)
+                except Exception:
+                    pass
                 remove_start_time = _perf_now()
                 self._screen.RemoveChildControl(child_control)
                 self._count_native_api_call('RemoveChildControl', elapsed_ms=(_perf_now() - remove_start_time) * 1000.0)

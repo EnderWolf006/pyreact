@@ -797,6 +797,13 @@ class RuntimePropsMixin(object):
             self._safe_set_rotate_pivot(node_path, rotate_pivot, node_control)
 
     def _bind_button_click(self, button_path, node_id):
+        if not isinstance(getattr(self, '_button_binding_cache', None), dict):
+            self._button_binding_cache = {}
+        safe_button_path = self._safe_text(button_path)
+        safe_node_id = self._safe_text(node_id)
+        if safe_button_path and self._button_binding_cache.get(safe_button_path) == safe_node_id:
+            return
+
         control = self._screen.GetBaseUIControl(button_path)
         if not control:
             return
@@ -814,6 +821,8 @@ class RuntimePropsMixin(object):
                 self._dispatch_click(node_id)
 
             button_control.SetButtonTouchUpCallback(_callback)
+            if safe_button_path:
+                self._button_binding_cache[safe_button_path] = safe_node_id
         except Exception:
             pass
 
@@ -821,6 +830,26 @@ class RuntimePropsMixin(object):
         callback = self._button_callbacks.get(node_id)
         if callback:
             callback()
+
+    def _drop_button_binding_cache(self, path_prefix=None):
+        cache = getattr(self, '_button_binding_cache', None)
+        if not isinstance(cache, dict):
+            return
+        if not path_prefix:
+            cache.clear()
+            return
+
+        prefix = self._safe_text(path_prefix)
+        if not prefix:
+            return
+        prefix_with_sep = prefix + '/'
+        for cached_path in list(cache.keys()):
+            safe_cached_path = self._safe_text(cached_path)
+            if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
+                try:
+                    del cache[cached_path]
+                except Exception:
+                    pass
 
     def _clear_prefixed_children(self, parent_path):
         try:
@@ -845,6 +874,10 @@ class RuntimePropsMixin(object):
                         pass
                     try:
                         self._drop_native_layout_cache(child_path)
+                    except Exception:
+                        pass
+                    try:
+                        self._drop_button_binding_cache(child_path)
                     except Exception:
                         pass
                     self._screen.RemoveChildControl(child_control)
@@ -887,6 +920,10 @@ class RuntimePropsMixin(object):
                         pass
                     try:
                         self._drop_native_layout_cache(child_path)
+                    except Exception:
+                        pass
+                    try:
+                        self._drop_button_binding_cache(child_path)
                     except Exception:
                         pass
                     self._screen.RemoveChildControl(child_control)

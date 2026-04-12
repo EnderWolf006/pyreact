@@ -167,6 +167,27 @@ def _clamp_axis(value, min_value, max_value):
 
 
 def _measure_label_size(node, style, text_measurer, max_width=None):
+    cache_key = None
+    if text_measurer is not None:
+        try:
+            content = ""
+            if hasattr(node, "props") and isinstance(node.props, dict):
+                content = node.props.get("content", "")
+            cache_key = (
+                content,
+                style.get("fontSize"),
+                style.get("font"),
+                style.get("textAlign"),
+                style.get("linePadding"),
+                style.get("shadow"),
+                max_width,
+            )
+            measure_cache = getattr(node, "_label_measure_cache", None)
+            if isinstance(measure_cache, dict) and cache_key in measure_cache:
+                return measure_cache[cache_key]
+        except Exception:
+            cache_key = None
+
     if text_measurer is not None:
         content = ""
         measure_style = {}
@@ -176,10 +197,20 @@ def _measure_label_size(node, style, text_measurer, max_width=None):
                 if node.props.get(key) is not None:
                     measure_style[key] = node.props.get(key)
         measured = text_measurer.measure_text(content, measure_style, max_width=max_width)
-        return (
+        result = (
             max(0.0, _safe_float(measured.get("width", 100.0), 100.0)),
             max(0.0, _safe_float(measured.get("height", 20.0), 20.0)),
         )
+        if cache_key is not None:
+            try:
+                measure_cache = getattr(node, "_label_measure_cache", None)
+                if not isinstance(measure_cache, dict):
+                    measure_cache = {}
+                    node._label_measure_cache = measure_cache
+                measure_cache[cache_key] = result
+            except Exception:
+                pass
+        return result
     return 100.0, 20.0
 
 
