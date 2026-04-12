@@ -130,158 +130,187 @@ class YourScreenNode(ScreenNode):
 
 ## 核心 API
 
+### 公共 props
+
+以下公共能力适用于所有公开组件；各组件小节里不再重复列 `key` / `children` / `style`。
+
+#### `key`
+
+- 用途：给节点提供稳定身份，便于列表复用、diff 和状态对齐
+- 传法：所有 `@Component` 组件都可以通过关键字参数传入 `key=...`
+- 建议：动态列表优先使用业务唯一 ID，不要用随机值
+
+#### `children`
+
+- 用途：传入子节点内容
+- 支持：单个节点，或 `list` / `tuple` 节点列表
+- 说明：不传时会自动归一化为空列表
+
+#### `style`
+
+- 用途：承载布局、定位、显示层属性
+- 支持：`Style(...)` 或 `dict`
+- 说明：组件专属能力例如 `Image.src`、`Label.content`、`Button.onClick` 不写在 `style` 里
+
+尺寸相关：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `width` | `int | str` | 宽度，可写数值或 `'100%'` |
+| `height` | `int | str` | 高度，可写数值或 `'100%'` |
+| `minWidth` | `int | str` | 最小宽度 |
+| `maxWidth` | `int | str` | 最大宽度 |
+| `minHeight` | `int | str` | 最小高度 |
+| `maxHeight` | `int | str` | 最大高度 |
+| `minSize` | `tuple` | 最小尺寸，通常是 `(width, height)` |
+| `maxSize` | `tuple` | 最大尺寸，通常是 `(width, height)` |
+
+间距相关：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `padding` | `int | float` | 统一内边距 |
+| `paddingTop` | `int | float` | 上内边距 |
+| `paddingRight` | `int | float` | 右内边距 |
+| `paddingBottom` | `int | float` | 下内边距 |
+| `paddingLeft` | `int | float` | 左内边距 |
+| `margin` | `int | float` | 统一外边距 |
+| `marginTop` | `int | float` | 上外边距 |
+| `marginRight` | `int | float` | 右外边距 |
+| `marginBottom` | `int | float` | 下外边距 |
+| `marginLeft` | `int | float` | 左外边距 |
+
+Flex 相关：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `flex` | `int | float` | Flex 比例 |
+| `flexDirection` | `str` | 主轴方向，通常为 `FlexDirection.row` / `column` |
+| `justifyContent` | `str` | 主轴对齐 |
+| `alignItems` | `str` | 交叉轴对齐 |
+| `alignSelf` | `str` | 当前节点自身对齐 |
+| `flexWrap` | `str` | 换行策略 |
+
+定位与显示相关：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `position` | `str` | 定位方式，通常为 `Position.relative` / `absolute` |
+| `top` | `int | float` | 顶部偏移 |
+| `left` | `int | float` | 左侧偏移 |
+| `right` | `int | float` | 右侧偏移 |
+| `bottom` | `int | float` | 底部偏移 |
+| `opacity` | `float` | 透明度 |
+| `display` | `str` | 显示状态，例如 `'none'` |
+| `zIndex` | `int` | 层级 |
+
+说明：`ref` 也由 `@Component` 统一支持，最常见于 `Scroll(ref=...)` 这类需要访问原生控件的场景。
+
 ### 基础组件（Primitives）
 
 #### `Panel`
 
 `Panel` 是最基础的布局容器，只参与布局和 children 组织，不会单独创建原生 `panel` 控件。
 
-常用 props：
+除公共 props 外，无额外 props。
 
-- `style`
-- `children`
-
-要点：
-
-- `Panel` 的子节点会直接继承当前挂载目标，例如 `root` 或最近的 `scroll_content`
-- 适合做横纵布局、包裹节点、绝对定位容器
+| prop | 类型 | 说明 |
+|------|------|------|
+| `（无）` | - | `Panel` 只使用公共的 `key` / `children` / `style` |
 
 #### `Image`
 
 `Image` 用于贴图、纯色底板、图标和按钮背景。
 
-常用 props：
-
-- `style`
-- `src`
-- `color`
-- `grayscale`
-- `clipRatio`
-- `uv` / `uvSize`
-- `resizeMode`
-- `imageAdaptionType`
-- `nineSlice` / `nineSliceType`
-- `rotation` / `rotatePivot`
-- `children`
-- `onClick`
-
-要点：
-
-- 图片渲染相关能力走 props，不走 `style`
-- `src` 为空时，runtime 会回退到 `textures/ui/white_bg`
+| prop | 类型 | 说明 |
+|------|------|------|
+| `src` | `str` | 图片路径；不传时 runtime 会回退到 `textures/ui/white_bg` |
+| `color` | `Color` | 颜色蒙版 |
+| `grayscale` | `bool` | 是否灰度化 |
+| `clipRatio` | `float` | 裁剪比例 |
+| `uv` | `tuple` | UV 起点 |
+| `uvSize` | `tuple` | UV 尺寸 |
+| `resizeMode` | `str` | 图片缩放模式 |
+| `imageAdaptionType` | `str` | 图片适配类型 |
+| `nineSlice` | `tuple` | 九宫格切片参数 |
+| `nineSliceType` | `str` | 九宫格类型 |
+| `rotation` | `float` | 旋转角度 |
+| `rotatePivot` | `tuple` | 旋转中心 |
+| `onClick` | `callable` | 点击回调 |
 
 #### `Label`
 
 `Label` 用于文本展示。
 
-常用 props：
-
-- `style`
-- `content`
-- `color`
-- `fontSize`
-- `textAlign`
-- `linePadding`
-- `shadow`
-
-要点：
-
-- 文本内容和文本样式走 props
-- 位置、尺寸、margin 等布局能力仍然写在 `style`
-- 手动换行使用 `\n`
+| prop | 类型 | 说明 |
+|------|------|------|
+| `content` | `str` | 文本内容 |
+| `color` | `Color` | 文本颜色 |
+| `fontSize` | `int` | 字号 |
+| `textAlign` | `str` | 对齐方式 |
+| `linePadding` | `float` | 行间距 |
+| `shadow` | `bool` | 是否显示阴影 |
 
 #### `Item`
 
 `Item` 用于渲染物品图标，对应 `inventory_item_renderer`。
 
-常用 props：
-
-- `style`
-- `children`
-- `identifier`
-- `aux`
-- `enchant`
-- `userData`
-- `itemDict`
-
-要点：
-
-- 可直接传扁平 props
-- 也可传 `itemDict`，runtime 会兼容常见的物品字段命名
+| prop | 类型 | 说明 |
+|------|------|------|
+| `identifier` | `str` | 物品标识符 |
+| `aux` | `int` | 物品附加值 |
+| `enchant` | `bool` | 是否显示附魔效果 |
+| `userData` | `object` | 额外物品数据 |
+| `itemDict` | `dict` | 完整物品字典，runtime 会兼容常见字段命名 |
 
 #### `Button`
 
 `Button` 是可点击容器，支持 `default / hover / pressed` 三态。
 
-常用 props：
-
-- `style`
-- `children`
-- `onClick`
-- `buttonBuilder`
-
-要点：
-
-- 不传 `buttonBuilder` 时，runtime 会使用默认三态背景
-- 传 `buttonBuilder` 时，通常写成 `lambda state: Image(...)` 或 `def builder(state): ...`
+| prop | 类型 | 说明 |
+|------|------|------|
+| `onClick` | `callable` | 点击回调 |
+| `buttonBuilder` | `callable` | 背景构造器，签名通常为 `builder(state)` |
 
 #### `Input`
 
 `Input` 用于文本输入。
 
-常用 props：
-
-- `style`
-- `value`
-- `onChange`
-- `placeholder`
-- `children`
-
-要点：
-
-- `value + onChange` 是受控写法
-- 只传 `onChange` 或不传 `value` 时，runtime 会尽量保持非受控输入内容
+| prop | 类型 | 说明 |
+|------|------|------|
+| `value` | `str` | 当前输入值 |
+| `onChange` | `callable` | 输入变化回调 |
+| `placeholder` | `str` | 占位文本 |
 
 #### `Scroll`
 
 `Scroll` 用于滚动列表容器。
 
-常用 props：
-
-- `style`
-- `children`
-- `showScrollbar`
-- `ref`
-
-要点：
-
-- 子节点会渲染到 `scroll_content`
-- 需要滚动控制时，给 `Scroll(ref=...)` 再调用底层 scroll 接口
+| prop | 类型 | 说明 |
+|------|------|------|
+| `showScrollbar` | `bool` | 是否显示滚动条 |
 
 #### `PaperDoll`
 
 `PaperDoll` 对应 `netease_paper_doll_renderer`，用于实体、骨骼模型和方块几何模型预览。
 
-常用 props：
-
-- `style`
-- `renderType`
-- `entityId` / `entityIdentifier`
-- `skeletonModelName`
-- `animation` / `animationLooped`
-- `blockGeometryModelName`
-- `scale`
-- `renderDepth`
-- `initRotX` / `initRotY` / `initRotZ`
-- `molangDict`
-- `rotationAxis`
-- `lightDirection`
-
-要点：
-
-- runtime 会按参数映射到 `RenderEntity` / `RenderSkeletonModel` / `RenderBlockGeometryModel`
-- 若不显式传 `renderType`，会按 `entityId/entityIdentifier`、`skeletonModelName`、`blockGeometryModelName` 自动推断
-- 当前只暴露了已在本地文档确认的渲染参数；`rotation`、`screen_scale` 这类模板字段没有作为业务 props 暴露
+| prop | 类型 | 说明 |
+|------|------|------|
+| `renderType` | `str` | 渲染类型，通常为 `RenderType.entity` / `skeleton` / `blockGeometry` |
+| `entityId` | `int` | 实体 id |
+| `entityIdentifier` | `str` | 实体 identifier，例如 `minecraft:cow` |
+| `skeletonModelName` | `str` | 骨骼模型名 |
+| `animation` | `str` | 骨骼动画名 |
+| `animationLooped` | `bool` | 骨骼动画是否循环 |
+| `blockGeometryModelName` | `str` | 方块几何模型名 |
+| `scale` | `float` | 模型缩放 |
+| `renderDepth` | `float` | 渲染深度微调 |
+| `initRotX` | `float` | 初始 X 轴旋转 |
+| `initRotY` | `float` | 初始 Y 轴旋转 |
+| `initRotZ` | `float` | 初始 Z 轴旋转 |
+| `molangDict` | `dict` | Molang 参数字典 |
+| `rotationAxis` | `tuple` | 旋转轴向量 |
+| `lightDirection` | `tuple` | 光照方向 |
 
 ### 组合组件（Composites）
 
@@ -289,41 +318,37 @@ class YourScreenNode(ScreenNode):
 
 `FilledButton` 是对 `Button` 的纯色封装，适合“纯色底板 + 内容”的按钮场景。
 
-常用 props：
+| prop | 类型 | 说明 |
+|------|------|------|
+| `default` | `Color` | 默认态背景色 |
+| `hover` | `Color` | 悬浮态背景色；不传时按回退规则补齐 |
+| `pressed` | `Color` | 按下态背景色；不传时按回退规则补齐 |
+| `onClick` | `callable` | 点击回调，透传给内部 `Button` |
 
-- `style`
-- `default`
-- `hover`
-- `pressed`
-- `children`
-- `onClick`
+状态回退规则：
 
-要点：
-
-- 可直接 `from pyreact import FilledButton`
-- 内部会生成一个铺满按钮区域的 `Image` 作为背景，并按按钮状态切换颜色
-- `hover` / `pressed` 缺失时会自动回退到已给定状态
+- 只传 `default`：`hover` 和 `pressed` 都回退到 `default`
+- 传 `default + pressed`：`hover` 回退到 `pressed`
+- 传 `default + hover`：`pressed` 回退到 `hover`
 
 #### `ImageButton`
 
 `ImageButton` 是对 `Button` 的图片态封装，适合“给三态贴图值，再由 builder 生成背景图”的场景。
 
-常用 props：
+| prop | 类型 | 说明 |
+|------|------|------|
+| `default` | `str` | 默认态贴图路径 |
+| `hover` | `str` | 悬浮态贴图路径；不传时按回退规则补齐 |
+| `pressed` | `str` | 按下态贴图路径；不传时按回退规则补齐 |
+| `imageBuilder` | `callable` | 图片构造器，支持 `imageBuilder(src)` 或 `imageBuilder(src, state)` |
+| `onClick` | `callable` | 点击回调，透传给内部 `Button` |
 
-- `style`
-- `default`
-- `hover`
-- `pressed`
-- `imageBuilder`
-- `children`
-- `onClick`
+状态回退规则：
 
-要点：
-
-- `default` / `hover` / `pressed` 负责提供三态贴图路径
-- `imageBuilder(src)` 是更常用的主写法；需要区分状态时可写成 `imageBuilder(src, state)`
-- 返回的 `Image` 会自动注入 `width='100%'` 和 `height='100%'`
-- `hover` / `pressed` 缺失时会自动回退到已给定状态
+- 只传 `default`：`hover` 和 `pressed` 都回退到 `default`
+- 传 `default + pressed`：`hover` 回退到 `pressed`
+- 传 `default + hover`：`pressed` 回退到 `hover`
+- `imageBuilder` 必须返回 `Image(...)`；返回结果会自动注入 `width='100%'` 和 `height='100%'`
 
 ### Hooks
 
@@ -379,32 +404,7 @@ hover_image = clone_component(
 
 ### 样式（Style）
 
-```python
-Style(
-    # 尺寸
-    width=200,              # 数值或 '100%'
-    height=100,
-    
-    # 间距
-    padding=10,             # 统一内边距
-    paddingLeft=8,          # 单侧内边距
-    margin=12,              # 统一外边距
-    marginTop=16,           # 单侧外边距
-    
-    # Flex 布局
-    flexDirection=FlexDirection.row,    # row / column
-    justifyContent=JustifyContent.center,  # flex-start / center / flex-end / space-between
-    alignItems=AlignItems.center,       # flex-start / center / flex-end / stretch
-    
-    # 定位
-    position=Position.absolute,         # relative / absolute
-    left=10,
-    top=20,
-    
-    # 层级
-    zIndex=10,
-)
-```
+`Style(...)` 的完整字段已经在上面的公共 props `style` 表格中列全；这里不再重复写示例代码块。
 
 ### 颜色
 
@@ -438,136 +438,6 @@ Button(
 )
 # 注: 纯色按钮可以用FilledButton组件简化
 ```
-
-### 组合组件（Composites）
-
-组合组件基于基础组件封装，提供更高级的抽象，简化常见使用场景。
-
-#### `FilledButton`
-
-`FilledButton` 是对 `Button` 的轻量封装，适合“纯色底板 + 内容”的按钮场景。它会内部生成一个铺满按钮区域的 `Image` 作为背景，并按按钮状态切换颜色。
-
-公开导入方式：
-
-```python
-from pyreact import FilledButton
-```
-
-参数说明：
-
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `default` | `Color` | 默认态背景色 |
-| `hover` | `Color` | 悬浮态背景色；不传时会回退到其他已给定状态 |
-| `pressed` | `Color` | 按下态背景色；不传时会回退到其他已给定状态 |
-| `style` | `Style` | 按钮自身尺寸/布局，背景会自动铺满 `100% x 100%` |
-| `children` | `list` | 按钮内部内容，例如 `Label` / `Image` |
-| `onClick` | `callable` | 点击回调，和普通 `Button` 一致 |
-
-状态回退规则：
-
-- 只传 `default`：`hover` 和 `pressed` 都会使用 `default`
-- 传 `default + pressed`：`hover` 会回退到 `pressed`
-- 传 `default + hover`：`pressed` 会回退到 `hover`
-
-常见用法：
-
-```python
-FilledButton(
-    style=Style(
-        width=100,
-        height=36,
-        alignItems=AlignItems.center,
-        justifyContent=JustifyContent.center,
-    ),
-    default=Color(0xFF2563EB),
-    hover=Color(0xFF1D4ED8),
-    pressed=Color(0xFF1E40AF),
-    onClick=lambda: do_something(),
-    children=[
-        Label(content='Click', color=Colors.white),
-    ],
-)
-```
-
-仓库内真实示例（`PyreactExampleScript/examples/BedwarStoreApp.py`）：
-
-```python
-FilledButton(
-    style=Style(
-        width=22,
-        height=22,
-        alignItems=AlignItems.center,
-        justifyContent=JustifyContent.center,
-    ),
-    default=Colors.black.withAlpha(0.2),
-    pressed=Colors.black.withAlpha(0.1),
-    children=[
-        Label(content='x'),
-    ],
-)
-```
-
-使用建议：
-
-- 当你只需要纯色按钮，而不是自定义贴图背景时，优先用 `FilledButton`，比手写 `buttonBuilder` 更直接。
-- 按钮尺寸、对齐、margin 等仍然写在外层 `style`；背景层会自动填满，不需要自己再写 `Image(style=Style(width='100%', height='100%'))`。
-- 文本、图标等内容仍然通过 `children` 传入，所以它的组合方式和普通 `Button` 完全一致。
-- 若你需要的不只是换色，而是不同状态下切贴图/切结构，应该回到 `Button(buttonBuilder=...)`。
-
-#### `ImageButton`
-
-`ImageButton` 是对 `Button` 的图片态封装。它接收一个 `default` 的 `Image` 组件作为模板，再根据 `hover` / `pressed` 传入的贴图路径快速生成三态图片按钮。
-
-公开导入方式：
-
-```python
-from pyreact import ImageButton
-```
-
-参数说明：
-
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `default` | `Image` | 默认态图片模板，必须传 `Image(...)` 组件 |
-| `hover` | `str` | 悬浮态贴图路径；不传时回退到其他已给定状态 |
-| `pressed` | `str` | 按下态贴图路径；不传时回退到其他已给定状态 |
-| `style` | `Style` | 按钮自身尺寸/布局，和普通 `Button` 一致 |
-| `children` | `list` | 按钮内部内容，例如文字、图标覆盖层 |
-| `onClick` | `callable` | 点击回调 |
-
-状态回退规则：
-
-- `hover` 和 `pressed` 都不传：两者都回退到 `default.src`
-- 只传 `pressed`：`hover` 回退到 `pressed`
-- 只传 `hover`：`pressed` 回退到 `hover`
-
-常见用法：
-
-```python
-ImageButton(
-    style=Style(width=96, height=32),
-    default=Image(
-        style=Style(width='100%', height='100%'),
-        src='textures/ui/store/button_default',
-    ),
-    hover='textures/ui/store/button_hover',
-    pressed='textures/ui/store/button_pressed',
-    onClick=lambda: do_something(),
-    children=[
-        Label(content='购买', color=Colors.white),
-    ],
-)
-```
-
-实现约束：
-
-- `ImageButton` 不会原地修改你传入的 `default Image`，而是读取它的 props 后为每个状态重新构建新的 `Image`。
-- 这样做是为了避开当前框架里浅拷贝带来的共享引用风险，尤其是 `style`、`children` 这类嵌套对象。
-- `hover` / `pressed` 目前只快捷覆盖 `src`；其余图片属性（如 `color`、`uv`、`nineSlice`）沿用 `default` 模板。
-- 如果你需要不同状态下切的不只是 `src`，而是整套 `Image` 参数甚至完全不同的背景结构，应继续使用 `Button(buttonBuilder=...)`。
-
----
 
 ## 目录结构
 
