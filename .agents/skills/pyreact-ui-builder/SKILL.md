@@ -163,7 +163,9 @@ def UserCard(name, level):
 
 ## 组件总览
 
-### 1. `Panel`
+### 基础组件（Components）
+
+#### 1. `Panel`
 
 用途：通用容器、布局节点。
 
@@ -177,7 +179,7 @@ def UserCard(name, level):
 
 适合：横纵布局、包裹子节点、绝对定位容器。
 
-### 2. `Image`
+#### 2. `Image`
 
 用途：贴图、纯色底板、按钮背景、图标。
 
@@ -201,7 +203,7 @@ def UserCard(name, level):
 - `src` 为空时，runtime 会回退到 `textures/ui/white_bg`，因此经常可以把 `Image + color` 当纯色面板用。
 - 业务上常见写法是用 `Image(style=Style(width='100%', height='100%'), color=Color(...))` 作为背景层。
 
-### 3. `Label`
+#### 3. `Label`
 
 用途：文本展示。
 
@@ -223,7 +225,7 @@ def UserCard(name, level):
 - 当设置 `width` / `minWidth` 等约束后，可触发自动换行。
 - 行距能力在本库公开 API 中对应 `linePadding`；如果外部资料写 `lineSpacing`，落到本库实现时应优先使用当前公开 prop 名。
 
-### 4. `Item`
+#### 4. `Item`
 
 用途：渲染物品图标。
 
@@ -240,7 +242,7 @@ def UserCard(name, level):
 - 可直接传扁平 props。
 - 也可传 `itemDict`，runtime 会自动兼容 `newItemName` / `itemName`、`newAuxValue` / `auxValue` 等字段。
 
-### 5. `Button`
+#### 5. `Button`
 
 用途：可点击容器。
 
@@ -258,7 +260,7 @@ def UserCard(name, level):
 - 若传 `buttonBuilder`，一般写成 `lambda state: Image(...)` 或函数 `def builder(state): ...`。
 - `buttonBuilder` 可根据 `ButtonState.default/hover/pressed` 返回不同背景。
 
-### 6. `Input`
+#### 6. `Input`
 
 用途：文本输入。
 
@@ -275,7 +277,7 @@ def UserCard(name, level):
 - 只传 `onChange` 或不传 `value` 时，runtime 会尽量保持非受控输入在整树重渲染后的内容。
 - 搜索框、昵称编辑框等都优先走受控写法，便于和 `useState` 保持一致。
 
-### 7. `Scroll`
+#### 7. `Scroll`
 
 用途：滚动列表容器。
 
@@ -291,7 +293,7 @@ def UserCard(name, level):
 - 常和长列表搭配使用。
 - 若需要滚动到顶部/底部，给 `Scroll(ref=...)`，再通过 `ref.current.asScrollView()` 调原生滚动接口。
 
-### 8. `PaperDoll`
+#### 8. `PaperDoll`
 
 用途：渲染网易纸娃娃控件，用于实体 / 骨骼模型 / 网格体预览。
 
@@ -370,6 +372,49 @@ PaperDoll(
 - 预览框里常一起调整 `scale`、`renderDepth`、`initRotY` 来把模型摆正。
 - 需要切换模型类型时，优先通过不同 props 组合驱动同一个 `PaperDoll`，不要混用多套未文档确认的底层 renderer 参数。
 - 如果显示位置异常，先检查布局容器尺寸和 `PaperDoll` 自身 `style`，再看渲染参数；不要先假设是网易接口问题。
+
+### 组合组件（Composites）
+
+组合组件基于基础组件封装，提供更高级的抽象，简化常见使用场景。
+
+#### `FilledButton`
+
+用途：`Button` 的纯色变体，适合快速写"色块底板 + 内容"的按钮。
+
+常用 props：
+
+- `style`
+- `default`
+- `hover`
+- `pressed`
+- `children`
+- `onClick`
+
+要点：
+
+- `FilledButton` 是公开 API，可直接 `from pyreact import FilledButton`。
+- 它内部本质上还是 `Button`，只是自动帮你生成了一个按 `ButtonState` 切色的背景 `Image`。
+- 背景 `Image` 固定铺满 `100% x 100%`，所以按钮尺寸、对齐方式仍然由外层 `style` 决定。
+- 若 `hover` / `pressed` 缺失，组件会自动回退到已提供的颜色，不需要三态都手写。
+- 只需要纯色切换时优先用 `FilledButton`；需要复杂背景或不同状态下返回不同结构时，用 `Button(buttonBuilder=...)`。
+
+示例：
+
+```python
+FilledButton(
+    style=Style(
+        width=22,
+        height=22,
+        alignItems=AlignItems.center,
+        justifyContent=JustifyContent.center,
+    ),
+    default=Colors.black.withAlpha(0.2),
+    pressed=Colors.black.withAlpha(0.1),
+    children=[
+        Label(content='x')
+    ],
+)
+```
 
 ## `props` 与 `style` 的分工
 

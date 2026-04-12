@@ -130,7 +130,7 @@ class YourScreenNode(ScreenNode):
 
 ## 核心 API
 
-### 控件（Primitives）
+### 基础组件（Components）
 
 | 控件 | 说明 | 常用属性 |
 |------|------|----------|
@@ -143,7 +143,7 @@ class YourScreenNode(ScreenNode):
 | `Item` | 物品图标 | `style`, `identifier`, `aux`, `itemDict`, `enchant` |
 | `PaperDoll` | 纸娃娃 / 实体预览 | `style`, `renderType`, `entityId`, `entityIdentifier`, `skeletonModelName`, `blockGeometryModelName` |
 
-### `PaperDoll`
+#### `PaperDoll`
 
 `PaperDoll` 对应 `netease_paper_doll_renderer`，运行时会按本地文档映射到以下接口之一：
 
@@ -323,6 +323,82 @@ Button(
 )
 # 注: 纯色按钮可以用FilledButton组件简化
 ```
+
+### 组合组件（Composites）
+
+组合组件基于基础组件封装，提供更高级的抽象，简化常见使用场景。
+
+#### `FilledButton`
+
+`FilledButton` 是对 `Button` 的轻量封装，适合“纯色底板 + 内容”的按钮场景。它会内部生成一个铺满按钮区域的 `Image` 作为背景，并按按钮状态切换颜色。
+
+公开导入方式：
+
+```python
+from pyreact import FilledButton
+```
+
+参数说明：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `default` | `Color` | 默认态背景色 |
+| `hover` | `Color` | 悬浮态背景色；不传时会回退到其他已给定状态 |
+| `pressed` | `Color` | 按下态背景色；不传时会回退到其他已给定状态 |
+| `style` | `Style` | 按钮自身尺寸/布局，背景会自动铺满 `100% x 100%` |
+| `children` | `list` | 按钮内部内容，例如 `Label` / `Image` |
+| `onClick` | `callable` | 点击回调，和普通 `Button` 一致 |
+
+状态回退规则：
+
+- 只传 `default`：`hover` 和 `pressed` 都会使用 `default`
+- 传 `default + pressed`：`hover` 会回退到 `pressed`
+- 传 `default + hover`：`pressed` 会回退到 `hover`
+
+常见用法：
+
+```python
+FilledButton(
+    style=Style(
+        width=100,
+        height=36,
+        alignItems=AlignItems.center,
+        justifyContent=JustifyContent.center,
+    ),
+    default=Color(0xFF2563EB),
+    hover=Color(0xFF1D4ED8),
+    pressed=Color(0xFF1E40AF),
+    onClick=lambda: do_something(),
+    children=[
+        Label(content='Click', color=Colors.white),
+    ],
+)
+```
+
+仓库内真实示例（`PyreactExampleScript/examples/BedwarStoreApp.py`）：
+
+```python
+FilledButton(
+    style=Style(
+        width=22,
+        height=22,
+        alignItems=AlignItems.center,
+        justifyContent=JustifyContent.center,
+    ),
+    default=Colors.black.withAlpha(0.2),
+    pressed=Colors.black.withAlpha(0.1),
+    children=[
+        Label(content='x'),
+    ],
+)
+```
+
+使用建议：
+
+- 当你只需要纯色按钮，而不是自定义贴图背景时，优先用 `FilledButton`，比手写 `buttonBuilder` 更直接。
+- 按钮尺寸、对齐、margin 等仍然写在外层 `style`；背景层会自动填满，不需要自己再写 `Image(style=Style(width='100%', height='100%'))`。
+- 文本、图标等内容仍然通过 `children` 传入，所以它的组合方式和普通 `Button` 完全一致。
+- 若你需要的不只是换色，而是不同状态下切贴图/切结构，应该回到 `Button(buttonBuilder=...)`。
 
 ---
 
