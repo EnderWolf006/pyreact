@@ -5,7 +5,7 @@ class Style(object):
     """
     _SUPPORTED_KEYS = [
         "width", "height",
-        "minWidth", "maxWidth", "minHeight", "maxHeight", "minSize", "maxSize",
+        "minWidth", "maxWidth", "minHeight", "maxHeight",
         "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
         "margin", "marginTop", "marginRight", "marginBottom", "marginLeft",
         "flex", "flexDirection", "justifyContent", "alignItems", "alignSelf", "flexWrap",
@@ -21,8 +21,6 @@ class Style(object):
         maxWidth=None,
         minHeight=None,
         maxHeight=None,
-        minSize=None,
-        maxSize=None,
         padding=None,
         paddingTop=None,
         paddingRight=None,
@@ -55,8 +53,6 @@ class Style(object):
         self.maxWidth = maxWidth
         self.minHeight = minHeight
         self.maxHeight = maxHeight
-        self.minSize = minSize
-        self.maxSize = maxSize
 
         self.padding = padding
         self.paddingTop = paddingTop

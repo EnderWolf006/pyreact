@@ -117,32 +117,11 @@ def parse_box(style, prefix, parent_width, parent_height):
     return float(top), float(right), float(bottom), float(left)
 
 
-def _parse_size_pair(value, parent_width, parent_height):
-    if isinstance(value, (list, tuple)) and len(value) >= 2:
-        return (
-            parse_length(value[0], parent_width),
-            parse_length(value[1], parent_height),
-        )
-    return (None, None)
-
-
 def _resolve_min_max(style, parent_width, parent_height):
     min_w = parse_length(style.get("minWidth"), parent_width)
     max_w = parse_length(style.get("maxWidth"), parent_width)
     min_h = parse_length(style.get("minHeight"), parent_height)
     max_h = parse_length(style.get("maxHeight"), parent_height)
-
-    pair_min_w, pair_min_h = _parse_size_pair(style.get("minSize"), parent_width, parent_height)
-    pair_max_w, pair_max_h = _parse_size_pair(style.get("maxSize"), parent_width, parent_height)
-
-    if min_w is None:
-        min_w = pair_min_w
-    if min_h is None:
-        min_h = pair_min_h
-    if max_w is None:
-        max_w = pair_max_w
-    if max_h is None:
-        max_h = pair_max_h
 
     min_w = None if min_w is None else max(0.0, _safe_float(min_w, 0.0))
     min_h = None if min_h is None else max(0.0, _safe_float(min_h, 0.0))

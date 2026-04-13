@@ -132,25 +132,32 @@ class YourScreenNode(ScreenNode):
 
 ### 公共 props
 
-以下公共能力适用于所有公开组件；各组件小节里不再重复列 `key` / `children` / `style`。
+以下公共能力适用于所有公开组件；各组件小节里不再重复列出。
 
 #### `key`
 
 - 用途：给节点提供稳定身份，便于列表复用、diff 和状态对齐
-- 传法：所有 `@Component` 组件都可以通过关键字参数传入 `key=...`
 - 建议：动态列表优先使用业务唯一 ID，不要用随机值
+- 说明：自定义组件不需要在形参声明key，@Component会自动注入
 
 #### `children`
 
 - 用途：传入子节点内容
 - 支持：单个节点，或 `list` / `tuple` 节点列表
-- 说明：不传时会自动归一化为空列表
+- 说明：所有框架自带的 `primitives` 和 `composites` 组件都支持 `children`，自定义组件可选在形参支持children
 
 #### `style`
 
-- 用途：承载布局、定位、显示层属性
-- 支持：`Style(...)` 或 `dict`
-- 说明：组件专属能力例如 `Image.src`、`Label.content`、`Button.onClick` 不写在 `style` 里
+- 用途：弹性盒布局、定位、尺寸、层级、透明度等所有组件通用属性
+- 支持：`Style(...)`（推荐，有代码提示） 或 `dict`
+- 说明：style 中均为所有组件通用属性，比如图片的src，文本的fontSize都要用各自组件的props传入
+- 说明：所有框架自带的 `primitives` 和 `composites` 组件都支持 `style`，自定义组件可选在形参支持style
+
+#### `ref`
+- 用途：获取组件对应的原生控件实例，访问底层 API
+- 支持：`useRef` 创建的 ref 对象
+- 说明：ref 由 `@Component` 注入，对于 `composites` 组件会透传到内部跟组件上，最终到叶子 `primitives` 组件上
+
 
 尺寸相关：
 
@@ -162,8 +169,6 @@ class YourScreenNode(ScreenNode):
 | `maxWidth` | `int / str` | 最大宽度 |
 | `minHeight` | `int / str` | 最小高度 |
 | `maxHeight` | `int / str` | 最大高度 |
-| `minSize` | `tuple` | 最小尺寸，通常是 `(width, height)` |
-| `maxSize` | `tuple` | 最大尺寸，通常是 `(width, height)` |
 
 间距相关：
 
@@ -204,8 +209,6 @@ Flex 相关：
 | `display` | `str` | 显示状态，例如 `'none'` |
 | `zIndex` | `int` | 层级 |
 
-说明：`ref` 也由 `@Component` 统一支持，最常见于 `Scroll(ref=...)` 这类需要访问原生控件的场景。
-
 ### 基础组件（Primitives）
 
 #### `Panel`
@@ -214,9 +217,6 @@ Flex 相关：
 
 除公共 props 外，无额外 props。
 
-| prop | 类型 | 说明 |
-|------|------|------|
-| `（无）` | - | `Panel` 只使用公共的 `key` / `children` / `style` |
 
 #### `Image`
 
@@ -224,7 +224,7 @@ Flex 相关：
 
 | prop | 类型 | 说明 |
 |------|------|------|
-| `src` | `str` | 图片路径；不传时 runtime 会回退到 `textures/ui/white_bg` |
+| `src` | `str` | 图片路径；默认纯白图片 `textures/ui/white_bg` |
 | `color` | `Color` | 颜色蒙版 |
 | `grayscale` | `bool` | 是否灰度化 |
 | `clipRatio` | `float` | 裁剪比例 |
@@ -261,7 +261,7 @@ Flex 相关：
 | `aux` | `int` | 物品附加值 |
 | `enchant` | `bool` | 是否显示附魔效果 |
 | `userData` | `object` | 额外物品数据 |
-| `itemDict` | `dict` | 完整物品字典，runtime 会兼容常见字段命名 |
+| `itemDict` | `dict` | 完整物品字典，可被上述字段覆盖 |
 
 #### `Button`
 
@@ -270,7 +270,7 @@ Flex 相关：
 | prop | 类型 | 说明 |
 |------|------|------|
 | `onClick` | `callable` | 点击回调 |
-| `buttonBuilder` | `callable` | 背景构造器，签名通常为 `builder(state)` |
+| `buttonBuilder` | `callable` | 背景构造器，签名为 `builder(state) -> ComponentNode` |
 
 #### `Input`
 
@@ -296,7 +296,7 @@ Flex 相关：
 
 | prop | 类型 | 说明 |
 |------|------|------|
-| `renderType` | `str` | 渲染类型，通常为 `RenderType.entity` / `skeleton` / `blockGeometry` |
+| `renderType` | `str` | 渲染类型，可选枚举 `RenderType.entity`(默认) / `skeleton` / `blockGeometry` |
 | `entityId` | `int` | 实体 id |
 | `entityIdentifier` | `str` | 实体 identifier，例如 `minecraft:cow` |
 | `skeletonModelName` | `str` | 骨骼模型名 |
@@ -418,26 +418,6 @@ Color(0xFF2563EB)     # 蓝色
 Color(0x80FF0000)     # 半透明红色
 ```
 
-### Button 三态
-
-```python
-def button_bg_builder(state):
-    """按钮背景构建器"""
-    colors = {
-        ButtonState.default: Color(0xFF2563EB),
-        ButtonState.hover: Color(0xFF1D4ED8),
-        ButtonState.pressed: Color(0xFF1E40AF),
-    }
-    return Image(style=Style(width='100%', height='100%'), color=colors[state])
-
-Button(
-    style=Style(width=100, height=36),
-    buttonBuilder=button_bg_builder,
-    onClick=lambda: do_something(),
-    children=[Label(content='Click', color=Colors.white)],
-)
-# 注: 纯色按钮可以用FilledButton组件简化
-```
 
 ## 目录结构
 

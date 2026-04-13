@@ -77,14 +77,6 @@
         "enabled": true,
         "is_handle_button_move_event": false,
         "layer": 0,
-        "max_size": [
-            0,
-            0
-        ],
-        "min_size": [
-            0,
-            0
-        ],
         "offset": [
             0,
             0
@@ -128,14 +120,6 @@
         "size": [
             100,
             100
-        ],
-        "min_size": [
-            0,
-            0
-        ],
-        "max_size": [
-            0,
-            0
         ],
         "priority": 0,
         "layer": 1,
@@ -238,14 +222,6 @@
         "enabled_newline": false,
         "layer": 1,
         "max_length": 512,
-        "max_size": [
-            0,
-            0
-        ],
-        "min_size": [
-            0,
-            0
-        ],
         "offset": [
             0,
             0
@@ -291,14 +267,6 @@
         "size": [
             100,
             100
-        ],
-        "min_size": [
-            0,
-            0
-        ],
-        "max_size": [
-            0,
-            0
         ],
         "priority": 0,
         "layer": 4,
@@ -348,14 +316,6 @@
         "size": [
             100,
             100
-        ],
-        "min_size": [
-            0,
-            0
-        ],
-        "max_size": [
-            0,
-            0
         ],
         "priority": 0,
         "layer": 1,
@@ -446,14 +406,6 @@
         "size": [
             "default",
             "default"
-        ],
-        "min_size": [
-            0,
-            0
-        ],
-        "max_size": [
-            0,
-            0
         ],
         "priority": 0,
         "layer": 5,

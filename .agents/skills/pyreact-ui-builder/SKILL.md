@@ -404,7 +404,7 @@ hover_image = clone_component(
 
 当前公开支持（见 `pyreact/components/style.py`）：
 
-- 尺寸：`width`、`height`、`minWidth`、`maxWidth`、`minHeight`、`maxHeight`、`minSize`、`maxSize`
+- 尺寸：`width`、`height`、`minWidth`、`maxWidth`、`minHeight`、`maxHeight`
 - 间距：`padding`、`paddingTop`、`paddingRight`、`paddingBottom`、`paddingLeft`、`margin`、`marginTop`、`marginRight`、`marginBottom`、`marginLeft`
 - Flex：`flex`、`flexDirection`、`justifyContent`、`alignItems`、`alignSelf`、`flexWrap`
 - 定位：`position`、`top`、`left`、`right`、`bottom`
