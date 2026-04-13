@@ -59,28 +59,6 @@ def FriendApp():
         current_friend = filtered[0]
         selected_index = 0
 
-    def tab_btn_bg_builder(state):
-        color_map = {
-            ButtonState.default: Color(0xFF334155),
-            ButtonState.hover: Color(0xFF475569),
-            ButtonState.pressed: Color(0xFF1E293B),
-        }
-        return Image(
-            style=Style(width='100%', height='100%'),
-            color=color_map.get(state, color_map[ButtonState.default]),
-        )
-
-    def action_btn_bg_builder(state):
-        color_map = {
-            ButtonState.default: Color(0xFF2563EB),
-            ButtonState.hover: Color(0xFF1D4ED8),
-            ButtonState.pressed: Color(0xFF1E40AF),
-        }
-        return Image(
-            style=Style(width='100%', height='100%'),
-            color=color_map.get(state, color_map[ButtonState.default]),
-        )
-
     status_color_map = {
         'online': Color(0xFF22C55E),
         'away': Color(0xFFF59E0B),
@@ -126,7 +104,7 @@ def FriendApp():
     for tab in tabs:
         tab_id = tab['id']
         tab_nodes.append(
-            Button(
+            FilledButton(
                 key='tab_%s' % tab_id,
                 style=Style(
                     width=76,
@@ -135,7 +113,9 @@ def FriendApp():
                     alignItems=AlignItems.center,
                     justifyContent=JustifyContent.center,
                 ),
-                buttonBuilder=tab_btn_bg_builder,
+                default=Color(0xFF334155),
+                hover=Color(0xFF475569),
+                pressed=Color(0xFF1E293B),
                 onClick=(lambda tid=tab_id: (set_selected_tab(tid), set_selected_friend_id(None))),
                 children=[
                     Label(content=tab['name'], color=Colors.white)
@@ -157,19 +137,8 @@ def FriendApp():
             row_hover = Color(0xFF1F2937)
             row_pressed = Color(0xFF0B1220)
 
-        def _row_builder(state, d=row_default, h=row_hover, p=row_pressed):
-            color_map = {
-                ButtonState.default: d,
-                ButtonState.hover: h,
-                ButtonState.pressed: p,
-            }
-            return Image(
-                style=Style(width='100%', height='100%'),
-                color=color_map.get(state, d),
-            )
-
         friend_nodes.append(
-            Button(
+            FilledButton(
                 key=f['id'],
                 style=Style(
                     width='100%',
@@ -181,7 +150,9 @@ def FriendApp():
                     justifyContent=JustifyContent.spaceBetween,
                     flexDirection=FlexDirection.row,
                 ),
-                buttonBuilder=_row_builder,
+                default=row_default,
+                hover=row_hover,
+                pressed=row_pressed,
                 onClick=(lambda friend_id=f['id']: set_selected_friend_id(friend_id)),
                 children=[
                     Panel(
@@ -319,7 +290,7 @@ def FriendApp():
             Panel(
                 style=Style(marginTop=14, flexDirection=FlexDirection.row),
                 children=[
-                    Button(
+                    FilledButton(
                         style=Style(
                             width=100,
                             height=34,
@@ -327,20 +298,24 @@ def FriendApp():
                             alignItems=AlignItems.center,
                             justifyContent=JustifyContent.center,
                         ),
-                        buttonBuilder=action_btn_bg_builder,
+                        default=Color(0xFF2563EB),
+                        hover=Color(0xFF1D4ED8),
+                        pressed=Color(0xFF1E40AF),
                         onClick=(lambda: None),
                         children=[
                             Label(color=Colors.white, content='邀请组队')
                         ],
                     ),
-                    Button(
+                    FilledButton(
                         style=Style(
                             width=100,
                             height=34,
                             alignItems=AlignItems.center,
                             justifyContent=JustifyContent.center,
                         ),
-                        buttonBuilder=action_btn_bg_builder,
+                        default=Color(0xFF2563EB),
+                        hover=Color(0xFF1D4ED8),
+                        pressed=Color(0xFF1E40AF),
                         onClick=(lambda: None),
                         children=[
                             Label(color=Colors.white, content='发送私聊')
@@ -412,7 +387,7 @@ def FriendApp():
                                 style=Style(marginTop=10, flex=1, width='100%'),
                                 children=friend_nodes,
                             ),
-                            Button(
+                            FilledButton(
                                 style=Style(
                                     position=Position.absolute,
                                     bottom=20,
@@ -423,10 +398,9 @@ def FriendApp():
                                     justifyContent=JustifyContent.center,
                                     zIndex=100,
                                 ),
-                                buttonBuilder=lambda state: Image(
-                                    style=Style(width='100%', height='100%'),
-                                    color=Color(0xFF2563EB) if state == ButtonState.default else Color(0xFF1D4ED8),
-                                ),
+                                default=Color(0xFF2563EB),
+                                hover=Color(0xFF1D4ED8),
+                                pressed=Color(0xFF1D4ED8),
                                 onClick=lambda: scroll_to_top(),
                                 children=[
                                     Label(color=Colors.white, content='▲', fontSize=FontSize.large)

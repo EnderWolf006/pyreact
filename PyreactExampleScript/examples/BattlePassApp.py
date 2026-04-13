@@ -119,20 +119,6 @@ REWARD_ROWS = [
 ]
 
 
-def _button_fill(default_color, hover_color, pressed_color):
-    def builder(state):
-        color_map = {
-            ButtonState.default: default_color,
-            ButtonState.hover: hover_color,
-            ButtonState.pressed: pressed_color,
-        }
-        return Image(
-            style=Style(width='100%', height='100%'),
-            color=color_map.get(state, default_color),
-        )
-    return builder
-
-
 def _reward_state_for_track(level, current_level, track_id, preview_plan_id):
     if track_id == 'elite' and preview_plan_id != 'elite':
         return '未解锁'
@@ -215,7 +201,7 @@ def RewardClaimButton(track_id, reward_state):
     default_color, hover_color, pressed_color, text_color = _claim_button_palette(track_id, reward_state)
     button_text = reward_state
 
-    return Button(
+    return FilledButton(
         style=Style(
             width=44,
             height=22,
@@ -225,7 +211,9 @@ def RewardClaimButton(track_id, reward_state):
             justifyContent=JustifyContent.center,
         ),
         onClick=lambda: None,
-        buttonBuilder=_button_fill(default_color, hover_color, pressed_color),
+        default=default_color,
+        hover=hover_color,
+        pressed=pressed_color,
         children=[
             Label(content=button_text, color=text_color, shadow=True),
         ],
@@ -260,7 +248,7 @@ def UnlockPreviewButton(is_elite, onClick):
         ]
         title_text = '解锁进阶版'
 
-    return Button(
+    return FilledButton(
         style=Style(
             width=124,
             height=36,
@@ -269,7 +257,9 @@ def UnlockPreviewButton(is_elite, onClick):
             justifyContent=JustifyContent.center,
         ),
         onClick=onClick,
-        buttonBuilder=_button_fill(default_color, hover_color, pressed_color),
+        default=default_color,
+        hover=hover_color,
+        pressed=pressed_color,
         children=[
             Label(content=title_text, color=Colors.white, shadow=True),
         ] + subtitle_nodes,

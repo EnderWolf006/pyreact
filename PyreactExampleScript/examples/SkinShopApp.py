@@ -94,20 +94,6 @@ SKIN_GOODS = [
 ]
 
 
-def _button_fill(default_color, hover_color, pressed_color):
-    def builder(state):
-        color_map = {
-            ButtonState.default: default_color,
-            ButtonState.hover: hover_color,
-            ButtonState.pressed: pressed_color,
-        }
-        return Image(
-            style=Style(width='100%', height='100%'),
-            color=color_map.get(state, default_color),
-        )
-    return builder
-
-
 def _currency_label(currency_key):
     if currency_key == 'diamond':
         return '钻石'
@@ -153,7 +139,7 @@ def SkinListItem(goods_data, is_selected, onClick):
         hover_color = Color(0x99475569)
         pressed_color = Color(0x991E293B)
 
-    return Button(
+    return FilledButton(
         key=goods_data['id'],
         style=Style(
             width='100%',
@@ -165,7 +151,9 @@ def SkinListItem(goods_data, is_selected, onClick):
             justifyContent=JustifyContent.spaceBetween,
             flexDirection=FlexDirection.row,
         ),
-        buttonBuilder=_button_fill(default_color, hover_color, pressed_color),
+        default=default_color,
+        hover=hover_color,
+        pressed=pressed_color,
         onClick=onClick,
         children=[
             Panel(
@@ -451,7 +439,7 @@ def SkinShopApp():
                                             alignItems=AlignItems.center,
                                         ),
                                         children=[
-                                            Button(
+                                            FilledButton(
                                                 style=Style(
                                                     width=92,
                                                     height=32,
@@ -459,20 +447,24 @@ def SkinShopApp():
                                                     justifyContent=JustifyContent.center,
                                                     marginRight=8,
                                                 ),
-                                                buttonBuilder=_button_fill(buy_default, buy_hover, buy_pressed),
+                                                default=buy_default,
+                                                hover=buy_hover,
+                                                pressed=buy_pressed,
                                                 onClick=lambda: None,
                                                 children=[
                                                     Label(color=Colors.white, content='立即购买'),
                                                 ],
                                             ),
-                                            Button(
+                                            FilledButton(
                                                 style=Style(
                                                     width=92,
                                                     height=32,
                                                     alignItems=AlignItems.center,
                                                     justifyContent=JustifyContent.center,
                                                 ),
-                                                buttonBuilder=_button_fill(Color(0x99334155), Color(0x99475569), Color(0x991E293B)),
+                                                default=Color(0x99334155),
+                                                hover=Color(0x99475569),
+                                                pressed=Color(0x991E293B),
                                                 onClick=lambda: None,
                                                 children=[
                                                     Label(color=Colors.white, content='加入愿望单'),
