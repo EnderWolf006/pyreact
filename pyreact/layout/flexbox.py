@@ -95,6 +95,56 @@ def _is_absolute_position(style):
     return False
 
 
+def _is_relative_position(style):
+    if not isinstance(style, dict):
+        return False
+    pos_value = style.get("position")
+    if pos_value is None:
+        return True
+    if isinstance(pos_value, TEXT_TYPES):
+        return pos_value.strip().lower() == "relative"
+    return False
+
+
+def _has_relative_offsets(style):
+    if not isinstance(style, dict):
+        return False
+    return (
+        style.get("left") is not None
+        or style.get("right") is not None
+        or style.get("top") is not None
+        or style.get("bottom") is not None
+    )
+
+
+def _resolve_relative_offsets(style, parent_width, parent_height):
+    if not _has_relative_offsets(style):
+        return 0.0, 0.0
+
+    if not _is_relative_position(style):
+        return 0.0, 0.0
+
+    left = parse_length(style.get("left"), parent_width)
+    right = parse_length(style.get("right"), parent_width)
+    top = parse_length(style.get("top"), parent_height)
+    bottom = parse_length(style.get("bottom"), parent_height)
+
+    offset_x = 0.0
+    offset_y = 0.0
+
+    if left is not None:
+        offset_x += left
+    elif right is not None:
+        offset_x -= right
+
+    if top is not None:
+        offset_y += top
+    elif bottom is not None:
+        offset_y -= bottom
+
+    return float(offset_x), float(offset_y)
+
+
 def parse_box(style, prefix, parent_width, parent_height):
     base = parse_length(style.get(prefix), parent_width)
     if base is None:
@@ -704,6 +754,14 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
         child_width = max(0.0, child_width)
         child_height = max(0.0, child_height)
 
+        flow_child_x = child_x
+        flow_child_y = child_y
+        relative_offset_x, relative_offset_y = _resolve_relative_offsets(
+            item["style"], content_width, content_height
+        )
+        child_x += relative_offset_x
+        child_y += relative_offset_y
+
         child_mount_origin_x = mount_origin_x
         child_mount_origin_y = mount_origin_y
         if is_scroll:
@@ -725,8 +783,8 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             mount_origin_y=child_mount_origin_y,
         )
         if needs_child_bounds and item["child"].layout:
-            child_left = item["child"].layout.abs_x
-            child_top = item["child"].layout.abs_y
+            child_left = flow_child_x
+            child_top = flow_child_y
             child_right = child_left + item["child"].layout.width
             child_bottom = child_top + item["child"].layout.height
 

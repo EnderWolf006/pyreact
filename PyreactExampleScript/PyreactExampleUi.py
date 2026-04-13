@@ -2,6 +2,9 @@
 
 import mod.client.extraClientApi as clientApi
 
+from examples.BedwarStoreApp import BedwarStoreApp
+from examples.CounterApp import CounterApp
+from examples.FriendApp import FriendApp
 from examples.SkinShopApp import SkinShopApp
 
 from pyreact import *
@@ -16,7 +19,7 @@ class PyreactExampleScreen(ScreenNode):
 
     def Create(self):
         print('=====> PyreactExampleUi Created <=====')
-        self.app_id = 'pyreact_example_skin_shop'
+        self.app_id = 'pyreact_example_counter'
         self._mount_pyreact_app()
 
     def _mount_pyreact_app(self):
@@ -27,7 +30,8 @@ class PyreactExampleScreen(ScreenNode):
             'base_namespace': 'PyreactBase',
         }
         # 可以在此切换挂载展示不同的app示例
-        render_app(root=SkinShopApp, bind=bind, log_perf=True)
+        render_app(root=CounterApp, bind=bind, log_perf=True)
+        # render_app(root=SkinShopApp, bind=bind, log_perf=True)
         # render_app(root=FriendApp, bind=bind, log_perf=True)
         # render_app(root=BedwarStoreApp, bind=bind, log_perf=True)
 

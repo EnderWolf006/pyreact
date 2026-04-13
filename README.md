@@ -200,7 +200,7 @@ Flex 相关：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `position` | `str` | 定位方式，通常为 `Position.relative` / `absolute` |
+| `position` | `str` | 定位方式，默认按 `Position.relative` 处理，也可显式写 `Position.absolute` |
 | `top` | `int / float` | 顶部偏移 |
 | `left` | `int / float` | 左侧偏移 |
 | `right` | `int / float` | 右侧偏移 |
@@ -208,6 +208,13 @@ Flex 相关：
 | `opacity` | `float` | 透明度 |
 | `display` | `str` | 显示状态，例如 `'none'` |
 | `zIndex` | `int` | 层级 |
+
+说明：
+
+- 未显式传 `position` 时，当前实现默认按 `Position.relative` 处理
+- `position=Position.absolute` 时，`top/right/bottom/left` 按父内容区域做绝对定位
+- `position=Position.relative` 时，节点仍保留原本的流式占位，再额外应用 `top/right/bottom/left` 作为视觉偏移
+- `relative` 下若同时给出同轴的两个方向，当前实现优先使用 `left` 胜过 `right`、`top` 胜过 `bottom`
 
 ### 基础组件（Primitives）
 
@@ -535,6 +542,7 @@ PyreactExampleScript/
 
 ```python
 # 切换挂载不同的示例
+render_app(root=CounterApp, bind=bind)
 render_app(root=BattlePassApp, bind=bind)
 render_app(root=FriendApp, bind=bind)
 render_app(root=BedwarStoreApp, bind=bind)
@@ -542,6 +550,7 @@ render_app(root=BedwarStoreApp, bind=bind)
 
 | 示例 | 演示内容 |
 |------|----------|
+| `CounterApp` | 基础 `useState` 计数、按钮点击更新、重置交互 |
 | `FriendApp` | Tab 切换、搜索筛选、列表选择、详情面板、Scroll 滚动、useRef 控制 |
 | `BedwarStoreApp` | 商品分类、Item 物品展示、价格标签、购买交互 |
 | `BattlePassApp` | 多档位切换、任务列表、等级奖励轨道、Item 奖励 |
