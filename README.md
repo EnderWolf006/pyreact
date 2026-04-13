@@ -409,14 +409,98 @@ hover_image = clone_component(
 ### 颜色
 
 ```python
-# 预定义颜色遵循CSS颜色数值
-Colors.white          # 白色
-Colors.black          # 黑色
+# 1. 直接传 32-bit ARGB 整数（0xAARRGGBB）
+primary = Color(0xFF2563EB)
+danger = Color(0x80FF0000)
 
-# 自定义颜色（ARGB 格式）
-Color(0xFF2563EB)     # 蓝色
-Color(0x80FF0000)     # 半透明红色
+# 2. 用 RGB / RGBA 工厂函数创建
+bg = Color.fromRGB(15, 23, 42)
+mask = Color.fromRGBA(37, 99, 235, 0.5)
+
+# 3. 用 Hex 字符串创建
+accent = Color.fromHex('#F59E0B')
+overlay = Color.fromHex('#80334155')
+
+# 4. 预置颜色常量
+Colors.white
+Colors.black
+Colors.lightGrey
 ```
+
+`Color` 是不可变颜色对象，内部值为 32-bit ARGB 整数；`Colors` 提供一组可直接复用的预置颜色常量。
+
+#### 创建方式
+
+- `Color(0xAARRGGBB)`：直接传入 32-bit ARGB 整数
+- `Color.fromRGB(r, g, b)`：`r/g/b` 为 `0~255`，alpha 固定为 `255`
+- `Color.fromRGBA(r, g, b, a)`：`r/g/b` 为 `0~255`，`a` 为 `0.0~1.0` 的透明度
+- `Color.fromHex(text)`：支持 `#RGB` / `#ARGB` / `#RRGGBB` / `#AARRGGBB`，也支持 `0x` / `0X` 前缀
+
+注意：
+
+- `Color.fromRGBA(..., a)` 的 `a` 是 **0.0~1.0 浮点透明度**，不是 `0~255`
+- `Color.fromHex('#RRGGBB')` 会自动补成不透明色（alpha=`FF`）
+- 非法值会抛异常；不会静默生成未知颜色
+
+#### 常用属性
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `value` | `int` | 原始 32-bit ARGB 整数 |
+| `alpha8` | `int` | `0~255` alpha 通道 |
+| `red` | `int` | `0~255` 红色通道 |
+| `green` | `int` | `0~255` 绿色通道 |
+| `blue` | `int` | `0~255` 蓝色通道 |
+| `opacity` | `float` | `0.0~1.0` 透明度 |
+| `alpha` | `float` | `opacity` 的别名 |
+
+#### 派生与修改
+
+所有修改方法都会返回新的 `Color`，不会原地修改：
+
+```python
+base = Color.fromRGB(37, 99, 235)
+
+soft = base.withOpacity(0.25)   # 按 0.0~1.0 设置透明度
+alpha8 = base.withAlpha8(128)   # 按 0~255 设置 alpha
+redder = base.withRed(255)
+greener = base.withGreen(160)
+bluer = base.withBlue(255)
+```
+
+- `withOpacity(opacity)` / `withAlpha(opacity)`：按 `0.0~1.0` 修改透明度
+- `withAlpha8(alpha8)`：按 `0~255` 修改 alpha
+- `withRed()` / `withGreen()` / `withBlue()`：修改单个颜色通道
+
+#### 导出辅助
+
+- `toRGBUnitTuple()`：返回 `(r, g, b)`，每项范围 `0.0~1.0`
+- `toRGBAUnitTuple()`：返回 `(r, g, b, a)`，每项范围 `0.0~1.0`
+
+#### `Colors` 常量
+
+`Colors` 中内置了大量可直接使用的颜色常量，包含基础色和常见 CSS 命名色，例如：
+
+- 基础色：`Colors.white`、`Colors.black`、`Colors.red`、`Colors.blue`
+- 灰阶/别名：`Colors.gray`、`Colors.grey`、`Colors.lightGray`、`Colors.lightGrey`
+- 扩展命名色：`Colors.aliceBlue`、`Colors.gold`、`Colors.rebeccaPurple` 等
+
+常见写法：
+
+```python
+Image(color=Colors.black.withOpacity(0.35))
+Label(color=Colors.white)
+FilledButton(default=Colors.blue, pressed=Colors.navy)
+```
+
+使用建议：
+
+- 组件的颜色能力都走 **props**，不是 `style`
+- 图片/底板颜色写在 `Image(color=...)`
+- 文本颜色写在 `Label(color=...)`
+- 需要半透明效果时，优先复用现有颜色再调用 `withOpacity(...)`
+- runtime 只会把真正的 `Color` 对象识别为颜色值；不要传字符串、tuple 或裸十六进制文本
+- 最终原生透明度 = `style.opacity * color.alpha`，两者会叠加生效
 
 
 ## 目录结构
