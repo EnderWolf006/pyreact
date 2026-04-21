@@ -35,6 +35,23 @@ from .core import (
 from .composites import (
     FilledButton,
     ImageButton,
+    Animated,
+)
+
+from .animation import (
+    Animation,
+    Easing,
+    Transition,
+    fadeIn,
+    fadeOut,
+    slideInUp,
+    slideInDown,
+    slideInLeft,
+    slideInRight,
+    slideOutUp,
+    slideOutDown,
+    slideOutLeft,
+    slideOutRight,
 )
 
 
@@ -117,4 +134,18 @@ __all__ = [
     "render_app",
     "FilledButton",
     "ImageButton",
+    "Animated",
+    "Animation",
+    "Easing",
+    "Transition",
+    "fadeIn",
+    "fadeOut",
+    "slideInUp",
+    "slideInDown",
+    "slideInLeft",
+    "slideInRight",
+    "slideOutUp",
+    "slideOutDown",
+    "slideOutLeft",
+    "slideOutRight",
 ]

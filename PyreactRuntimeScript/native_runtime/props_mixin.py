@@ -866,6 +866,13 @@ class RuntimePropsMixin(object):
         opacity = style.get("opacity")
         color = props.get("color")  # type: Color
 
+        opacity_locked = False
+        try:
+            if self.is_animation_field_locked(node_path, 'opacity'):
+                opacity_locked = True
+        except Exception:
+            opacity_locked = False
+
         if opacity is not None or color is not None:
             base_opacity = self._to_float(opacity, 1.0) if opacity is not None else 1.0
             color_alpha = color.alpha if color is not None else 1.0
@@ -875,10 +882,10 @@ class RuntimePropsMixin(object):
             elif final_alpha > 1.0:
                 final_alpha = 1.0
             next_cached_style['opacity'] = final_alpha
-            if cached_style.get('opacity') != final_alpha:
+            if cached_style.get('opacity') != final_alpha and not opacity_locked:
                 self._safe_set_alpha(node_path, final_alpha, node_control)
 
-        elif 'opacity' in cached_style:
+        elif 'opacity' in cached_style and not opacity_locked:
             self._safe_set_alpha(node_path, 1.0, node_control)
 
         layer = getattr(layout, 'native_final_layer', None)

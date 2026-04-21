@@ -399,6 +399,10 @@ class RuntimeLifecycleMixin(object):
         )
         self._tree_builder = TreeBuilder()
         self._reconciler = Reconciler()
+        try:
+            self._init_animation_state()
+        except Exception:
+            pass
 
     def mount(self):
         self._mounted = True
@@ -414,6 +418,10 @@ class RuntimeLifecycleMixin(object):
         self._clear_pending_screen_refresh(clear_request=True)
         self._clear_deferred_perf_state()
         self._unbind_screen_update_handler()
+        try:
+            self._reset_animation_state()
+        except Exception:
+            pass
         self._button_callbacks = {}
         self._input_callbacks = {}
         self._input_paths = {}
@@ -463,6 +471,7 @@ class RuntimeLifecycleMixin(object):
             self._input_callbacks = {}
             self._input_paths = {}
             self._node_refs = {}
+            self._current_node_id_path_map = {}
 
             element = self._component_instance.render()
             component_ms = getattr(self._component_instance, 'last_render_duration_ms', 0.0)
@@ -522,10 +531,67 @@ class RuntimeLifecycleMixin(object):
             render_detail['flatten_ms'] = (_perf_now() - flatten_start_time) * 1000.0
             render_detail['flat_entry_count'] = len(flat_entries)
 
+            # Detect exit animations BEFORE building cleanup state so the grid
+            # slot allocator (inside build_cleanup) can avoid handing the same
+            # widget to a new node while an old one is still animating out.
+            try:
+                new_node_ids = set()
+                for entry in flat_entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    nid = self._safe_text(entry.get('node_id'))
+                    if nid:
+                        new_node_ids.add(nid)
+                self.detect_and_register_exit_animations(self._prev_shadow_root, new_node_ids, self._root_path)
+            except Exception:
+                pass
+
             cleanup_build_start_time = _perf_now()
             expected_children_by_parent, current_root_scroll_hosts = self._build_render_cleanup_state(flat_entries)
             render_detail['cleanup_build_ms'] = (_perf_now() - cleanup_build_start_time) * 1000.0
             render_detail['cleanup_parent_count'] = len(expected_children_by_parent)
+
+            try:
+                path_by_node_id = {}
+                layout_snapshot_by_node_id = {}
+                for entry in flat_entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    nid = self._safe_text(entry.get('node_id'))
+                    if not nid:
+                        continue
+                    parent_path = self._safe_text(entry.get('resolved_parent_path'))
+                    if not parent_path:
+                        parent_path = self._resolve_parent_target(entry.get('parent_target'))
+                    child_name = self._safe_text(entry.get('child_name'))
+                    if parent_path and child_name:
+                        node_obj = entry.get('node')
+                        shadow_layout = getattr(node_obj, 'layout', None) if node_obj is not None else None
+                        path_by_node_id[nid] = (parent_path + '/' + child_name, shadow_layout)
+                        if shadow_layout is not None:
+                            try:
+                                layout_snapshot_by_node_id[nid] = {
+                                    'x': float(getattr(shadow_layout, 'x', 0.0) or 0.0),
+                                    'y': float(getattr(shadow_layout, 'y', 0.0) or 0.0),
+                                }
+                            except Exception:
+                                pass
+                mgr = getattr(self, '_animation_manager', None)
+                if mgr is not None:
+                    mgr.retarget_paths(path_by_node_id)
+                self.merge_exiting_expected_children(expected_children_by_parent)
+                # Stash for end-of-render gc. Includes every flat entry,
+                # even ones deferred to the next frame via the grid pool —
+                # without that, gc_seen_node_ids would prune deferred
+                # nodes' ids, and next frame they'd be seen as "new" and
+                # re-trigger enter animations.
+                self._flat_entry_live_ids_this_render = set(path_by_node_id.keys())
+                self._flat_entry_path_map_this_render = dict(path_by_node_id)
+                self._flat_entry_layout_map_this_render = layout_snapshot_by_node_id
+            except Exception:
+                self._flat_entry_live_ids_this_render = set()
+                self._flat_entry_path_map_this_render = {}
+                self._flat_entry_layout_map_this_render = {}
 
             native_start_time = _perf_now()
             self._begin_native_api_call_batch()
@@ -566,6 +632,37 @@ class RuntimeLifecycleMixin(object):
 
             self._prev_vtree = new_vtree
             self._prev_shadow_root = shadow_root
+            try:
+                # Use the full flat_entries map (includes deferred grid entries)
+                # instead of ``_current_node_id_path_map`` (which only has
+                # sync-applied ones). Otherwise gc_seen_node_ids would prune
+                # deferred nodes' ids and they'd re-trigger enter animations
+                # when they apply next frame.
+                full_map = getattr(self, '_flat_entry_path_map_this_render', None) or {}
+                self._prev_node_id_path_map = {}
+                for nid, pe in full_map.items():
+                    try:
+                        self._prev_node_id_path_map[nid] = pe[0]
+                    except Exception:
+                        pass
+            except Exception:
+                self._prev_node_id_path_map = {}
+            # Snapshot the layout map so next render's _handle_node_applied
+            # can diff positions and trigger auto layout tweens when a node
+            # moves (e.g. after a sibling exits).
+            try:
+                self._layout_map_last_render = dict(
+                    getattr(self, '_flat_entry_layout_map_this_render', None) or {}
+                )
+            except Exception:
+                self._layout_map_last_render = {}
+            try:
+                mgr = getattr(self, '_animation_manager', None)
+                if mgr is not None:
+                    live_ids = getattr(self, '_flat_entry_live_ids_this_render', None) or set()
+                    mgr.gc_seen_node_ids(live_ids)
+            except Exception:
+                pass
             try:
                 self._cleanup_input_state()
             except Exception:
@@ -1215,8 +1312,19 @@ class RuntimeLifecycleMixin(object):
         width = self._to_float(getattr(layout, 'width', 0.0), 0.0)
         height = self._to_float(getattr(layout, 'height', 0.0), 0.0)
 
-        self._safe_set_position(node_path, local_x, local_y, control)
-        if node_type != 'Label':
+        position_locked = False
+        size_locked = False
+        try:
+            if self.is_animation_field_locked(node_path, 'position'):
+                position_locked = True
+            if self.is_animation_field_locked(node_path, 'size'):
+                size_locked = True
+        except Exception:
+            pass
+
+        if not position_locked:
+            self._safe_set_position(node_path, local_x, local_y, control)
+        if node_type != 'Label' and not size_locked:
             self._safe_set_size(node_path, width, height, control)
 
         props = getattr(node, 'props', None)
@@ -1225,7 +1333,7 @@ class RuntimeLifecycleMixin(object):
         if node_type == 'Item' and not (control and hasattr(control, 'asItemRenderer')):
             item_widget_path = node_path + '/widget'
             item_widget_control = self._get_cached_control(item_widget_path, bucket='item_widget_lookup')
-            if item_widget_control:
+            if item_widget_control and not size_locked:
                 self._safe_set_size(item_widget_path, width, height, item_widget_control)
         if isinstance(props, dict):
             props['__shadow_node__'] = node
@@ -1271,6 +1379,24 @@ class RuntimeLifecycleMixin(object):
                 self._safe_set_size(content_path, layout.content_width, layout.content_height, content_control)
             self._apply_scroll_props(node, node_path)
         self._record_render_detail_ms('sync_apply_ms', (_perf_now() - apply_start_time) * 1000.0)
+
+        # Record the actual native path this node_id is bound to this render.
+        # Used by the animation manager when detecting exits next time around
+        # (so it can resolve the real grid-pool widget path instead of the
+        # default flat-entry path).
+        id_path_map = getattr(self, '_current_node_id_path_map', None)
+        if isinstance(id_path_map, dict) and node_id:
+            id_path_map[node_id] = node_path
+
+        # Fire the animation hook — every entity node that gets applied,
+        # whether via the flat path or the grid pool path, flows through
+        # here. Inside the hook, ``seen_node_ids`` decides whether this is
+        # a brand-new appearance (enter animation trigger).
+        try:
+            self._handle_node_applied_animations(node, node_path, node_id, node_type, control)
+        except Exception:
+            pass
+
         return True
 
     def _get_grid_type_config(self, node_type):
@@ -1365,7 +1491,8 @@ class RuntimeLifecycleMixin(object):
         return available
 
     def _get_entry_grid_render_index(self, parent_path, node_type, grid_index_map=None):
-        if not self._get_grid_type_config(node_type):
+        grid_config = self._get_grid_type_config(node_type)
+        if not grid_config:
             return 0
         if not self._is_grid_available_for_parent(parent_path, node_type):
             return 0
@@ -1374,6 +1501,19 @@ class RuntimeLifecycleMixin(object):
             grid_index_map = {}
         key = '%s|%s' % (self._safe_text(parent_path), self._safe_text(node_type))
         next_index = grid_index_map.get(key, 0) + 1
+
+        # Skip slot indices currently held by an exit animation so a freshly
+        # mounted node never ends up sharing a widget with an animating-out
+        # node (which would cause alpha/position writes to clash).
+        exiting_indices = None
+        mgr = getattr(self, '_animation_manager', None)
+        if mgr is not None:
+            grid_name = self._safe_text(grid_config.get('grid_name'))
+            if grid_name:
+                grid_path = self._safe_text(parent_path) + '/' + grid_name
+                exiting_indices = mgr.exiting_grid_slots.get(grid_path)
+        while exiting_indices and next_index in exiting_indices:
+            next_index += 1
 
         max_pool_size = self._get_grid_pool_limit(node_type, 'max_pool_size', 0)
         if max_pool_size > 0 and next_index > max_pool_size:
@@ -1387,6 +1527,20 @@ class RuntimeLifecycleMixin(object):
             self._render_grid_counts = {}
         key = '%s|%s' % (self._safe_text(parent_path), self._safe_text(node_type))
         next_index = self._render_grid_counts.get(key, 0) + 1
+
+        # Skip slot indices currently held by an exit animation.
+        exiting_indices = None
+        mgr = getattr(self, '_animation_manager', None)
+        if mgr is not None:
+            grid_config = self._get_grid_type_config(node_type)
+            if isinstance(grid_config, dict):
+                grid_name = self._safe_text(grid_config.get('grid_name'))
+                if grid_name:
+                    grid_path = self._safe_text(parent_path) + '/' + grid_name
+                    exiting_indices = mgr.exiting_grid_slots.get(grid_path)
+        while exiting_indices and next_index in exiting_indices:
+            next_index += 1
+
         self._render_grid_counts[key] = next_index
         return next_index
 
@@ -1668,6 +1822,20 @@ class RuntimeLifecycleMixin(object):
         max_pool_size = int(state.get('max_pool_size', current_capacity) or current_capacity)
         if target_capacity > max_pool_size:
             target_capacity = max_pool_size
+
+        # SetGridDimension appears to make NetEase re-layout every slot in
+        # the grid. On list growth that would visually perturb every
+        # already-rendered widget on each +1. Instead we grow geometrically:
+        # first allocation sizes to exactly what's needed (keeping first-
+        # mount cost low), subsequent growths at least double the capacity
+        # so the number of SetGridDimension calls stays O(log N).
+        if current_capacity > 0:
+            doubled = current_capacity * 2
+            if doubled > target_capacity:
+                target_capacity = doubled
+            if target_capacity > max_pool_size:
+                target_capacity = max_pool_size
+
         if target_capacity <= current_capacity:
             state['initialized'] = True
             return True
@@ -1689,6 +1857,9 @@ class RuntimeLifecycleMixin(object):
         if not isinstance(pool_states, dict):
             return
 
+        mgr = getattr(self, '_animation_manager', None)
+        exiting_by_grid = getattr(mgr, 'exiting_grid_slots', None) if mgr is not None else None
+
         for grid_path, state in pool_states.items():
             if not isinstance(state, dict):
                 continue
@@ -1703,10 +1874,26 @@ class RuntimeLifecycleMixin(object):
             except Exception:
                 prev_active = 0
 
-            if prev_active > next_active:
-                self._set_grid_entry_visibility_range(grid_path, node_type, next_active + 1, prev_active, False)
+            exiting_indices = exiting_by_grid.get(grid_path) if isinstance(exiting_by_grid, dict) else None
 
-            state['active_count'] = next_active
+            if prev_active > next_active:
+                # Hide [next_active+1, prev_active] — but keep exiting slots
+                # alive until their animation completes.
+                self._set_grid_entry_visibility_range(
+                    grid_path, node_type, next_active + 1, prev_active, False,
+                    skip_indices=exiting_indices,
+                )
+
+            # Extend active_count to cover any exiting slot index so the next
+            # render's "prev_active" reflects reality.
+            effective_active = next_active
+            if exiting_indices:
+                for idx in exiting_indices:
+                    try:
+                        effective_active = max(effective_active, int(idx))
+                    except Exception:
+                        pass
+            state['active_count'] = effective_active
 
     def _hide_all_used_grid_entries(self):
         pool_states = getattr(self, '_grid_pool_states', None)
@@ -1725,7 +1912,7 @@ class RuntimeLifecycleMixin(object):
                 self._set_grid_entry_visibility_range(grid_path, node_type, 1, active_count, False)
             state['active_count'] = 0
 
-    def _set_grid_entry_visibility_range(self, grid_path, node_type, start_index, end_index, visible):
+    def _set_grid_entry_visibility_range(self, grid_path, node_type, start_index, end_index, visible, skip_indices=None):
         if not grid_path or not node_type:
             return
 
@@ -1738,6 +1925,13 @@ class RuntimeLifecycleMixin(object):
         if begin <= 0 or end < begin:
             return
 
+        skip_set = None
+        if skip_indices:
+            try:
+                skip_set = set(int(i) for i in skip_indices)
+            except Exception:
+                skip_set = None
+
         # Track visible states to avoid redundant SetVisible calls
         if not isinstance(getattr(self, '_grid_slot_visible_states', None), dict):
             self._grid_slot_visible_states = {}
@@ -1749,6 +1943,8 @@ class RuntimeLifecycleMixin(object):
             return
 
         for index in range(begin, end + 1):
+            if skip_set is not None and index in skip_set:
+                continue
             slot_record = self._get_grid_slot_record(safe_grid_path, node_type, index, create=True)
             widget_path = self._safe_text(slot_record.get('widget_path')) if isinstance(slot_record, dict) else ''
             slot_key = self._safe_text(widget_path)
@@ -1931,6 +2127,7 @@ class RuntimeLifecycleMixin(object):
         self._record_render_detail_count('clear_root_scan_count', len(names))
 
         existing_root_paths = {}
+        expected_root_children = expected_children_by_parent.get(self._root_path) or {}
 
         for name in names:
             safe_name = self._safe_text(name)
@@ -1954,6 +2151,10 @@ class RuntimeLifecycleMixin(object):
                             self._prune_preserved_host_subtree(scroll_content_path, expected_children_by_parent)
                     else:
                         self._safe_set_visible(child_path, False, child_control, sync_refresh=False)
+                    continue
+
+                if (not clear_grid_pool) and safe_name in expected_root_children:
+                    # Keep alive — e.g. a node mid-exit-animation.
                     continue
 
                 self._drop_grid_pool_states_under_path(child_path)

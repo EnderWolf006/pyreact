@@ -371,6 +371,77 @@ def UserCard(name, level):
 - fallback 规则与 `FilledButton` 一致：缺哪个态，就用另一个已知态补齐。
 - 如果你需要每个状态连 children 结构都不同，不要硬塞进 `ImageButton`，直接用 `Button(buttonBuilder=...)`。
 
+#### `Animated`
+
+用途：声明式 **入场 / 出场 / 连续过渡**动画包装器。所有插值由 Python runtime 驱动，每帧由 `GameRenderTickEvent` 触发，不依赖任何原生动画 API。
+
+常用 props：
+
+- `enter` — `Animation` 实例，节点首次挂载时播放一次
+- `exit` — `Animation` 实例，节点被 render 移除前播放，完成后再真正 `RemoveChildControl`
+- `animate` — 连续过渡目标值；传 dict（默认 200ms / easeOut）或 `Transition(values=..., duration=..., easing=...)`
+- `children` — **必须是单个 `ComponentNode`**。多个节点先用 `Panel` 聚合
+
+要点：
+
+- 直接 `from pyreact import Animated, Animation, Transition, Easing`
+- 预设：`fadeIn / fadeOut / slideInUp / slideInDown / slideInLeft / slideInRight / slideOutUp / slideOutDown / slideOutLeft / slideOutRight`
+- 可动画字段仅限：`opacity` / `translateX` / `translateY` / `width` / `height`；`Label` 的尺寸由文字自动测量，`width` / `height` 动画对它无效
+- 列表中用 `Animated` 必须加 `key`；无 key 位置动画会错乱（React 同理）
+- `translateX` / `translateY` 是基于 layout 位置的偏移，不影响兄弟布局
+- 动画控制的字段在此期间不会被样式回写覆盖；动画结束自动解锁
+- 出场期间节点的 `onClick` 不会响应（防误触）
+- 无活跃动画时每帧 tick 是空操作；有动画时按需刷新
+
+示例：
+
+```python
+from pyreact import Animated, fadeIn, fadeOut, slideInUp, Transition, Easing
+
+# 入场 + 出场
+Animated(
+    enter=slideInUp(distance=30, duration=300),
+    exit=fadeOut(duration=220),
+    children=Panel(style=Style(...), children=[...]),
+)
+
+# 连续过渡 opacity
+Animated(
+    animate=Transition(
+        values={"opacity": 0.3 if dimmed else 1.0},
+        duration=250,
+        easing=Easing.easeOutQuad,
+    ),
+    children=Panel(style=Style(...), children=[...]),
+)
+
+# 列表项：带 key
+for item in items:
+    list_children.append(
+        Animated(
+            key=item.id,
+            enter=fadeIn(),
+            exit=fadeOut(),
+            children=Panel(style=Style(...), children=[...]),
+        )
+    )
+```
+
+自定义 `Animation`：
+
+```python
+from pyreact import Animation, Easing
+
+Animation(
+    duration=400,
+    delay=50,
+    easing=Easing.easeOutCubic,
+    from_={"opacity": 0.0, "translateY": 20.0},
+    to={"opacity": 1.0, "translateY": 0.0},
+    onComplete=lambda: None,
+)
+```
+
 ## `clone_component`
 
 用途：基于已有 `ComponentNode` 快速生成一个新节点，并覆盖部分 props，适合模板复用场景。

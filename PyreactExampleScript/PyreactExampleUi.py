@@ -2,6 +2,7 @@
 
 import mod.client.extraClientApi as clientApi
 
+from examples.AnimationDemo import AnimationDemo
 from examples.BedwarStoreApp import BedwarStoreApp
 from examples.CounterApp import CounterApp
 from examples.FriendApp import FriendApp
@@ -30,7 +31,8 @@ class PyreactExampleScreen(ScreenNode):
             'base_namespace': 'PyreactBase',
         }
         # 可以在此切换挂载展示不同的app示例
-        render_app(root=CounterApp, bind=bind, log_perf=True)
+        render_app(root=AnimationDemo, bind=bind, log_perf=True)
+        # render_app(root=CounterApp, bind=bind, log_perf=True)
         # render_app(root=SkinShopApp, bind=bind, log_perf=True)
         # render_app(root=FriendApp, bind=bind, log_perf=True)
         # render_app(root=BedwarStoreApp, bind=bind, log_perf=True)

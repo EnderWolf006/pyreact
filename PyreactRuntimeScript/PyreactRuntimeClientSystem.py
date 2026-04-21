@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import time
+
 import mod.client.extraClientApi as clientApi
 from PyreactRuntimeScript.PyreactNativeRuntime import PyreactNativeRuntime
 
@@ -12,8 +14,18 @@ class PyreactRuntimeClientSystem(ClientSystem):
         self.mPlayerId = clientApi.GetLocalPlayerId()
         self.mLevelId = clientApi.GetLevelId()
         self._apps = {}
+        self._tick_event_registered = False
+        self._tick_count = 0
+        self._tick_first_logged = False
+        self._tick_last_log_time = 0.0
         self.ListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), 'UiInitFinished', self, self.UiInitFinished)
         self.ListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), 'ScreenSizeChangedClientEvent', self, self.ScreenSizeChangedClientEvent)
+        try:
+            self.ListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), 'GameRenderTickEvent', self, self.GameRenderTickEvent)
+            self._tick_event_registered = True
+            print('[PyreactAnim] GameRenderTickEvent 监听注册成功')
+        except Exception as err:
+            print('[PyreactAnim] GameRenderTickEvent 监听注册失败: %s' % err)
 
     def UiInitFinished(self, args):
        print('=====> PyreactRuntime UiInitFinished <=====')
@@ -41,6 +53,31 @@ class PyreactRuntimeClientSystem(ClientSystem):
                 runtime.request_render()
             except Exception as e:
                 print('=====> PyreactRuntime resize rerender failed: %s, %s <=====' % (app_id, e))
+
+    def GameRenderTickEvent(self, args):
+        self._tick_count += 1
+        if not self._tick_first_logged:
+            self._tick_first_logged = True
+            print('[PyreactAnim] GameRenderTickEvent 首次触发 (apps=%d)' % len(self._apps))
+        # 每 2 秒汇报一次频率（只在有 app 的前提下，避免空刷屏）
+        if self._apps:
+            now = time.time()
+            if now - self._tick_last_log_time >= 2.0:
+                print('[PyreactAnim] GameRenderTickEvent 最近2秒触发 %d 次 (累计 %d)' % (
+                    self._tick_count, self._tick_count,
+                ))
+                self._tick_last_log_time = now
+
+        if not self._apps:
+            return
+        for app_id in list(self._apps.keys()):
+            runtime = self._apps.get(app_id)
+            if runtime is None:
+                continue
+            try:
+                runtime.tick_animations()
+            except Exception as err:
+                print('[PyreactAnim] tick_animations 异常 app=%s: %s' % (app_id, err))
 
     def MountApp(self, params):
         params = params or {}
@@ -81,11 +118,8 @@ class PyreactRuntimeClientSystem(ClientSystem):
             return False
         runtime.request_render()
         return True
-        
+
     def Destroy(self):
         app_ids = list(self._apps.keys())
         for app_id in app_ids:
             self.UnmountApp({'app_id': app_id})
-        
-        
-

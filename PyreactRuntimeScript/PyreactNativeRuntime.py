@@ -5,9 +5,10 @@ from pyreact.components.enums import ButtonState
 from PyreactRuntimeScript.native_runtime.lifecycle_mixin import RuntimeLifecycleMixin
 from PyreactRuntimeScript.native_runtime.props_mixin import RuntimePropsMixin
 from PyreactRuntimeScript.native_runtime.native_api_mixin import RuntimeNativeApiMixin
+from PyreactRuntimeScript.native_runtime.animation_mixin import RuntimeAnimationMixin
 
 
-class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNativeApiMixin):
+class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeAnimationMixin, RuntimeNativeApiMixin):
     """Render pyreact component tree into NetEase ScreenNode controls."""
 
     _CONTROL_NAME_PREFIX = "pyreact_"

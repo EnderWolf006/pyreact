@@ -510,25 +510,149 @@ FilledButton(default=Colors.blue, pressed=Colors.navy)
 - 最终原生透明度 = `style.opacity * color.alpha`，两者会叠加生效
 
 
+## 动画
+
+声明式动画全部由 Python runtime 驱动，通过监听 `GameRenderTickEvent` 每帧插值；不依赖任何原生动画 API。
+
+### 基本用法：`Animated` 包装组件
+
+```python
+from pyreact import Animated, fadeIn, fadeOut, slideInUp
+
+Animated(
+    enter=slideInUp(distance=30, duration=300),
+    exit=fadeOut(duration=220),
+    children=Panel(
+        style=Style(width=260, height=120),
+        children=[...],
+    ),
+)
+```
+
+- `enter`：节点首次挂载时播放一次；
+- `exit`：节点被 render 移除时延迟销毁，先把动画跑完再真正 `RemoveChildControl`；
+- `animate`：连续过渡，随目标值变化自动补间（见下）。
+
+`Animated` 必须包裹 **单个** `ComponentNode`（Panel / Image / Label / Button / Input / Image / Item / PaperDoll 均可，复合组件如 `FilledButton` 也行）。多个子元素先用 `Panel` 聚合。
+
+### 连续过渡 `animate`
+
+```python
+from pyreact import Animated, Transition, Easing
+
+Animated(
+    animate=Transition(
+        values={"opacity": 0.3 if dimmed else 1.0},
+        duration=250,
+        easing=Easing.easeOutQuad,
+    ),
+    children=Panel(style=Style(...), children=[...]),
+)
+```
+
+- 目标值发生变化时，runtime 从"当前已应用值"补间到新目标；
+- 也可直接传 dict：`animate={"opacity": alpha}` 使用默认 200ms / easeOut。
+
+### 可动画字段
+
+| 字段 | 生效方式 | 说明 |
+|-----|---------|------|
+| `opacity` | `SetAlpha` | 与 `style.opacity` 互斥：动画生效期间接管 |
+| `translateX` / `translateY` | 基于 layout 位置的偏移 | 不影响兄弟布局 |
+| `width` / `height` | `SetSize` | `Label` 跳过（其尺寸由文字自动测量） |
+
+### 预设工厂
+
+全部位于 `pyreact.animation`（已在顶层 `pyreact.*` 再导出）：
+
+```python
+from pyreact import (
+    fadeIn, fadeOut,
+    slideInUp, slideInDown, slideInLeft, slideInRight,
+    slideOutUp, slideOutDown, slideOutLeft, slideOutRight,
+    Easing, Animation, Transition,
+)
+```
+
+参数均带默认值，可按需覆盖：
+
+```python
+fadeIn(duration=300, delay=0, easing=None)
+slideInUp(distance=20, duration=300, delay=0, easing=None)
+```
+
+### 自定义 Animation
+
+```python
+from pyreact import Animation, Easing
+
+Animation(
+    duration=400,
+    delay=50,
+    easing=Easing.easeOutCubic,
+    from_={"opacity": 0.0, "translateY": 20.0, "width": 0.0},
+    to={"opacity": 1.0, "translateY": 0.0, "width": 240.0},
+    onComplete=lambda: print('done'),
+)
+```
+
+### Easing 预设
+
+`Easing.linear / easeIn / easeOut / easeInOut / easeInQuad / easeOutQuad / easeInOutQuad / easeInCubic / easeOutCubic / easeInOutCubic / easeOutBack / easeInBack`。
+
+自定义：任意 `(t: float) -> float` 函数，`f(0)=0, f(1)=1`。
+
+### 列表动画必须加 `key`
+
+Pyreact 对未显式 `key` 的节点用路径（位置）生成 `node_id`。**列表中元素在中间删除/插入时位置会变化，无 key 时 runtime 会把"移位"误判为"删除+新建"，导致动画错乱。**
+
+```python
+# 正确
+for item in items:
+    list_children.append(
+        Animated(
+            key=item.id,                # key 必加
+            enter=fadeIn(),
+            exit=fadeOut(),
+            children=Panel(...),
+        )
+    )
+```
+
+### 行为细节
+
+- 出场期间节点上的按钮 `onClick` 不再响应（防止误触已开始告别的控件）。
+- 无活跃动画时 `GameRenderTickEvent` 的 tick 开销接近零（首行判空直接 return）。
+- 动画正在控制的字段（opacity / position / size）在此期间不会被 render pipeline 的样式应用覆盖；动画结束自动解锁。
+- 初次挂载时 `enter.from_` 值会在同一个 native batch 内写入，不会出现"完成态→起点"的错闪。
+
+
 ## 目录结构
 
 ```
 pyreact/
-├── dsl/                   # DSL 定义（控件、样式、颜色）
-├── core/                  # 核心（VNode、Reconciler、Hooks）
-├── layout/                # 布局引擎（Flexbox 计算）
-└── utils/                 # 工具函数
+├── components/           # 基础控件、Style、Color、enums
+├── composites/           # 复合组件（FilledButton、ImageButton、Animated）
+├── animation/            # 动画 API（Animation、Easing、Transition、预设）
+├── core/                 # 核心（VNode、Reconciler、Hooks、TreeBuilder）
+├── layout/               # 布局引擎（Flexbox 计算、ShadowNode）
+└── renderer/             # 文本测量等渲染辅助
 
 PyreactRuntimeScript/
 ├── modMain.py             # 运行时入口
 ├── PyreactNativeRuntime.py # 原生渲染桥接
-└── native_runtime/        # 渲染细节（扁平渲染、属性映射、生命周期）
+└── native_runtime/        # 渲染细节
+    ├── lifecycle_mixin.py  # 生命周期 + 扁平渲染调度
+    ├── props_mixin.py      # 属性映射
+    ├── native_api_mixin.py # 网易 API 封装
+    └── animation_mixin.py  # 动画管理器 + 每帧 tick
 
 PyreactExampleScript/
 ├── modMain.py             # 示例入口
 ├── PyreactExampleClientSystem.py
 ├── PyreactExampleUi.py
 └── examples/              # 示例组件
+    ├── AnimationDemo.py   # 动画示例（入场 / 出场 / animate）
     ├── FriendApp.py       # 好友面板（筛选、搜索、详情）
     ├── BedwarStoreApp.py  # 商店界面（分类、Scroll、Item）
     └── BattlePassApp.py   # 战令界面（双档位、任务、奖励）
