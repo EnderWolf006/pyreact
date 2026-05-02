@@ -404,9 +404,8 @@ class RuntimePropsMixin(object):
             return list(value)
         return [value]
 
-    def _get_def_name(self, node_type):
-        suffix = self._TYPE_DEF_SUFFIX_MAP.get(node_type, "panelBase")
-        return "%s.%s" % (self._base_namespace, suffix)
+    def _get_def_path(self, node_type):
+        return self._root_path + "/" + self._TYPE_DEF_SUFFIX_MAP.get(node_type, "panelBase")
 
     def _extract_node_style(self, node, props):
         style = getattr(node, "style", None)

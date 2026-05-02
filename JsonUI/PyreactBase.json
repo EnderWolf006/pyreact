@@ -370,7 +370,68 @@
         "font_type": "unicode",
         "line_padding": 0.0,
         "shadow": false,
-        "text": "Hello World!",
+        "text": "",
         "text_alignment": "center"
+    },
+    "rootBase": {
+        "type": "panel",
+        "controls": [
+            {
+                "buttonBase@PyreactBase.buttonBase": {
+                    "offset": [
+                        -6666,
+                        -6666
+                    ]
+                }
+            },
+            {
+                "imageBase@PyreactBase.imageBase": {
+                    "offset": [
+                        -6666,
+                        -6666
+                    ]
+                }
+            },
+            {
+                "inputBase@PyreactBase.inputBase": {
+                    "offset": [
+                        -6666,
+                        -6666
+                    ]
+                }
+            },
+            {
+                "itemBase@PyreactBase.itemBase": {
+                    "offset": [
+                        -6666,
+                        -6666
+                    ]
+                }
+            },
+            {
+                "panelBase@PyreactBase.panelBase": {
+                    "offset": [
+                        -6666,
+                        -6666
+                    ]
+                }
+            },
+            {
+                "scrollBase@PyreactBase.scrollBase": {
+                    "offset": [
+                        -6666,
+                        -6666
+                    ]
+                }
+            },
+            {
+                "textBase@PyreactBase.textBase": {
+                    "offset": [
+                        -6666,
+                        -6666
+                    ]
+                }
+            }
+        ]
     }
 }

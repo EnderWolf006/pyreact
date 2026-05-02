@@ -33,11 +33,16 @@ class RuntimeNativeApiMixin(object):
 
             def_name = "%s.%s" % (self._base_namespace, "textBase")
             try:
-                control = self._screen.CreateChildControl(def_name, self._MEASURE_LABEL_NAME, root_control)
+                control = self._screen.CreateChildControl(def_name, self._MEASURE_LABEL_NAME, root_control, False)
             except Exception:
                 control = None
             if not control:
                 return None
+
+            try:
+                self._screen.UpdateScreen()
+            except Exception:
+                pass
 
         self._safe_set_position(measure_path, -100000.0, -100000.0, control)
         try:
@@ -556,6 +561,13 @@ class RuntimeNativeApiMixin(object):
         try:
             if hasattr(self._screen, "SetLayer"):
                 self._screen.SetLayer(path, layer_value)
+        except Exception:
+            pass
+    
+    def _clone(self, componentPath, parentPath, newName, syncRefresh, forceUpdate):
+        try:
+            self._screen.Clone(componentPath, parentPath, newName, syncRefresh, forceUpdate)
+            return self._screen.GetBaseUIControl(parentPath + "/" + newName)
         except Exception:
             pass
 

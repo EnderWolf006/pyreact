@@ -150,6 +150,11 @@ class RuntimeLifecycleMixin(object):
                 )
             native_ms = (time.time() - native_start_time) * 1000.0
 
+            try:
+                self._screen.UpdateScreen()
+            except Exception:
+                pass
+
             self._log_render_stage_timings(component_ms, build_ms, diff_ms, layout_ms, native_ms)
 
             self._prev_vtree = new_vtree
@@ -296,9 +301,9 @@ class RuntimeLifecycleMixin(object):
                     self._needs_render = True
                     return
 
-                def_name = self._get_def_name(node_type)
+                def_path = self._get_def_path(node_type)
                 try:
-                    self._screen.CreateChildControl(def_name, child_name, parent_control)
+                    self._clone(def_path, children_parent_path, child_name, False, False)
                 except Exception:
                     pass
                 control = self._screen.GetBaseUIControl(control_path)
@@ -403,7 +408,7 @@ class RuntimeLifecycleMixin(object):
             return
 
         node_type = self._safe_text(getattr(node, "node_type", "Panel") or "Panel")
-        def_name = self._get_def_name(node_type)
+        def_path = self._get_def_path(node_type)
         node_id = self._safe_text(getattr(node, "node_id", "node"))
         child_name = "%s%s_%s" % (self._CONTROL_NAME_PREFIX, node_id, sibling_index)
 
@@ -411,7 +416,9 @@ class RuntimeLifecycleMixin(object):
         if not parent_control:
             return
 
-        child_control = self._screen.CreateChildControl(def_name, child_name, parent_control)
+        # child_control = self._screen.CreateChildControl(def_name, child_name, parent_control, False)
+        child_control = self._clone(def_path, parent_path, child_name, False, False)
+
         if not child_control:
             return
 
