@@ -543,18 +543,8 @@ class RuntimeNativeApiMixin(object):
             return
 
         if safe_node_type == 'Image':
-            self._set_cached_native_prop(path, 'sprite', None)
-            self._set_cached_native_prop(path, 'sprite_color', None)
-            self._set_cached_native_prop(path, 'sprite_gray', None)
-            default_sprite = getattr(self, '_DEFAULT_WHITE_TEXTURE', 'textures/ui/white_bg')
-            self._safe_set_sprite(path, default_sprite, control)
             self._safe_set_sprite_color(path, Color.fromRGB(255, 255, 255), control)
             self._safe_set_sprite_gray(path, False, control)
-            self._safe_set_sprite_clip_ratio(path, 0.0, control)
-            self._safe_set_sprite_uv(path, (0, 0), control)
-            self._safe_set_sprite_uv_size(path, (0, 0), control)
-            self._safe_rotate(path, 0.0, control)
-            self._safe_set_rotate_pivot(path, (0.5, 0.5), control)
 
     def _safe_set_sprite(self, path, sprite, control=None):
         sprite_text = self._safe_text(sprite)

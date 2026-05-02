@@ -526,9 +526,6 @@ class RuntimeLifecycleMixin(object):
 
             render_detail = {}
             self._begin_render_detail_tracking()
-            self._render_grid_counts = {}
-            self._render_grid_slot_reservations = {}
-            self._render_live_grid_node_slots = {}
             flatten_start_time = _perf_now()
             flat_entries = self._collect_flat_entries_for_root([shadow_root], self._root_path)
             render_detail['flatten_ms'] = (_perf_now() - flatten_start_time) * 1000.0
@@ -1188,14 +1185,12 @@ class RuntimeLifecycleMixin(object):
             if not child_name.startswith(self._CONTROL_NAME_PREFIX):
                 continue
 
-            if self._is_grid_available_for_parent_for_cleanup(parent_path, node_type, cleanup_grid_availability_cache):
-                grid_index = self._reserve_stable_grid_index(
-                    parent_path,
-                    node_type,
-                    entry.get('node_id'),
-                )
-            else:
-                grid_index = 0
+            grid_index = self._get_entry_grid_render_index_for_cleanup(
+                parent_path,
+                node_type,
+                grid_index_map,
+                cleanup_grid_availability_cache,
+            )
             if grid_index > 0:
                 entry['render_in_grid'] = True
                 entry['grid_index'] = grid_index
@@ -1225,6 +1220,8 @@ class RuntimeLifecycleMixin(object):
 
         pending_grid_entries = []
         self._record_render_detail_count('entry_count', len(entries))
+        if root_parent_path == self._root_path:
+            self._render_grid_counts = {}
 
         entry_loop_start_time = _perf_now()
         for entry in entries:
@@ -1547,109 +1544,6 @@ class RuntimeLifecycleMixin(object):
         self._render_grid_counts[key] = next_index
         return next_index
 
-    def _get_grid_path_for_parent(self, parent_path, node_type):
-        paths = self._get_grid_item_paths(parent_path, node_type, 1)
-        if not isinstance(paths, dict):
-            return ''
-        return self._safe_text(paths.get('grid_path'))
-
-    def _reserve_stable_grid_index(self, parent_path, node_type, node_id):
-        if not self._is_grid_available_for_parent(parent_path, node_type):
-            return 0
-
-        safe_node_id = self._safe_text(node_id)
-        safe_grid_path = self._get_grid_path_for_parent(parent_path, node_type)
-        if not safe_grid_path:
-            return 0
-
-        state = self._ensure_grid_pool_state(safe_grid_path, node_type)
-        if not isinstance(state, dict):
-            return 0
-
-        node_slots = state.get('node_slots')
-        if not isinstance(node_slots, dict):
-            node_slots = {}
-            state['node_slots'] = node_slots
-
-        reservations = getattr(self, '_render_grid_slot_reservations', None)
-        if not isinstance(reservations, dict):
-            reservations = {}
-            self._render_grid_slot_reservations = reservations
-        reserved_indices = reservations.get(safe_grid_path)
-        if not isinstance(reserved_indices, set):
-            reserved_indices = set()
-            reservations[safe_grid_path] = reserved_indices
-
-        live_node_slots_by_grid = getattr(self, '_render_live_grid_node_slots', None)
-        if not isinstance(live_node_slots_by_grid, dict):
-            live_node_slots_by_grid = {}
-            self._render_live_grid_node_slots = live_node_slots_by_grid
-        live_node_slots = live_node_slots_by_grid.get(safe_grid_path)
-        if not isinstance(live_node_slots, dict):
-            live_node_slots = {}
-            live_node_slots_by_grid[safe_grid_path] = live_node_slots
-
-        existing_index = 0
-        if safe_node_id:
-            try:
-                existing_index = int(node_slots.get(safe_node_id, 0) or 0)
-            except Exception:
-                existing_index = 0
-        if existing_index > 0:
-            if existing_index in reserved_indices:
-                existing_index = 0
-            else:
-                if safe_node_id:
-                    live_node_slots[safe_node_id] = existing_index
-                reserved_indices.add(existing_index)
-                key = '%s|%s' % (self._safe_text(parent_path), self._safe_text(node_type))
-                if not isinstance(getattr(self, '_render_grid_counts', None), dict):
-                    self._render_grid_counts = {}
-                current_max = int(self._render_grid_counts.get(key, 0) or 0)
-                if existing_index > current_max:
-                    self._render_grid_counts[key] = existing_index
-                return existing_index
-
-        used_indices = set()
-        for value in reserved_indices:
-            try:
-                index_value = int(value)
-            except Exception:
-                index_value = 0
-            if index_value > 0:
-                used_indices.add(index_value)
-
-        exiting_indices = None
-        mgr = getattr(self, '_animation_manager', None)
-        if mgr is not None:
-            exiting_indices = mgr.exiting_grid_slots.get(safe_grid_path)
-
-        max_pool_size = self._get_grid_pool_limit(node_type, 'max_pool_size', 0)
-        next_index = 1
-        while True:
-            if next_index in used_indices or next_index in reserved_indices:
-                next_index += 1
-                continue
-            if exiting_indices and next_index in exiting_indices:
-                next_index += 1
-                continue
-            break
-
-        if max_pool_size > 0 and next_index > max_pool_size:
-            return 0
-
-        if safe_node_id:
-            node_slots[safe_node_id] = next_index
-            live_node_slots[safe_node_id] = next_index
-        reserved_indices.add(next_index)
-        key = '%s|%s' % (self._safe_text(parent_path), self._safe_text(node_type))
-        if not isinstance(getattr(self, '_render_grid_counts', None), dict):
-            self._render_grid_counts = {}
-        current_max = int(self._render_grid_counts.get(key, 0) or 0)
-        if next_index > current_max:
-            self._render_grid_counts[key] = next_index
-        return next_index
-
     def _build_pending_grid_entry(self, entry, parent_path):
         node_type = entry.get('node_type')
         grid_config = self._get_grid_type_config(node_type)
@@ -1659,7 +1553,9 @@ class RuntimeLifecycleMixin(object):
         if precomputed is True:
             index = entry.get('grid_index', 0)
         else:
-            index = self._reserve_stable_grid_index(parent_path, node_type, entry.get('node_id'))
+            if not self._is_grid_available_for_parent(parent_path, node_type):
+                return None
+            index = self._next_grid_index(parent_path, node_type)
         max_pool_size = self._get_grid_pool_limit(node_type, 'max_pool_size', 0)
         if max_pool_size > 0 and index > max_pool_size:
             return None
@@ -1813,31 +1709,17 @@ class RuntimeLifecycleMixin(object):
         widget_path = self._safe_text(pending_entry.get('widget_path'))
         wrapper_path = self._safe_text(pending_entry.get('wrapper_path'))
         node_type = pending_entry.get('node_type')
-        slot_record = pending_entry.get('slot_record')
-        current_node_id = self._safe_text(pending_entry.get('node_id'))
-        last_node_id = ''
-        if isinstance(slot_record, dict):
-            last_node_id = self._safe_text(slot_record.get('last_node_id'))
-        slot_rebound = bool(current_node_id) and current_node_id != last_node_id
 
         if not isinstance(getattr(self, '_grid_slot_visible_states', None), dict):
             self._grid_slot_visible_states = {}
         slot_states = self._grid_slot_visible_states
         slot_key = self._safe_text(widget_path)
         needs_reactivate = slot_states.get(slot_key) != True
-        force_refresh_visible = slot_rebound
         if needs_reactivate:
             self._safe_set_visible(widget_path, True, widget_control, sync_refresh=False)
             slot_states[slot_key] = True
-        elif force_refresh_visible:
-            try:
-                self._set_cached_native_prop(widget_path, 'visible', None)
-            except Exception:
-                pass
-            self._safe_set_visible(widget_path, True, widget_control, sync_refresh=False)
-            slot_states[slot_key] = True
 
-        needs_native_reset = needs_reactivate or slot_rebound
+        needs_native_reset = needs_reactivate or node_type == 'Label'
         if needs_native_reset:
             self._reset_pooled_widget_native_state(widget_path, node_type, widget_control)
             self._drop_native_common_style_cache_fields(widget_path, ('opacity',))
@@ -1854,8 +1736,6 @@ class RuntimeLifecycleMixin(object):
             widget_control,
             native_layer_path=native_layer_path,
         )
-        if applied and isinstance(slot_record, dict):
-            slot_record['last_node_id'] = current_node_id
         self._record_render_detail_ms(detail_bucket, (_perf_now() - apply_start_time) * 1000.0)
         return applied
 
@@ -1906,10 +1786,10 @@ class RuntimeLifecycleMixin(object):
         if not isinstance(state, dict):
             state = {
                 'node_type': node_type,
-                'capacity': int(initial_pool_size),
+                'capacity': 0,
                 'active_count': 0,
                 'max_pool_size': max_pool_size,
-                'initialized': bool(initial_pool_size > 0),
+                'initialized': False,
                 'slots': {},
             }
             self._grid_pool_states[safe_grid_path] = state
@@ -1979,12 +1859,6 @@ class RuntimeLifecycleMixin(object):
 
         mgr = getattr(self, '_animation_manager', None)
         exiting_by_grid = getattr(mgr, 'exiting_grid_slots', None) if mgr is not None else None
-        reservations = getattr(self, '_render_grid_slot_reservations', None)
-        if not isinstance(reservations, dict):
-            reservations = {}
-        live_node_slots_by_grid = getattr(self, '_render_live_grid_node_slots', None)
-        if not isinstance(live_node_slots_by_grid, dict):
-            live_node_slots_by_grid = {}
 
         for grid_path, state in pool_states.items():
             if not isinstance(state, dict):
@@ -2002,50 +1876,24 @@ class RuntimeLifecycleMixin(object):
 
             exiting_indices = exiting_by_grid.get(grid_path) if isinstance(exiting_by_grid, dict) else None
 
-            reserved_indices = reservations.get(grid_path)
-            if not isinstance(reserved_indices, set):
-                reserved_indices = set()
+            if prev_active > next_active:
+                # Hide [next_active+1, prev_active] — but keep exiting slots
+                # alive until their animation completes.
+                self._set_grid_entry_visibility_range(
+                    grid_path, node_type, next_active + 1, prev_active, False,
+                    skip_indices=exiting_indices,
+                )
 
-            keep_indices = set()
-            for idx in reserved_indices:
-                try:
-                    safe_idx = int(idx)
-                except Exception:
-                    safe_idx = 0
-                if safe_idx > 0:
-                    keep_indices.add(safe_idx)
+            # Extend active_count to cover any exiting slot index so the next
+            # render's "prev_active" reflects reality.
+            effective_active = next_active
             if exiting_indices:
                 for idx in exiting_indices:
                     try:
-                        safe_idx = int(idx)
+                        effective_active = max(effective_active, int(idx))
                     except Exception:
-                        safe_idx = 0
-                    if safe_idx > 0:
-                        keep_indices.add(safe_idx)
-
-            hide_end = prev_active
-            if next_active > hide_end:
-                hide_end = next_active
-            for idx in keep_indices:
-                if idx > hide_end:
-                    hide_end = idx
-
-            if hide_end > 0:
-                self._set_grid_entry_visibility_range(
-                    grid_path, node_type, 1, hide_end, False,
-                    skip_indices=keep_indices,
-                )
-
-            effective_active = 0
-            for idx in keep_indices:
-                if idx > effective_active:
-                    effective_active = idx
+                        pass
             state['active_count'] = effective_active
-            live_node_slots = live_node_slots_by_grid.get(grid_path)
-            if isinstance(live_node_slots, dict):
-                state['node_slots'] = dict(live_node_slots)
-            else:
-                state['node_slots'] = {}
 
     def _hide_all_used_grid_entries(self):
         pool_states = getattr(self, '_grid_pool_states', None)
