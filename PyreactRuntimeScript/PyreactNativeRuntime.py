@@ -32,7 +32,7 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeAnim
         "Image": {
             "grid_name": "imageGrid",
             "template_name": "imagePanelBase",
-            "initial_pool_size": 64,
+            "initial_pool_size": 128,
             "max_pool_size": 128,
         },
         "Input": {
