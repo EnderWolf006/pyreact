@@ -16,7 +16,7 @@ class RuntimePropsMixin(object):
         except Exception:
             pass
 
-    def _apply_node_props(self, node, node_path, node_type, node_id, node_control=None):
+    def _apply_node_props(self, node, node_path, node_type, node_id, node_control=None, cache_already_cleared=False):
         props = getattr(node, "props", None) or {}
         if not isinstance(props, dict):
             return
@@ -59,9 +59,9 @@ class RuntimePropsMixin(object):
             onclick = props.get("onClick")
             if callable(onclick):
                 self._button_callbacks[node_id] = onclick
-                self._bind_button_click(node_path, node_id)
+                self._queue_button_bind(node_path, node_id)
 
-            self._render_button_state_slots(node, node_path)
+            self._render_button_state_slots(node, node_path, cache_already_cleared)
             return
 
         if node_type == "Input":
@@ -87,6 +87,7 @@ class RuntimePropsMixin(object):
                 self._native_geometry_cache = {}
                 self._button_bind_cache = {}
                 self._button_slot_cache = {}
+                self._pending_button_binds = {}
                 self._scroll_path_cache = {}
             except Exception:
                 pass
@@ -103,6 +104,7 @@ class RuntimePropsMixin(object):
                 self._native_geometry_cache = {}
                 self._button_bind_cache = {}
                 self._button_slot_cache = {}
+                self._pending_button_binds = {}
                 self._scroll_path_cache = {}
             except Exception:
                 pass
@@ -189,6 +191,16 @@ class RuntimePropsMixin(object):
                 if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
                     try:
                         del slot_cache[cached_path]
+                    except Exception:
+                        pass
+
+        pending_bind_cache = getattr(self, '_pending_button_binds', None)
+        if isinstance(pending_bind_cache, dict):
+            for cached_path in list(pending_bind_cache.keys()):
+                safe_cached_path = self._safe_text(cached_path)
+                if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
+                    try:
+                        del pending_bind_cache[cached_path]
                     except Exception:
                         pass
 
@@ -425,14 +437,13 @@ class RuntimePropsMixin(object):
             except Exception:
                 pass
 
-    def _render_button_state_slots(self, button_node, button_path):
+    def _render_button_state_slots(self, button_node, button_path, cache_already_cleared=False):
         props = getattr(button_node, "props", None) or {}
         if not isinstance(props, dict):
             return
 
         builder = props.get("buttonBuilder")
-        is_default_builder = not callable(builder)
-        if is_default_builder:
+        if not callable(builder):
             builder = self._default_button_state_builder
 
         layout = getattr(button_node, "layout", None)
@@ -449,32 +460,31 @@ class RuntimePropsMixin(object):
 
             state_element = self._call_button_builder(builder, state)
             if state_element is None:
-                self._clear_prefixed_children(slot_path)
+                if not cache_already_cleared:
+                    self._clear_prefixed_children(slot_path)
                 continue
 
-            slot_cache = None
-            slot_signature = None
-            if is_default_builder:
-                slot_signature = self._make_button_slot_signature(state_element, button_width, button_height)
-                slot_cache = getattr(self, '_button_slot_cache', None)
-                if not isinstance(slot_cache, dict):
-                    slot_cache = {}
-                    self._button_slot_cache = slot_cache
-                if slot_cache.get(slot_path) == slot_signature:
-                    continue
+            slot_signature = self._make_button_slot_signature(state_element, button_width, button_height)
+            slot_cache = getattr(self, '_button_slot_cache', None)
+            if not isinstance(slot_cache, dict):
+                slot_cache = {}
+                self._button_slot_cache = slot_cache
+            if slot_cache.get(slot_path) == slot_signature:
+                continue
 
             self._safe_set_position(slot_path, 0, 0, slot_control)
             self._safe_set_size(slot_path, button_width, button_height, slot_control)
-            self._clear_prefixed_children(slot_path)
+            if not cache_already_cleared:
+                self._clear_prefixed_children(slot_path)
 
             self._render_state_element_into_slot(
                 state_element=state_element,
                 slot_path=slot_path,
                 slot_width=button_width,
                 slot_height=button_height,
+                cache_already_cleared=cache_already_cleared,
             )
-            if slot_cache is not None:
-                slot_cache[slot_path] = slot_signature
+            slot_cache[slot_path] = slot_signature
 
     def _make_button_slot_signature(self, state_element, slot_width, slot_height):
         return (
@@ -487,7 +497,8 @@ class RuntimePropsMixin(object):
         if value is None:
             return ('none',)
         if isinstance(value, (list, tuple)):
-            result = [('kind', 'list')]
+            result = []
+            result.append(('kind', 'list'))
             for item in value:
                 result.append(self._make_element_signature(item))
             return tuple(result)
@@ -544,7 +555,7 @@ class RuntimePropsMixin(object):
             src=texture,
         )
 
-    def _render_state_element_into_slot(self, state_element, slot_path, slot_width, slot_height):
+    def _render_state_element_into_slot(self, state_element, slot_path, slot_width, slot_height, cache_already_cleared=False):
         from pyreact.components.primitives import Panel
 
         state_children = self._normalize_children_for_builder(state_element)
@@ -564,6 +575,7 @@ class RuntimePropsMixin(object):
             parent_path=slot_path,
             parent_abs_x=0.0,
             parent_abs_y=0.0,
+            cache_already_cleared=cache_already_cleared,
         )
 
     def _normalize_children_for_builder(self, value):
@@ -831,6 +843,22 @@ class RuntimePropsMixin(object):
 
         cache[node_path] = next_cached
 
+    def _queue_button_bind(self, button_path, node_id):
+        pending = getattr(self, '_pending_button_binds', None)
+        if not isinstance(pending, dict):
+            pending = {}
+            self._pending_button_binds = pending
+        pending[self._safe_text(button_path)] = node_id
+
+    def _flush_pending_button_binds(self):
+        pending = getattr(self, '_pending_button_binds', None)
+        if not isinstance(pending, dict) or not pending:
+            return
+        items = list(pending.items())
+        pending.clear()
+        for button_path, node_id in items:
+            self._bind_button_click(button_path, node_id)
+
     def _bind_button_click(self, button_path, node_id):
         bind_cache = getattr(self, '_button_bind_cache', None)
         if not isinstance(bind_cache, dict):
@@ -844,7 +872,7 @@ class RuntimePropsMixin(object):
         if not control:
             return
         try:
-            button_control = self._native_api_call('asButton', control.asButton)
+            button_control = self._to_button_control(control, button_path)
             if not button_control:
                 return
 

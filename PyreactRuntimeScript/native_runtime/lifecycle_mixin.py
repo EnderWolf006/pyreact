@@ -98,11 +98,6 @@ class RuntimeLifecycleMixin(object):
         self._render_scheduled = False
         self._is_rendering = True
         try:
-            self._button_callbacks = {}
-            self._input_callbacks = {}
-            self._input_paths = {}
-            self._node_refs = {}
-
             element = self._component_instance.render()
             component_ms = getattr(self._component_instance, 'last_render_duration_ms', 0.0)
             new_vtree = None
@@ -146,21 +141,22 @@ class RuntimeLifecycleMixin(object):
             mutations = self._reconciler.reconcile(self._prev_vtree, new_vtree)
             diff_ms = (self._perf_clock() - diff_start_time) * 1000.0
 
+            self._refresh_button_callbacks_from_vtree(new_vtree)
+
             layout_start_time = self._perf_clock()
             shadow_root = self._layout_engine.calculate(new_vtree, width, height)
             layout_ms = (self._perf_clock() - layout_start_time) * 1000.0
 
             native_before_apply = self._copy_native_api_perf_stats()
             native_start_time = self._perf_clock()
+            self._pending_button_binds = {}
             if self._can_apply_incremental(mutations):
                 self._apply_incremental_updates(shadow_root, mutations)
             else:
-                if getattr(self, '_debug_render', False):
-                    counts = {}
-                    muts = mutations or []
-                    for m in muts:
-                        t = self._safe_text(getattr(m, 'type_', ''))
-                        counts[t] = counts.get(t, 0) + 1
+                self._button_callbacks = {}
+                self._input_callbacks = {}
+                self._input_paths = {}
+                self._node_refs = {}
                 self._clear_root_children()
                 self._render_children(
                     children=[shadow_root],
@@ -169,6 +165,10 @@ class RuntimeLifecycleMixin(object):
                     parent_abs_y=0.0,
                     cache_already_cleared=True,
                 )
+            try:
+                self._flush_pending_button_binds()
+            except Exception:
+                pass
             native_apply_ms = (self._perf_clock() - native_start_time) * 1000.0
 
             update_screen_start_time = self._perf_clock()
@@ -228,101 +228,6 @@ class RuntimeLifecycleMixin(object):
     def _can_apply_incremental(self, mutations):
         if self._prev_vtree is None or self._prev_shadow_root is None:
             return False
-
-        structural_count = 0
-        created_node_count = 0
-        removed_node_count = 0
-        moved_node_count = 0
-        max_created_subtree = 0
-        max_removed_subtree = 0
-        deleted_paths = {}
-        created_paths = {}
-        for m in mutations or []:
-            try:
-                mutation_type = self._safe_text(getattr(m, 'type_', ''))
-            except Exception:
-                mutation_type = ''
-            if mutation_type == 'CREATE' or mutation_type == 'DELETE' or mutation_type == 'MOVE':
-                structural_count += 1
-                if mutation_type == 'CREATE':
-                    node_count = self._count_vnode_subtree(getattr(m, 'new_node', None))
-                    created_node_count += node_count
-                    if node_count > max_created_subtree:
-                        max_created_subtree = node_count
-                    created_paths[tuple(getattr(m, 'path', []) or [])] = True
-                elif mutation_type == 'DELETE':
-                    node_count = self._count_vnode_subtree(getattr(m, 'old_node', None))
-                    removed_node_count += node_count
-                    if node_count > max_removed_subtree:
-                        max_removed_subtree = node_count
-                    deleted_paths[tuple(getattr(m, 'path', []) or [])] = True
-                else:
-                    moved_node_count += self._count_vnode_subtree(getattr(m, 'new_node', None))
-
-        limit = getattr(self, '_full_rebuild_structural_mutation_limit', 16)
-        try:
-            limit = int(limit)
-        except Exception:
-            limit = 16
-        if limit > 0 and structural_count > limit:
-            return False
-
-        created_limit = getattr(self, '_full_rebuild_created_node_limit', 64)
-        try:
-            created_limit = int(created_limit)
-        except Exception:
-            created_limit = 64
-        if created_limit > 0 and created_node_count > created_limit:
-            return False
-
-        removed_limit = getattr(self, '_full_rebuild_removed_node_limit', 64)
-        try:
-            removed_limit = int(removed_limit)
-        except Exception:
-            removed_limit = 64
-        if removed_limit > 0 and removed_node_count > removed_limit:
-            return False
-
-        total_node_limit = getattr(self, '_full_rebuild_structural_node_limit', 96)
-        try:
-            total_node_limit = int(total_node_limit)
-        except Exception:
-            total_node_limit = 96
-        structural_node_count = created_node_count + removed_node_count + moved_node_count
-        if total_node_limit > 0 and structural_node_count > total_node_limit:
-            return False
-
-        max_subtree_limit = getattr(self, '_full_rebuild_single_subtree_node_limit', 48)
-        try:
-            max_subtree_limit = int(max_subtree_limit)
-        except Exception:
-            max_subtree_limit = 48
-        if max_subtree_limit > 0 and (max_created_subtree > max_subtree_limit or max_removed_subtree > max_subtree_limit):
-            return False
-
-        replace_pair_count = 0
-        has_near_root_replace = False
-        for path_tuple in created_paths:
-            if path_tuple in deleted_paths:
-                replace_pair_count += 1
-                if len(path_tuple) <= 2:
-                    has_near_root_replace = True
-
-        replace_pair_limit = getattr(self, '_full_rebuild_replace_pair_limit', 8)
-        try:
-            replace_pair_limit = int(replace_pair_limit)
-        except Exception:
-            replace_pair_limit = 8
-        if replace_pair_limit > 0 and replace_pair_count >= replace_pair_limit:
-            return False
-
-        if has_near_root_replace:
-            return False
-
-        # Incremental render can handle CREATE/DELETE/MOVE by creating missing
-        # controls and pruning orphaned prefixed children during the layout walk.
-        # For large structural switches, full root rebuild is faster because it
-        # deletes subtree roots once instead of probing/removing many nodes.
         return True
 
     def _count_vnode_subtree(self, node):
@@ -340,28 +245,51 @@ class RuntimeLifecycleMixin(object):
     def _apply_incremental_updates(self, new_shadow_root, mutations):
         recreate_paths = {}
         prune_parent_paths = {}
+        commit_paths = {}
+        deleted_paths = {}
         muts = mutations or []
         for m in muts:
             try:
                 mutation_type = self._safe_text(getattr(m, 'type_', ''))
-                path = getattr(m, 'path', []) or []
-                path_tuple = tuple(path)
-                if mutation_type == 'CREATE':
-                    recreate_paths[path_tuple] = True
+                if mutation_type == 'DELETE':
                     shifted = [0]
-                    shifted.extend(path)
-                    recreate_paths[tuple(shifted)] = True
-                    parent_path = list(path[:-1])
-                    shifted_parent = [0]
-                    shifted_parent.extend(parent_path)
-                    prune_parent_paths[tuple(shifted_parent)] = True
-                elif mutation_type == 'DELETE' or mutation_type == 'MOVE':
-                    parent_path = list(path[:-1])
-                    shifted_parent = [0]
-                    shifted_parent.extend(parent_path)
-                    prune_parent_paths[tuple(shifted_parent)] = True
+                    shifted.extend(getattr(m, 'path', []) or [])
+                    deleted_paths[tuple(shifted)] = True
             except Exception:
                 pass
+        for m in muts:
+            try:
+                mutation_type = self._safe_text(getattr(m, 'type_', ''))
+                path = getattr(m, 'path', []) or []
+                shifted = [0]
+                shifted.extend(path)
+                shifted_tuple = tuple(shifted)
+                parent_path = list(path[:-1])
+                shifted_parent = [0]
+                shifted_parent.extend(parent_path)
+                shifted_parent_tuple = tuple(shifted_parent)
+                if mutation_type == 'CREATE':
+                    recreate_paths[shifted_tuple] = bool(deleted_paths.get(shifted_tuple))
+                    commit_paths[shifted_parent_tuple] = True
+                    prune_parent_paths[shifted_parent_tuple] = True
+                elif mutation_type == 'DELETE':
+                    commit_paths[shifted_parent_tuple] = True
+                    prune_parent_paths[shifted_parent_tuple] = True
+                    self._remove_runtime_state_for_subtree(getattr(m, 'old_node', None))
+                elif mutation_type == 'MOVE':
+                    recreate_paths[shifted_tuple] = True
+                    commit_paths[shifted_parent_tuple] = True
+                    prune_parent_paths[shifted_parent_tuple] = True
+                elif mutation_type == 'UPDATE':
+                    if self._is_layout_affecting_update(m):
+                        commit_paths[shifted_parent_tuple] = True
+                    else:
+                        commit_paths[shifted_tuple] = True
+            except Exception:
+                pass
+        if not commit_paths:
+            return
+        commit_path_index = self._build_commit_path_index(commit_paths)
         self._apply_layout_to_existing_tree(
             current_node=[new_shadow_root],
             parent_control_path=self._root_path,
@@ -370,14 +298,69 @@ class RuntimeLifecycleMixin(object):
             shadow_path=[],
             recreate_paths=recreate_paths,
             prune_parent_paths=prune_parent_paths,
+            commit_paths=commit_path_index,
         )
+
+    def _is_layout_affecting_update(self, mutation):
+        try:
+            changed_props = getattr(mutation, 'changed_props', None) or {}
+        except Exception:
+            changed_props = {}
+        if not isinstance(changed_props, dict):
+            return True
+        # Style changes can alter flex layout for siblings and descendants, so
+        # commit the parent subtree. Content/native prop changes can update only
+        # the exact host node, React-style.
+        return 'style' in changed_props or 'children' in changed_props
+
+    def _is_path_prefix(self, prefix, path):
+        if len(prefix) > len(path):
+            return False
+        index = 0
+        while index < len(prefix):
+            if prefix[index] != path[index]:
+                return False
+            index += 1
+        return True
+
+    def _should_visit_commit_path(self, shadow_path, commit_paths):
+        if commit_paths is None:
+            return True
+        current = tuple(shadow_path or [])
+        if not current:
+            return True
+        try:
+            exact_paths = commit_paths.get('exact')
+            ancestor_paths = commit_paths.get('ancestors')
+        except Exception:
+            exact_paths = commit_paths
+            ancestor_paths = None
+        if ancestor_paths is not None and current in ancestor_paths:
+            return True
+        if exact_paths is not None:
+            for path_tuple in exact_paths:
+                if self._is_path_prefix(path_tuple, current):
+                    return True
+        return False
+
+    def _build_commit_path_index(self, commit_paths):
+        exact = set()
+        ancestors = set()
+        for path_tuple in commit_paths or {}:
+            path_tuple = tuple(path_tuple or ())
+            exact.add(path_tuple)
+            index = 0
+            while index <= len(path_tuple):
+                ancestors.add(tuple(path_tuple[:index]))
+                index += 1
+        return {'exact': exact, 'ancestors': ancestors}
 
     def _should_prune_prefixed_children(self, shadow_path, prune_parent_paths):
         if prune_parent_paths is None:
             return True
         return tuple(shadow_path or []) in prune_parent_paths
 
-    def _apply_layout_to_existing_tree(self, current_node, parent_control_path, parent_abs_x, parent_abs_y, shadow_path, recreate_paths, prune_parent_paths=None):
+    def _apply_layout_to_existing_tree(self, current_node, parent_control_path, parent_abs_x, parent_abs_y, shadow_path, recreate_paths, prune_parent_paths=None, commit_paths=None):
         if current_node is None:
             return
 
@@ -394,6 +377,8 @@ class RuntimeLifecycleMixin(object):
 
         children_parent_path = parent_control_path
         if current_node_type == "Scroll" and node_layout:
+            if commit_paths is not None and not self._should_visit_commit_path(shadow_path, commit_paths):
+                return
             content_path = self._get_scroll_content_path(parent_control_path)
             content_control = self._get_base_ui_control(content_path)
             if content_control:
@@ -425,24 +410,36 @@ class RuntimeLifecycleMixin(object):
             width = self._to_float(getattr(layout, 'width', 0.0), 0.0)
             height = self._to_float(getattr(layout, 'height', 0.0), 0.0)
 
-            control_path = children_parent_path + '/' + child_name
-            child_control_paths = control_path
-            control = self._get_base_ui_control(control_path)
-
             next_shadow_path = list(shadow_path)
             next_shadow_path.append(index)
+            if not self._should_visit_commit_path(next_shadow_path, commit_paths):
+                index += 1
+                continue
+            if self._can_skip_unchanged_commit_node(node, next_shadow_path, recreate_paths, commit_paths):
+                index += 1
+                continue
 
-            # If the reconciler says this path is newly created, ensure any stale
-            # control at the same name is removed and rebuilt with the right def.
-            try:
-                if recreate_paths and recreate_paths.get(tuple(next_shadow_path)) and control:
+            control_path = children_parent_path + '/' + child_name
+            child_control_paths = control_path
+            recreate_key = tuple(next_shadow_path)
+            if recreate_paths and recreate_key in recreate_paths:
+                if recreate_paths.get(recreate_key):
                     try:
-                        self._remove_component_by_path(control_path)
+                        control = self._get_base_ui_control(control_path)
                     except Exception:
-                        pass
-                    control = None
-            except Exception:
-                pass
+                        control = None
+                    if control:
+                        try:
+                            self._remove_component_by_path(control_path)
+                        except Exception:
+                            pass
+                self._render_node(node, children_parent_path, parent_abs_x, parent_abs_y, index, True)
+                if self._needs_render:
+                    return
+                index += 1
+                continue
+
+            control = self._get_base_ui_control(control_path)
 
             if not control:
                 parent_control = self._get_base_ui_control(children_parent_path)
@@ -472,6 +469,7 @@ class RuntimeLifecycleMixin(object):
                 shadow_path=next_shadow_path,
                 recreate_paths=recreate_paths,
                 prune_parent_paths=prune_parent_paths,
+                commit_paths=commit_paths,
             )
 
             if self._needs_render:
@@ -485,9 +483,229 @@ class RuntimeLifecycleMixin(object):
             except Exception:
                 pass
 
+    def _can_skip_unchanged_commit_node(self, node, shadow_path, recreate_paths, commit_paths):
+        path_tuple = tuple(shadow_path or [])
+        if recreate_paths and path_tuple in recreate_paths:
+            return False
+        exact_paths = None
+        ancestor_paths = None
+        if commit_paths:
+            try:
+                exact_paths = commit_paths.get('exact')
+                ancestor_paths = commit_paths.get('ancestors')
+            except Exception:
+                exact_paths = commit_paths
+        if exact_paths and path_tuple in exact_paths:
+            return False
+        if ancestor_paths and path_tuple in ancestor_paths:
+            return False
+        if commit_paths and ancestor_paths is None:
+            for commit_path in commit_paths:
+                if self._is_path_prefix(path_tuple, commit_path):
+                    return False
+
+        old_node = self._get_prev_shadow_node_by_shifted_path(shadow_path)
+        if old_node is None:
+            return False
+        return self._shadow_node_native_signature(old_node) == self._shadow_node_native_signature(node)
+
+    def _get_prev_shadow_node_by_shifted_path(self, shadow_path):
+        path = list(shadow_path or [])
+        if not path:
+            return None
+        if path[0] != 0:
+            return None
+        node = getattr(self, '_prev_shadow_root', None)
+        index = 1
+        while index < len(path):
+            try:
+                children = self._get_render_children(node, self._safe_text(getattr(node, 'node_type', 'Panel') or 'Panel'))
+                node = children[path[index]]
+            except Exception:
+                return None
+            index += 1
+        return node
+
+    def _shadow_node_native_signature(self, node):
+        if node is None:
+            return None
+        layout = getattr(node, 'layout', None)
+        layout_sig = (
+            int(round(self._to_float(getattr(layout, 'x', 0.0), 0.0) * 1000.0)),
+            int(round(self._to_float(getattr(layout, 'y', 0.0), 0.0) * 1000.0)),
+            int(round(self._to_float(getattr(layout, 'width', 0.0), 0.0) * 1000.0)),
+            int(round(self._to_float(getattr(layout, 'height', 0.0), 0.0) * 1000.0)),
+        )
+        props = getattr(node, 'props', None) or {}
+        if not isinstance(props, dict):
+            props = {}
+        style = getattr(node, 'style', None)
+        if not isinstance(style, dict):
+            style = props.get('style') if isinstance(props.get('style'), dict) else {}
+        return (
+            self._safe_text(getattr(node, 'node_id', '')),
+            self._safe_text(getattr(node, 'node_type', '')),
+            layout_sig,
+            self._make_commit_signature(style),
+            self._make_commit_signature(props),
+        )
+
+    def _make_commit_signature(self, value):
+        if isinstance(value, dict):
+            result = []
+            for key in sorted(value.keys()):
+                if key == 'children':
+                    continue
+                item = value.get(key)
+                if callable(item):
+                    result.append((key, 'callable'))
+                else:
+                    result.append((key, self._make_commit_signature(item)))
+            return tuple(result)
+        if isinstance(value, (list, tuple)):
+            return tuple([self._make_commit_signature(item) for item in value])
+        return self._safe_text(value)
+
     def _refresh_button_callbacks(self, shadow_root):
         self._button_callbacks = {}
         self._refresh_button_callbacks_walk([shadow_root], self._root_path)
+
+    def _refresh_button_callbacks_from_vtree(self, vnode):
+        callbacks = {}
+        self._refresh_button_callbacks_from_vtree_walk(vnode, callbacks, [])
+        self._button_callbacks = callbacks
+
+    def _refresh_button_callbacks_from_vtree_walk(self, vnode, callbacks, path):
+        if vnode is None:
+            return
+        try:
+            node_type = self._safe_text(getattr(vnode, 'node_type', ''))
+        except Exception:
+            node_type = ''
+        try:
+            props = getattr(vnode, 'props', None) or {}
+        except Exception:
+            props = {}
+        if node_type == 'Button' and isinstance(props, dict):
+            onclick = props.get('onClick')
+            if callable(onclick):
+                node_id = self._vnode_node_id(vnode, path)
+                if node_id:
+                    callbacks[node_id] = onclick
+        try:
+            children = getattr(vnode, 'children', None) or []
+        except Exception:
+            children = []
+        index = 0
+        for child in children:
+            child_path = list(path)
+            child_path.append(index)
+            self._refresh_button_callbacks_from_vtree_walk(child, callbacks, child_path)
+            index += 1
+
+    def _vnode_node_id(self, vnode, path):
+        try:
+            key = getattr(vnode, 'key', None)
+        except Exception:
+            key = None
+        if key is not None:
+            return 'k_%s' % self._sanitize_vnode_id_part(self._safe_text(key))
+        if not path:
+            return 'root'
+        return 'p_%s' % '_'.join([self._safe_text(item) for item in path])
+
+    def _sanitize_vnode_id_part(self, value):
+        if value is None:
+            return ''
+        text = self._safe_text(value)
+        out = []
+        for ch in text:
+            try:
+                valid = ch.isalnum() or ch in ('_', '-', '.')
+            except Exception:
+                valid = False
+            if valid:
+                out.append(ch)
+            else:
+                try:
+                    out.append('_%02x' % ord(ch))
+                except Exception:
+                    out.append('_')
+        return ''.join(out)
+
+    def _refresh_event_callback_tables(self, shadow_root):
+        button_callbacks = {}
+        input_callbacks = {}
+        input_paths = {}
+        self._refresh_event_callback_tables_walk([shadow_root], self._root_path, button_callbacks, input_callbacks, input_paths)
+        self._button_callbacks = button_callbacks
+        self._input_callbacks = input_callbacks
+        self._input_paths = input_paths
+
+    def _refresh_event_callback_tables_walk(self, current_node, parent_control_path, button_callbacks, input_callbacks, input_paths):
+        if current_node is None:
+            return
+
+        if isinstance(current_node, (list, tuple)):
+            children = list(current_node)
+            current_type = "Panel"
+        else:
+            current_type = self._safe_text(getattr(current_node, 'node_type', 'Panel') or 'Panel')
+            children = self._get_render_children(current_node, current_type)
+
+        children_parent_path = parent_control_path
+        if current_type == "Scroll":
+            children_parent_path = self._get_scroll_content_path(parent_control_path)
+
+        index = 0
+        for child in children:
+            child_id = self._safe_text(getattr(child, 'node_id', 'node'))
+            child_name = "%s%s_%s" % (self._CONTROL_NAME_PREFIX, child_id, index)
+            node_type = self._safe_text(getattr(child, 'node_type', 'Panel') or 'Panel')
+            control_path = children_parent_path + '/' + child_name
+            props = getattr(child, 'props', None) or {}
+            if isinstance(props, dict):
+                if node_type == 'Button':
+                    onclick = props.get('onClick')
+                    if callable(onclick):
+                        button_callbacks[child_id] = onclick
+                elif node_type == 'Input':
+                    input_paths[child_id] = control_path
+                    onchange = props.get('onChange')
+                    if callable(onchange):
+                        input_callbacks[child_id] = onchange
+                        self._ensure_input_edit_handlers_bound()
+            self._refresh_event_callback_tables_walk(child, control_path, button_callbacks, input_callbacks, input_paths)
+            index += 1
+
+    def _remove_runtime_state_for_subtree(self, node):
+        if node is None:
+            return
+        try:
+            node_id = self._safe_text(getattr(node, 'node_id', ''))
+        except Exception:
+            node_id = ''
+        if node_id:
+            for table_name in ('_button_callbacks', '_input_callbacks', '_input_paths'):
+                table = getattr(self, table_name, None)
+                if isinstance(table, dict) and node_id in table:
+                    try:
+                        del table[node_id]
+                    except Exception:
+                        pass
+            refs = getattr(self, '_node_refs', None)
+            if isinstance(refs, dict) and node_id in refs:
+                try:
+                    self._set_ref_value(refs.get(node_id), None)
+                    del refs[node_id]
+                except Exception:
+                    pass
+        try:
+            children = getattr(node, 'children', None) or []
+        except Exception:
+            children = []
+        for child in children:
+            self._remove_runtime_state_for_subtree(child)
 
     def _refresh_button_callbacks_walk(self, current_node, parent_control_path):
         if current_node is None:
@@ -541,7 +759,7 @@ class RuntimeLifecycleMixin(object):
                 continue
             child_path = self._root_path + "/" + name
             try:
-                self._remove_component_by_path(child_path)
+                    self._remove_component_by_path(child_path, skip_cache_drop=True)
             except Exception:
                 pass
 
@@ -584,7 +802,7 @@ class RuntimeLifecycleMixin(object):
         self._safe_set_position(node_path, local_x, local_y, child_control)
         if node_type != "Label":
             self._safe_set_size(node_path, width, height, child_control)
-        self._apply_node_props(node, node_path, node_type, node_id, child_control)
+        self._apply_node_props(node, node_path, node_type, node_id, child_control, cache_already_cleared)
 
         children_parent_path = node_path
         if node_type == "Scroll" and layout:

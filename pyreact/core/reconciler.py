@@ -72,7 +72,12 @@ class Reconciler(object):
             if callable(old_value) and callable(new_value):
                 # Event callbacks are re-created each render; handler table is
                 # refreshed separately, so callback identity changes should not
-                # force a DOM/node replacement.
+                # force a DOM/node replacement. buttonBuilder is different: it
+                # produces native visual state slots, so closure/default changes
+                # must be committed.
+                if key == 'buttonBuilder':
+                    if not self._callable_prop_equal(old_value, new_value):
+                        changed[key] = new_value
                 continue
 
             if old_value != new_value:
@@ -83,6 +88,76 @@ class Reconciler(object):
                 changed[key] = None
 
         return changed
+
+    def _callable_prop_equal(self, old_value, new_value):
+        return self._callable_signature(old_value) == self._callable_signature(new_value)
+
+    def _callable_signature(self, fn):
+        try:
+            code = getattr(fn, 'func_code', None) or getattr(fn, '__code__', None)
+        except Exception:
+            code = None
+        try:
+            defaults = getattr(fn, 'func_defaults', None)
+        except Exception:
+            defaults = None
+        if defaults is None:
+            try:
+                defaults = getattr(fn, '__defaults__', None)
+            except Exception:
+                defaults = None
+
+        try:
+            closure = getattr(fn, 'func_closure', None)
+        except Exception:
+            closure = None
+        if closure is None:
+            try:
+                closure = getattr(fn, '__closure__', None)
+            except Exception:
+                closure = None
+
+        closure_values = []
+        for cell in closure or []:
+            try:
+                closure_values.append(self._safe_signature_value(cell.cell_contents))
+            except Exception:
+                closure_values.append('empty')
+
+        return (
+            self._code_signature(code),
+            self._safe_signature_value(defaults),
+            tuple(closure_values),
+        )
+
+    def _code_signature(self, code):
+        if code is None:
+            return None
+        return (
+            getattr(code, 'co_code', None),
+            getattr(code, 'co_consts', None),
+            getattr(code, 'co_names', None),
+            getattr(code, 'co_varnames', None),
+            getattr(code, 'co_argcount', None),
+        )
+
+    def _safe_signature_value(self, value):
+        if isinstance(value, dict):
+            result = []
+            for key in sorted(value.keys()):
+                result.append((repr(key), self._safe_signature_value(value.get(key))))
+            return tuple(result)
+        if isinstance(value, (list, tuple)):
+            return tuple([self._safe_signature_value(item) for item in value])
+        if callable(value):
+            try:
+                return ('callable', self._code_signature(getattr(value, 'func_code', None) or getattr(value, '__code__', None)))
+            except Exception:
+                return ('callable', repr(value))
+        try:
+            return repr(value)
+        except Exception:
+            return str(type(value))
 
     def _diff_children(self, parent_path, old_children, new_children, mutations):
         old_children = old_children or []

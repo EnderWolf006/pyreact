@@ -126,6 +126,17 @@ class RuntimeNativeApiMixin(object):
             cache[safe_path] = control
         return control
 
+    def _cache_base_ui_control(self, path, control):
+        if not control:
+            return control
+        safe_path = self._safe_text(path)
+        cache = getattr(self, '_native_control_cache', None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._native_control_cache = cache
+        cache[safe_path] = control
+        return control
+
     def _get_children_name(self, parent_path):
         return self._native_api_call('GetChildrenName', self._screen.GetChildrenName, parent_path)
 
@@ -135,7 +146,7 @@ class RuntimeNativeApiMixin(object):
     def _remove_component(self, component_path, parent_path):
         return self._native_api_call('RemoveComponent', self._screen.RemoveComponent, component_path, parent_path)
 
-    def _remove_component_by_path(self, component_path):
+    def _remove_component_by_path(self, component_path, skip_cache_drop=False):
         safe_path = self._safe_text(component_path)
         if not safe_path:
             return None
@@ -144,7 +155,8 @@ class RuntimeNativeApiMixin(object):
             parent_path = '/'
         else:
             parent_path = safe_path[:pos]
-        self._drop_native_common_style_cache(safe_path)
+        if not skip_cache_drop:
+            self._drop_native_common_style_cache(safe_path)
         return self._remove_component(safe_path, parent_path)
 
     def _ensure_measure_label(self):
@@ -168,6 +180,7 @@ class RuntimeNativeApiMixin(object):
             def_name = "%s.%s" % (self._base_namespace, "textBase")
             try:
                 control = self._native_api_call('CreateChildControl', self._screen.CreateChildControl, def_name, self._MEASURE_LABEL_NAME, root_control, False)
+                self._cache_base_ui_control(measure_path, control)
             except Exception:
                 control = None
             if not control:
@@ -605,6 +618,33 @@ class RuntimeNativeApiMixin(object):
             pass
         return None
 
+    def _to_button_control(self, control, path):
+        cache_key = 'Button:' + self._safe_text(path)
+        cache = self._get_native_adapter_cache()
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+
+        if control and hasattr(control, 'asButton'):
+            try:
+                button_control = self._native_api_call('asButton', control.asButton)
+                if button_control:
+                    cache[cache_key] = button_control
+                    return button_control
+            except Exception:
+                pass
+
+        try:
+            base_control = self._get_base_ui_control(path)
+            if base_control and hasattr(base_control, 'asButton'):
+                button_control = self._native_api_call('asButton', base_control.asButton)
+                if button_control:
+                    cache[cache_key] = button_control
+                return button_control
+        except Exception:
+            pass
+        return None
+
     def _safe_set_text_color(self, path, color, control=None):
         rgb = self._to_rgb_tuple(color)
         if rgb is None:
@@ -815,7 +855,9 @@ class RuntimeNativeApiMixin(object):
     
     def _clone(self, componentPath, parentPath, newName, syncRefresh, forceUpdate):
         try:
-            self._native_api_call('Clone', self._screen.Clone, componentPath, parentPath, newName, syncRefresh, forceUpdate)
+            control = self._native_api_call('Clone', self._screen.Clone, componentPath, parentPath, newName, syncRefresh, forceUpdate)
+            if control and not isinstance(control, bool):
+                return self._cache_base_ui_control(parentPath + "/" + newName, control)
             return self._get_base_ui_control(parentPath + "/" + newName)
         except Exception:
             pass
