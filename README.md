@@ -115,7 +115,7 @@ class MyScreen(ScreenNode):
 
 native API 明细默认对应“应用到原生UI”阶段；`5.1` / `5.2` 会拆分原生控件应用与 `UpdateScreen`，`[native][update]` 行表示本次更新所有阶段（包括布局阶段文本测量等）触发的 native API 总耗时。
 
-运行时会缓存重复的文本测量结果、原生控件/类型转换、Label/Image 属性、布局位置尺寸、按钮绑定、按钮三态槽位与 Scroll 路径，以减少列表切换等高频更新场景中的重复 native API 调用；控件删除或重建时会按路径前缀清理对应缓存。首次挂载后禁止用整棵 Pyreact 子树重建兜底，Diff 后会按 mutation 计算受影响路径：结构变化提交受影响父子树，非布局属性更新只提交精确节点，未受影响分支不会进入 native commit；新建子树直接 clone/render，不再逐节点先探测已有控件。事件回调不会触发 native commit，但 `buttonBuilder` 会作为视觉生成函数参与 Diff。
+运行时会缓存重复的文本测量结果（有界 FIFO 淘汰）、原生控件/类型转换、Label/Image 属性、布局位置尺寸、按钮绑定、按钮三态槽位与 Scroll 路径，以减少列表切换等高频更新场景中的重复 native API 调用；控件删除或重建时会按路径前缀清理对应缓存。首次挂载后禁止用整棵 Pyreact 子树重建兜底，Diff 后会按 mutation 计算受影响路径：结构变化提交受影响父子树，非布局属性更新只提交精确节点，未受影响分支不会进入 native commit；新建子树直接 clone/render，不再逐节点先探测已有控件。事件回调不会触发 native commit，但 `buttonBuilder` 会作为视觉生成函数参与 Diff。
 
 下面是一个最小 Screen JSON（同样可直接参考 `JsonUI/PyreactExample.json`）：
 

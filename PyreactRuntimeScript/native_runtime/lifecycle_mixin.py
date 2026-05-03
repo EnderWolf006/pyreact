@@ -338,9 +338,11 @@ class RuntimeLifecycleMixin(object):
         if ancestor_paths is not None and current in ancestor_paths:
             return True
         if exact_paths is not None:
-            for path_tuple in exact_paths:
-                if self._is_path_prefix(path_tuple, current):
+            index = 1
+            while index <= len(current):
+                if tuple(current[:index]) in exact_paths:
                     return True
+                index += 1
         return False
 
     def _build_commit_path_index(self, commit_paths):
@@ -439,6 +441,22 @@ class RuntimeLifecycleMixin(object):
                 index += 1
                 continue
 
+            if not self._should_apply_commit_node(node, next_shadow_path, recreate_paths, commit_paths):
+                self._apply_layout_to_existing_tree(
+                    current_node=node,
+                    parent_control_path=control_path,
+                    parent_abs_x=abs_x,
+                    parent_abs_y=abs_y,
+                    shadow_path=next_shadow_path,
+                    recreate_paths=recreate_paths,
+                    prune_parent_paths=prune_parent_paths,
+                    commit_paths=commit_paths,
+                )
+                if self._needs_render:
+                    return
+                index += 1
+                continue
+
             control = self._get_base_ui_control(control_path)
 
             if not control:
@@ -482,6 +500,27 @@ class RuntimeLifecycleMixin(object):
                 self._prune_prefixed_children(children_parent_path, expected_child_names)
             except Exception:
                 pass
+
+    def _should_apply_commit_node(self, node, shadow_path, recreate_paths, commit_paths):
+        if commit_paths is None:
+            return True
+        path_tuple = tuple(shadow_path or [])
+        if recreate_paths and path_tuple in recreate_paths:
+            return True
+        node_type = self._safe_text(getattr(node, 'node_type', 'Panel') or 'Panel')
+        if node_type == 'Scroll':
+            return True
+        exact_paths = None
+        try:
+            exact_paths = commit_paths.get('exact')
+        except Exception:
+            exact_paths = commit_paths
+        if exact_paths and path_tuple in exact_paths:
+            return True
+        old_node = self._get_prev_shadow_node_by_shifted_path(shadow_path)
+        if old_node is None:
+            return True
+        return self._shadow_node_native_signature(old_node) != self._shadow_node_native_signature(node)
 
     def _can_skip_unchanged_commit_node(self, node, shadow_path, recreate_paths, commit_paths):
         path_tuple = tuple(shadow_path or [])

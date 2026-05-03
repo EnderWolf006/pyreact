@@ -844,11 +844,15 @@ class RuntimePropsMixin(object):
         cache[node_path] = next_cached
 
     def _queue_button_bind(self, button_path, node_id):
+        safe_button_path = self._safe_text(button_path)
+        bind_cache = getattr(self, '_button_bind_cache', None)
+        if isinstance(bind_cache, dict) and bind_cache.get(safe_button_path):
+            return
         pending = getattr(self, '_pending_button_binds', None)
         if not isinstance(pending, dict):
             pending = {}
             self._pending_button_binds = pending
-        pending[self._safe_text(button_path)] = node_id
+        pending[safe_button_path] = node_id
 
     def _flush_pending_button_binds(self):
         pending = getattr(self, '_pending_button_binds', None)

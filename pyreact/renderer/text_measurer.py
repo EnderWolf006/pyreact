@@ -21,6 +21,7 @@ class TextMeasurer(object):
     def __init__(self, native_measure=None):
         self._native_measure = native_measure
         self._measure_cache = {}
+        self._measure_cache_order = []
 
     def _make_cache_key(self, text, style, max_width):
         items = []
@@ -85,8 +86,18 @@ class TextMeasurer(object):
 
     def _remember_measure(self, cache_key, result):
         cache = self._measure_cache
-        if len(cache) >= 512:
-            cache.clear()
+        order = getattr(self, '_measure_cache_order', None)
+        if not isinstance(order, list):
+            order = []
+            self._measure_cache_order = order
+        if cache_key not in cache:
+            order.append(cache_key)
+        if len(cache) >= 1024:
+            remove_count = 128
+            while remove_count > 0 and order:
+                old_key = order.pop(0)
+                cache.pop(old_key, None)
+                remove_count -= 1
         cache[cache_key] = dict(result)
 
     def _get_font_size_scale(self, style):
