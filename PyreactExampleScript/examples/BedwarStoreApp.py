@@ -110,71 +110,6 @@ GOODS_DATA = {
 
 @Component
 def HorizontalItemCard(goods_data, onClick):
-    card_content = [
-        Item(
-            style=Style(
-                height=22,
-                width=22,
-            ),
-            identifier="minecraft:" + goods_data["identifier"],
-            children=[
-                Label(
-                    style=Style(
-                        position=Position.absolute,
-                        right=-2,
-                        bottom=-2,
-                    ),
-                    shadow=True,
-                    content=str(goods_data.get("count", '') if goods_data.get("count", 0) > 1 else '')
-                )
-            ]
-        ),
-        Panel(
-            style=Style(
-                marginLeft=8
-            ),
-            children=[
-                Label(
-                    style=Style(
-                        marginBottom=2,
-                    ),
-                    content=str(goods_data["name"]),
-                    fontSize=13,
-                ),
-                Label(
-                    color=Colors.grey,
-                    content="我是" + str(goods_data["name"]) + "的介绍"
-                )
-            ]
-        ),
-        Panel(
-            style=Style(
-                flex=1
-            )
-        ),
-        Item(
-            style=Style(height=16, width=16, marginRight=3, alignSelf=AlignItems.end),
-            identifier="minecraft:" + CURRENCY_DATA[goods_data['currency']],
-        ),
-        Label(
-            style=Style(alignSelf=AlignItems.end, marginBottom=3),
-            content=str(goods_data["price"]),
-            shadow=True,
-        ),
-    ]
-    if onClick is None:
-        return Image(
-            style=Style(
-                width=160,
-                height=42,
-                padding=8,
-                alignItems=AlignItems.center,
-                flexDirection=FlexDirection.row,
-                opacity=0.3,
-            ),
-            color=Color.fromRGB(39, 18, 19),
-            children=card_content,
-        )
     return Button(
         style=Style(
             width=160,
@@ -192,19 +127,8 @@ def HorizontalItemCard(goods_data, onClick):
             ),
             color=Color.fromRGB(39, 18, 19)
         ),
-        children=card_content
-    )
-
-@Component
-def VerticalItemCard(goods_data, onClick):
-    card_content = [
-        Panel(
-            style=Style(
-                justifyContent=JustifyContent.center,
-                alignItems=AlignItems.center,
-                flex=1
-            ),
-            children=Item(
+        children=[
+            Item(
                 style=Style(
                     height=22,
                     width=22,
@@ -221,40 +145,44 @@ def VerticalItemCard(goods_data, onClick):
                         content=str(goods_data.get("count", '') if goods_data.get("count", 0) > 1 else '')
                     )
                 ]
-            )
-        ),
-        Image(
-            style=Style(
-                width="100%",
-                height=16,
-                opacity=0.5,
-                justifyContent=JustifyContent.center,
-                alignItems=AlignItems.center,
-                flexDirection=FlexDirection.row,
             ),
-            color=Colors.black,
-            children=[
-                Item(
-                    style=Style(height=14, width=14, marginRight=4),
-                    identifier="minecraft:" + CURRENCY_DATA[goods_data["currency"]],
+            Panel(
+                style=Style(
+                    marginLeft=8
                 ),
-                Label(
-                    content=str(goods_data["price"])
-                )
-            ]
-        )
-    ]
-    if onClick is None:
-        return Image(
-            style=Style(
-                height=60,
-                width=50,
-                alignItems=AlignItems.center,
-                opacity=0.3,
+                children=[
+                    Label(
+                        style=Style(
+                            marginBottom=2,
+                        ),
+                        content=str(goods_data["name"]),
+                        fontSize=13,
+                    ),
+                    Label(
+                        color=Colors.grey,
+                        content="我是" + str(goods_data["name"]) + "的介绍"
+                    )
+                ]
             ),
-            color=Color.fromRGB(39, 18, 19),
-            children=card_content,
-        )
+            Panel(
+                style=Style(
+                    flex=1
+                )
+            ),
+            Item(
+                style=Style(height=16, width=16, marginRight=3, alignSelf=AlignItems.end),
+                identifier="minecraft:" + CURRENCY_DATA[goods_data['currency']],
+            ),
+            Label(
+                style=Style(alignSelf=AlignItems.end, marginBottom=3),
+                content=str(goods_data["price"]),
+                shadow=True,
+            ),
+        ]
+    )
+
+@Component
+def VerticalItemCard(goods_data, onClick):
     return Button(
         style=Style(
             height=60,
@@ -270,7 +198,53 @@ def VerticalItemCard(goods_data, onClick):
             ),
             color=Color.fromRGB(39, 18, 19)
         ),
-        children=card_content
+        children=[
+            Panel(
+                style=Style(
+                    justifyContent=JustifyContent.center,
+                    alignItems=AlignItems.center,
+                    flex=1
+                ),
+                children=Item(
+                    style=Style(
+                        height=22,
+                        width=22,
+                    ),
+                    identifier="minecraft:" + goods_data["identifier"],
+                    children=[
+                        Label(
+                            style=Style(
+                                position=Position.absolute,
+                                right=-2,
+                                bottom=-2,
+                            ),
+                            shadow=True,
+                            content=str(goods_data.get("count", '') if goods_data.get("count", 0) > 1 else '')
+                        )
+                    ]
+                )
+            ),
+            Image(
+                style=Style(
+                    width="100%",
+                    height=16,
+                    opacity=0.5,
+                    justifyContent=JustifyContent.center,
+                    alignItems=AlignItems.center,
+                    flexDirection=FlexDirection.row,
+                ),
+                color=Colors.black,
+                children=[
+                    Item(
+                        style=Style(height=14, width=14, marginRight=4),
+                        identifier="minecraft:" + CURRENCY_DATA[goods_data["currency"]],
+                    ),
+                    Label(
+                        content=str(goods_data["price"])
+                    )
+                ]
+            )
+        ]
     )
 
 
@@ -346,7 +320,7 @@ def BedwarStoreApp():
                     ),
                     children=VerticalItemCard(
                         goods_data=goods_data,
-                        onClick=None
+                        onClick=lambda: None
                     )
                 )
             )
@@ -362,7 +336,7 @@ def BedwarStoreApp():
                     ),
                     children=HorizontalItemCard(
                         goods_data=goods_data,
-                        onClick=None
+                        onClick=lambda: None
                     )
                 )
             )
