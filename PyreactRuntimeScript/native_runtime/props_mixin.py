@@ -78,6 +78,24 @@ class RuntimePropsMixin(object):
     def _drop_native_common_style_cache(self, path_prefix=None):
         cache = self._get_native_common_style_cache()
         if not path_prefix:
+            start_time = self._perf_clock()
+            scanned = 0
+            deleted = 0
+            for cache_obj in (
+                cache,
+                getattr(self, '_native_control_cache', None),
+                getattr(self, '_native_adapter_cache', None),
+                getattr(self, '_native_label_props_cache', None),
+                getattr(self, '_native_image_props_cache', None),
+                getattr(self, '_native_geometry_cache', None),
+                getattr(self, '_button_bind_cache', None),
+                getattr(self, '_button_slot_cache', None),
+                getattr(self, '_pending_button_binds', None),
+                getattr(self, '_scroll_path_cache', None),
+            ):
+                if isinstance(cache_obj, dict):
+                    scanned += len(cache_obj)
+                    deleted += len(cache_obj)
             cache.clear()
             try:
                 self._native_control_cache = {}
@@ -91,128 +109,78 @@ class RuntimePropsMixin(object):
                 self._scroll_path_cache = {}
             except Exception:
                 pass
+            self._record_native_commit_perf('cache_drop_calls')
+            self._record_native_commit_perf('cache_drop_scanned', scanned)
+            self._record_native_commit_perf('cache_drop_deleted', deleted)
+            self._record_native_commit_perf('cache_drop_ms', (self._perf_clock() - start_time) * 1000.0)
             return
 
         prefix = self._safe_text(path_prefix)
         if not prefix:
-            cache.clear()
-            try:
-                self._native_control_cache = {}
-                self._native_adapter_cache = {}
-                self._native_label_props_cache = {}
-                self._native_image_props_cache = {}
-                self._native_geometry_cache = {}
-                self._button_bind_cache = {}
-                self._button_slot_cache = {}
-                self._pending_button_binds = {}
-                self._scroll_path_cache = {}
-            except Exception:
-                pass
+            self._drop_native_common_style_cache()
             return
 
-        prefix_with_sep = prefix + '/'
-        for cached_path in list(cache.keys()):
-            safe_cached_path = self._safe_text(cached_path)
-            if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
-                try:
-                    del cache[cached_path]
-                except Exception:
-                    pass
+        self._drop_native_common_style_cache_many([prefix])
 
-        control_cache = getattr(self, '_native_control_cache', None)
-        if isinstance(control_cache, dict):
-            for cached_path in list(control_cache.keys()):
-                safe_cached_path = self._safe_text(cached_path)
-                if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
-                    try:
-                        del control_cache[cached_path]
-                    except Exception:
-                        pass
+    def _drop_native_common_style_cache_many(self, path_prefixes):
+        prefix_set = {}
+        for path_prefix in path_prefixes or []:
+            prefix = self._safe_text(path_prefix)
+            if prefix:
+                prefix_set[prefix] = True
+        if not prefix_set:
+            return
 
-        adapter_cache = getattr(self, '_native_adapter_cache', None)
-        if isinstance(adapter_cache, dict):
-            for cached_key in list(adapter_cache.keys()):
+        start_time = self._perf_clock()
+        scanned = 0
+        deleted = 0
+        cache_items = (
+            (self._get_native_common_style_cache(), False),
+            (getattr(self, '_native_control_cache', None), False),
+            (getattr(self, '_native_adapter_cache', None), True),
+            (getattr(self, '_native_label_props_cache', None), False),
+            (getattr(self, '_native_image_props_cache', None), False),
+            (getattr(self, '_native_geometry_cache', None), False),
+            (getattr(self, '_button_bind_cache', None), False),
+            (getattr(self, '_button_slot_cache', None), False),
+            (getattr(self, '_pending_button_binds', None), False),
+            (getattr(self, '_scroll_path_cache', None), False),
+        )
+        for cache_obj, is_adapter_cache in cache_items:
+            if not isinstance(cache_obj, dict):
+                continue
+            for cached_key in list(cache_obj.keys()):
+                scanned += 1
                 safe_key = self._safe_text(cached_key)
-                pos = safe_key.find(':')
-                if pos >= 0:
-                    safe_key_path = safe_key[pos + 1:]
-                else:
-                    safe_key_path = safe_key
-                if safe_key_path == prefix or safe_key_path.startswith(prefix_with_sep):
+                if is_adapter_cache:
+                    pos = safe_key.find(':')
+                    if pos >= 0:
+                        safe_key = safe_key[pos + 1:]
+                if self._matches_any_cache_prefix(safe_key, prefix_set):
                     try:
-                        del adapter_cache[cached_key]
+                        del cache_obj[cached_key]
+                        deleted += 1
                     except Exception:
                         pass
 
-        label_cache = getattr(self, '_native_label_props_cache', None)
-        if isinstance(label_cache, dict):
-            for cached_path in list(label_cache.keys()):
-                safe_cached_path = self._safe_text(cached_path)
-                if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
-                    try:
-                        del label_cache[cached_path]
-                    except Exception:
-                        pass
+        self._record_native_commit_perf('cache_drop_calls')
+        self._record_native_commit_perf('cache_drop_prefixes', len(prefix_set))
+        self._record_native_commit_perf('cache_drop_scanned', scanned)
+        self._record_native_commit_perf('cache_drop_deleted', deleted)
+        self._record_native_commit_perf('cache_drop_ms', (self._perf_clock() - start_time) * 1000.0)
 
-        image_cache = getattr(self, '_native_image_props_cache', None)
-        if isinstance(image_cache, dict):
-            for cached_path in list(image_cache.keys()):
-                safe_cached_path = self._safe_text(cached_path)
-                if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
-                    try:
-                        del image_cache[cached_path]
-                    except Exception:
-                        pass
-
-        geometry_cache = getattr(self, '_native_geometry_cache', None)
-        if isinstance(geometry_cache, dict):
-            for cached_path in list(geometry_cache.keys()):
-                safe_cached_path = self._safe_text(cached_path)
-                if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
-                    try:
-                        del geometry_cache[cached_path]
-                    except Exception:
-                        pass
-
-        bind_cache = getattr(self, '_button_bind_cache', None)
-        if isinstance(bind_cache, dict):
-            for cached_path in list(bind_cache.keys()):
-                safe_cached_path = self._safe_text(cached_path)
-                if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
-                    try:
-                        del bind_cache[cached_path]
-                    except Exception:
-                        pass
-
-        slot_cache = getattr(self, '_button_slot_cache', None)
-        if isinstance(slot_cache, dict):
-            for cached_path in list(slot_cache.keys()):
-                safe_cached_path = self._safe_text(cached_path)
-                if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
-                    try:
-                        del slot_cache[cached_path]
-                    except Exception:
-                        pass
-
-        pending_bind_cache = getattr(self, '_pending_button_binds', None)
-        if isinstance(pending_bind_cache, dict):
-            for cached_path in list(pending_bind_cache.keys()):
-                safe_cached_path = self._safe_text(cached_path)
-                if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
-                    try:
-                        del pending_bind_cache[cached_path]
-                    except Exception:
-                        pass
-
-        scroll_cache = getattr(self, '_scroll_path_cache', None)
-        if isinstance(scroll_cache, dict):
-            for cached_path in list(scroll_cache.keys()):
-                safe_cached_path = self._safe_text(cached_path)
-                if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
-                    try:
-                        del scroll_cache[cached_path]
-                    except Exception:
-                        pass
+    def _matches_any_cache_prefix(self, safe_key, prefixes):
+        if safe_key in prefixes:
+            return True
+        end = len(safe_key)
+        while end > 0:
+            pos = safe_key.rfind('/', 0, end)
+            if pos <= 0:
+                return False
+            safe_key = safe_key[:pos]
+            if safe_key in prefixes:
+                return True
+        return False
 
     def _set_ref_value(self, ref_obj, value):
         if ref_obj is None:
@@ -650,12 +618,17 @@ class RuntimePropsMixin(object):
             children=state_children,
         )
         shadow_root = self._layout_engine.calculate(state_root, slot_width, slot_height)
+        try:
+            slot_control = self._get_base_ui_control(slot_path)
+        except Exception:
+            slot_control = None
         self._render_children(
             children=getattr(shadow_root, "children", []) or [],
             parent_path=slot_path,
             parent_abs_x=0.0,
             parent_abs_y=0.0,
             cache_already_cleared=cache_already_cleared,
+            parent_control=slot_control,
         )
 
     def _normalize_children_for_builder(self, value):
@@ -944,12 +917,14 @@ class RuntimePropsMixin(object):
             self._bind_button_click(button_path, node_id)
 
     def _bind_button_click(self, button_path, node_id):
+        bind_start_time = self._perf_clock()
         bind_cache = getattr(self, '_button_bind_cache', None)
         if not isinstance(bind_cache, dict):
             bind_cache = {}
             self._button_bind_cache = bind_cache
         safe_button_path = self._safe_text(button_path)
         if bind_cache.get(safe_button_path):
+            self._record_native_commit_perf('button_bind_skip')
             return
 
         control = self._get_base_ui_control(button_path)
@@ -970,6 +945,10 @@ class RuntimePropsMixin(object):
 
             self._native_api_call('SetButtonTouchUpCallback', button_control.SetButtonTouchUpCallback, _callback)
             bind_cache[safe_button_path] = True
+            bind_ms = (self._perf_clock() - bind_start_time) * 1000.0
+            self._record_native_commit_perf('button_bind_count')
+            self._record_native_commit_perf('button_bind_ms', bind_ms)
+            self._record_native_commit_perf_max('button_bind_max_ms', bind_ms)
         except Exception:
             pass
 
@@ -984,12 +963,21 @@ class RuntimePropsMixin(object):
         except Exception:
             names = []
 
+        remove_paths = []
         for name in names:
-            if not self._safe_text(name).startswith(self._CONTROL_NAME_PREFIX):
+            safe_name = self._safe_text(name)
+            if not safe_name.startswith(self._CONTROL_NAME_PREFIX):
                 continue
-            child_path = parent_path + "/" + name
+            child_path = parent_path + "/" + safe_name
+            remove_paths.append(child_path)
+
+        if remove_paths:
+            self._drop_native_common_style_cache_many(remove_paths)
+
+        for child_path in remove_paths:
             try:
-                self._remove_component_by_path(child_path)
+                self._remove_component_by_path(child_path, skip_cache_drop=True)
+                self._record_native_commit_perf('remove_component')
             except Exception:
                 pass
 
@@ -1007,6 +995,7 @@ class RuntimePropsMixin(object):
         except Exception:
             names = []
 
+        remove_paths = []
         for name in names:
             safe_name = self._safe_text(name)
             if not safe_name.startswith(self._CONTROL_NAME_PREFIX):
@@ -1015,7 +1004,14 @@ class RuntimePropsMixin(object):
                 continue
 
             child_path = parent_path + "/" + safe_name
+            remove_paths.append(child_path)
+
+        if remove_paths:
+            self._drop_native_common_style_cache_many(remove_paths)
+
+        for child_path in remove_paths:
             try:
-                self._remove_component_by_path(child_path)
+                self._remove_component_by_path(child_path, skip_cache_drop=True)
+                self._record_native_commit_perf('remove_component')
             except Exception:
                 pass

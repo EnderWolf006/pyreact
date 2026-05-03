@@ -5,6 +5,9 @@ import time
 from pyreact.components.color import Color
 
 
+_PERF_CLOCK = getattr(time, 'clock', None) or getattr(time, 'time')
+
+
 try:
     _UNICODE_TYPE = unicode
 except NameError:
@@ -16,10 +19,7 @@ class RuntimeNativeApiMixin(object):
     _TEXT_FONT_SIZE_BASE = 10.0
 
     def _perf_clock(self):
-        clock = getattr(time, 'clock', None)
-        if clock:
-            return clock()
-        return getattr(time, 'time')()
+        return _PERF_CLOCK()
 
     def _reset_native_api_perf_stats(self):
         if getattr(self, '_log_perf', False):
@@ -120,7 +120,9 @@ class RuntimeNativeApiMixin(object):
             self._native_control_cache = cache
         cached = cache.get(safe_path)
         if cached:
+            self._record_native_commit_perf('control_cache_hit')
             return cached
+        self._record_native_commit_perf('control_cache_miss')
         control = self._native_api_call('GetBaseUIControl', self._screen.GetBaseUIControl, path)
         if control:
             cache[safe_path] = control
@@ -542,7 +544,9 @@ class RuntimeNativeApiMixin(object):
         cache = self._get_native_adapter_cache()
         cached = cache.get(cache_key)
         if cached:
+            self._record_native_commit_perf('adapter_cache_hit')
             return cached
+        self._record_native_commit_perf('adapter_cache_miss')
 
         if control and hasattr(control, "asImage"):
             try:
@@ -569,7 +573,9 @@ class RuntimeNativeApiMixin(object):
         cache = self._get_native_adapter_cache()
         cached = cache.get(cache_key)
         if cached:
+            self._record_native_commit_perf('adapter_cache_hit')
             return cached
+        self._record_native_commit_perf('adapter_cache_miss')
 
         if control and hasattr(control, 'asItemRenderer'):
             try:
@@ -596,7 +602,9 @@ class RuntimeNativeApiMixin(object):
         cache = self._get_native_adapter_cache()
         cached = cache.get(cache_key)
         if cached:
+            self._record_native_commit_perf('adapter_cache_hit')
             return cached
+        self._record_native_commit_perf('adapter_cache_miss')
 
         if control and hasattr(control, "asLabel"):
             try:
@@ -623,7 +631,9 @@ class RuntimeNativeApiMixin(object):
         cache = self._get_native_adapter_cache()
         cached = cache.get(cache_key)
         if cached:
+            self._record_native_commit_perf('adapter_cache_hit')
             return cached
+        self._record_native_commit_perf('adapter_cache_miss')
 
         if control and hasattr(control, 'asButton'):
             try:
@@ -718,7 +728,9 @@ class RuntimeNativeApiMixin(object):
                 self._native_geometry_cache = geometry_cache
             cached = geometry_cache.get(safe_path)
             if isinstance(cached, dict) and cached.get('pos') == pos:
+                self._record_native_commit_perf('geometry_pos_skip')
                 return
+            self._record_native_commit_perf('geometry_pos_set')
             if control:
                 if hasattr(control, "SetFullPosition"):
                     try:
@@ -769,7 +781,9 @@ class RuntimeNativeApiMixin(object):
                 self._native_geometry_cache = geometry_cache
             cached = geometry_cache.get(safe_path)
             if isinstance(cached, dict) and cached.get('size') == size:
+                self._record_native_commit_perf('geometry_size_skip')
                 return
+            self._record_native_commit_perf('geometry_size_set')
             if control:
                 if hasattr(control, "SetFullSize"):
                     try:

@@ -2,6 +2,14 @@ class Mutation(object):
     def __init__(self, type_, path, old_node, new_node, changed_props=None):
         self.type_ = type_
         self.path = path or []
+        if isinstance(self.path, tuple):
+            path_tuple = self.path
+        else:
+            path_tuple = tuple(self.path)
+        self.path_tuple = path_tuple
+        self.shadow_path = (0,) + path_tuple
+        self.shadow_parent_path = (0,) + path_tuple[:-1]
+        self.path_len = len(path_tuple)
         self.old_node = old_node
         self.new_node = new_node
         self.changed_props = changed_props or {}

@@ -5,14 +5,14 @@ import time
 import mod.client.extraClientApi as clientApi
 
 
+_PERF_CLOCK = getattr(time, 'clock', None) or getattr(time, 'time')
+
+
 class RuntimeLifecycleMixin(object):
     def _perf_clock(self):
-        clock = getattr(time, 'clock', None)
-        if clock:
-            return clock()
-        return getattr(time, 'time')()
+        return _PERF_CLOCK()
 
-    def _log_render_stage_timings(self, component_ms, build_ms, diff_ms, layout_ms, native_ms, native_stats=None, native_update_stats=None, native_apply_ms=None, update_screen_ms=None, layout_stats=None, text_stats=None, update_screen_skipped=False, mutation_stats=None, button_slot_stats=None):
+    def _log_render_stage_timings(self, component_ms, build_ms, diff_ms, layout_ms, native_ms, native_stats=None, native_update_stats=None, native_apply_ms=None, update_screen_ms=None, layout_stats=None, text_stats=None, update_screen_skipped=False, mutation_stats=None, button_slot_stats=None, native_commit_stats=None):
         if not getattr(self, '_log_perf', False):
             return
         try:
@@ -52,6 +52,89 @@ class RuntimeLifecycleMixin(object):
             print('PyreactRuntime[perf] 5. 应用到原生UI: %.3fms' % native_ms)
             if native_apply_ms is not None:
                 print('PyreactRuntime[perf] 5.1 原生控件应用: %.3fms' % native_apply_ms)
+            if isinstance(native_commit_stats, dict) and native_commit_stats:
+                native_total = self._sum_native_api_perf_stats(native_stats or [])
+                py_ms = native_apply_ms - native_total if native_apply_ms is not None else 0.0
+                if py_ms < 0.0:
+                    py_ms = 0.0
+                print('PyreactRuntime[perf][native_commit] python_unwrapped=%.3fms native_api=%.3fms' % (py_ms, native_total))
+                print('PyreactRuntime[perf][native_commit] plan=%.3fms runtime_state=%.3fms walk=%.3fms render_self=%.3fms render_children_recursive=%.3fms props=%.3fms bind=%.3fms' % (
+                    native_commit_stats.get('incremental_plan_ms', 0.0),
+                    native_commit_stats.get('runtime_state_remove_ms', 0.0),
+                    native_commit_stats.get('commit_walk_ms', 0.0),
+                    native_commit_stats.get('render_node_ms', 0.0),
+                    native_commit_stats.get('render_children_ms', 0.0),
+                    native_commit_stats.get('apply_props_ms', 0.0),
+                    native_commit_stats.get('button_bind_ms', 0.0),
+                ))
+                print('PyreactRuntime[perf][native_commit][plan] scan=%.3fms process=%.3fms index=%.3fms mutations=%s create=%s update=%s delete=%s move=%s commit_paths=%s recreate_paths=%s prune_paths=%s max_path=%s' % (
+                    native_commit_stats.get('plan_scan_ms', 0.0),
+                    native_commit_stats.get('plan_process_ms', 0.0),
+                    native_commit_stats.get('plan_index_ms', 0.0),
+                    native_commit_stats.get('plan_mutation_count', 0),
+                    native_commit_stats.get('plan_create_count', 0),
+                    native_commit_stats.get('plan_update_count', 0),
+                    native_commit_stats.get('plan_delete_count', 0),
+                    native_commit_stats.get('plan_move_count', 0),
+                    native_commit_stats.get('plan_commit_paths', 0),
+                    native_commit_stats.get('plan_recreate_paths', 0),
+                    native_commit_stats.get('plan_prune_paths', 0),
+                    native_commit_stats.get('plan_max_path_len', 0),
+                ))
+                print('PyreactRuntime[perf][native_commit][plan_detail] create=%.3fms delete=%.3fms move=%.3fms update=%.3fms path=%.3fms layout_check=%.3fms' % (
+                    native_commit_stats.get('plan_process_create_ms', 0.0),
+                    native_commit_stats.get('plan_process_delete_ms', 0.0),
+                    native_commit_stats.get('plan_process_move_ms', 0.0),
+                    native_commit_stats.get('plan_process_update_ms', 0.0),
+                    native_commit_stats.get('plan_process_path_ms', 0.0),
+                    native_commit_stats.get('plan_layout_check_ms', 0.0),
+                ))
+                print('PyreactRuntime[perf][native_commit][scan_detail] reuse=%s fallback=%s delete=%s max_path=%s' % (
+                    native_commit_stats.get('plan_scan_reuse_count', 0),
+                    native_commit_stats.get('plan_scan_fallback_count', 0),
+                    native_commit_stats.get('plan_scan_delete_count', 0),
+                    native_commit_stats.get('plan_max_path_len', 0),
+                ))
+                print('PyreactRuntime[perf][native_commit] visited=%s applied=%s skipped_path=%s skipped_sig=%s recreated=%s pruned_parent=%s removed=%s' % (
+                    native_commit_stats.get('commit_visit', 0),
+                    native_commit_stats.get('commit_apply', 0),
+                    native_commit_stats.get('commit_skip_path', 0),
+                    native_commit_stats.get('commit_skip_signature', 0),
+                    native_commit_stats.get('commit_recreate', 0),
+                    native_commit_stats.get('prune_calls', 0),
+                    native_commit_stats.get('remove_component', 0),
+                ))
+                print('PyreactRuntime[perf][native_commit] signature count=%s total=%.3fms max=%.3fms prev_lookup count=%s total=%.3fms' % (
+                    native_commit_stats.get('signature_count', 0),
+                    native_commit_stats.get('signature_ms', 0.0),
+                    native_commit_stats.get('signature_max_ms', 0.0),
+                    native_commit_stats.get('prev_lookup_count', 0),
+                    native_commit_stats.get('prev_lookup_ms', 0.0),
+                ))
+                print('PyreactRuntime[perf][native_commit] cache_drop calls=%s prefixes=%s scanned=%s deleted=%s total=%.3fms' % (
+                    native_commit_stats.get('cache_drop_calls', 0),
+                    native_commit_stats.get('cache_drop_prefixes', 0),
+                    native_commit_stats.get('cache_drop_scanned', 0),
+                    native_commit_stats.get('cache_drop_deleted', 0),
+                    native_commit_stats.get('cache_drop_ms', 0.0),
+                ))
+                print('PyreactRuntime[perf][native_commit] control_cache hit=%s miss=%s geometry pos_set=%s pos_skip=%s size_set=%s size_skip=%s adapter_hit=%s adapter_miss=%s' % (
+                    native_commit_stats.get('control_cache_hit', 0),
+                    native_commit_stats.get('control_cache_miss', 0),
+                    native_commit_stats.get('geometry_pos_set', 0),
+                    native_commit_stats.get('geometry_pos_skip', 0),
+                    native_commit_stats.get('geometry_size_set', 0),
+                    native_commit_stats.get('geometry_size_skip', 0),
+                    native_commit_stats.get('adapter_cache_hit', 0),
+                    native_commit_stats.get('adapter_cache_miss', 0),
+                ))
+                print('PyreactRuntime[perf][native_commit] bind count=%s max=%.3fms state_remove count=%s max=%.3fms render_nodes=%s' % (
+                    native_commit_stats.get('button_bind_count', 0),
+                    native_commit_stats.get('button_bind_max_ms', 0.0),
+                    native_commit_stats.get('runtime_state_remove_count', 0),
+                    native_commit_stats.get('runtime_state_remove_max_ms', 0.0),
+                    native_commit_stats.get('render_node_count', 0),
+                ))
             if update_screen_ms is not None:
                 if update_screen_skipped:
                     print('PyreactRuntime[perf] 5.2 UpdateScreen: skipped')
@@ -163,6 +246,7 @@ class RuntimeLifecycleMixin(object):
 
             self._reset_native_api_perf_stats()
             self._button_slot_perf_stats = {}
+            self._native_commit_perf_stats = {}
             width, height = self._get_root_size()
 
             new_vtree = self._tree_builder.build_tree(element)
@@ -216,15 +300,22 @@ class RuntimeLifecycleMixin(object):
                 self._input_paths = {}
                 self._node_refs = {}
                 self._clear_root_children()
+                try:
+                    root_control = self._get_base_ui_control(self._root_path)
+                except Exception:
+                    root_control = None
                 self._render_children(
                     children=[shadow_root],
                     parent_path=self._root_path,
                     parent_abs_x=0.0,
                     parent_abs_y=0.0,
                     cache_already_cleared=True,
+                    parent_control=root_control,
                 )
             try:
+                bind_start_time = self._perf_clock()
                 self._flush_pending_button_binds()
+                self._record_native_commit_perf('button_bind_flush_ms', (self._perf_clock() - bind_start_time) * 1000.0)
             except Exception:
                 pass
             native_apply_ms = (self._perf_clock() - native_start_time) * 1000.0
@@ -250,7 +341,8 @@ class RuntimeLifecycleMixin(object):
             except Exception:
                 text_stats = {}
             button_slot_stats = getattr(self, '_button_slot_perf_stats', {})
-            self._log_render_stage_timings(component_ms, build_ms, diff_ms, layout_ms, native_ms, native_apply_stats, native_update_stats, native_apply_ms, update_screen_ms, layout_stats, text_stats, update_screen_skipped, mutation_stats, button_slot_stats)
+            native_commit_stats = getattr(self, '_native_commit_perf_stats', {})
+            self._log_render_stage_timings(component_ms, build_ms, diff_ms, layout_ms, native_ms, native_apply_stats, native_update_stats, native_apply_ms, update_screen_ms, layout_stats, text_stats, update_screen_skipped, mutation_stats, button_slot_stats, native_commit_stats)
 
             self._prev_vtree = new_vtree
             self._prev_shadow_root = shadow_root
@@ -281,6 +373,31 @@ class RuntimeLifecycleMixin(object):
             return True
         except Exception:
             return False
+
+    def _record_native_commit_perf(self, key, value=1):
+        if not getattr(self, '_log_perf', False):
+            return
+        stats = getattr(self, '_native_commit_perf_stats', None)
+        if not isinstance(stats, dict):
+            stats = {}
+            self._native_commit_perf_stats = stats
+        try:
+            stats[key] = stats.get(key, 0) + value
+        except Exception:
+            pass
+
+    def _record_native_commit_perf_max(self, key, value):
+        if not getattr(self, '_log_perf', False):
+            return
+        stats = getattr(self, '_native_commit_perf_stats', None)
+        if not isinstance(stats, dict):
+            stats = {}
+            self._native_commit_perf_stats = stats
+        try:
+            if value > stats.get(key, 0.0):
+                stats[key] = value
+        except Exception:
+            pass
 
     def _get_root_size(self):
         try:
@@ -338,53 +455,149 @@ class RuntimeLifecycleMixin(object):
         return count
 
     def _apply_incremental_updates(self, new_shadow_root, mutations):
+        perf_clock = self._perf_clock
+        plan_start_time = perf_clock()
         recreate_paths = {}
         prune_parent_paths = {}
         commit_paths = {}
         deleted_paths = {}
+        deleted_old_nodes = []
         muts = mutations or []
+        self._record_native_commit_perf('plan_mutation_count', len(muts))
+        max_path_len = 0
+        scan_start_time = perf_clock()
+        scan_reuse_count = 0
+        scan_fallback_count = 0
+        scan_delete_count = 0
         for m in muts:
             try:
-                mutation_type = self._safe_text(getattr(m, 'type_', ''))
+                try:
+                    mutation_type = m.type_
+                    shifted_tuple = m.shadow_path
+                    path_len = m.path_len
+                    scan_reuse_count += 1
+                except Exception:
+                    scan_fallback_count += 1
+                    mutation_type = getattr(m, 'type_', '')
+                    path = getattr(m, 'path', None) or ()
+                    if isinstance(path, tuple):
+                        path_tuple = path
+                    else:
+                        path_tuple = tuple(path)
+                    shifted_tuple = (0,) + path_tuple
+                    path_len = len(path_tuple)
+                if path_len > max_path_len:
+                    max_path_len = path_len
                 if mutation_type == 'DELETE':
-                    shifted = [0]
-                    shifted.extend(getattr(m, 'path', []) or [])
-                    deleted_paths[tuple(shifted)] = True
+                    scan_delete_count += 1
+                    deleted_paths[shifted_tuple] = True
             except Exception:
                 pass
+        self._record_native_commit_perf('plan_scan_ms', (perf_clock() - scan_start_time) * 1000.0)
+        self._record_native_commit_perf('plan_scan_reuse_count', scan_reuse_count)
+        self._record_native_commit_perf('plan_scan_fallback_count', scan_fallback_count)
+        self._record_native_commit_perf('plan_scan_delete_count', scan_delete_count)
+        process_start_time = perf_clock()
+        create_count = 0
+        update_count = 0
+        delete_count = 0
+        move_count = 0
+        process_create_ms = 0.0
+        process_delete_ms = 0.0
+        process_move_ms = 0.0
+        process_update_ms = 0.0
+        layout_check_ms = 0.0
         for m in muts:
             try:
-                mutation_type = self._safe_text(getattr(m, 'type_', ''))
-                path = getattr(m, 'path', []) or []
-                shifted = [0]
-                shifted.extend(path)
-                shifted_tuple = tuple(shifted)
-                parent_path = list(path[:-1])
-                shifted_parent = [0]
-                shifted_parent.extend(parent_path)
-                shifted_parent_tuple = tuple(shifted_parent)
+                try:
+                    mutation_type = m.type_
+                    shifted_tuple = m.shadow_path
+                    shifted_parent_tuple = m.shadow_parent_path
+                except Exception:
+                    mutation_type = getattr(m, 'type_', '')
+                    path = getattr(m, 'path', None) or ()
+                    if isinstance(path, tuple):
+                        path_tuple = path
+                    else:
+                        path_tuple = tuple(path)
+                    shifted_tuple = (0,) + path_tuple
+                    shifted_parent_tuple = (0,) + path_tuple[:-1]
                 if mutation_type == 'CREATE':
+                    branch_start_time = perf_clock()
+                    create_count += 1
                     recreate_paths[shifted_tuple] = bool(deleted_paths.get(shifted_tuple))
                     commit_paths[shifted_parent_tuple] = True
                     prune_parent_paths[shifted_parent_tuple] = True
+                    process_create_ms += (perf_clock() - branch_start_time) * 1000.0
                 elif mutation_type == 'DELETE':
+                    branch_start_time = perf_clock()
+                    delete_count += 1
                     commit_paths[shifted_parent_tuple] = True
                     prune_parent_paths[shifted_parent_tuple] = True
-                    self._remove_runtime_state_for_subtree(getattr(m, 'old_node', None))
+                    if not self._has_deleted_ancestor(shifted_tuple, deleted_paths):
+                        deleted_old_nodes.append(getattr(m, 'old_node', None))
+                    process_delete_ms += (perf_clock() - branch_start_time) * 1000.0
                 elif mutation_type == 'MOVE':
+                    branch_start_time = perf_clock()
+                    move_count += 1
                     recreate_paths[shifted_tuple] = True
                     commit_paths[shifted_parent_tuple] = True
                     prune_parent_paths[shifted_parent_tuple] = True
+                    process_move_ms += (perf_clock() - branch_start_time) * 1000.0
                 elif mutation_type == 'UPDATE':
-                    if self._is_layout_affecting_update(m):
+                    branch_start_time = perf_clock()
+                    update_count += 1
+                    layout_start_time = perf_clock()
+                    try:
+                        changed_props = m.changed_props
+                    except Exception:
+                        changed_props = None
+                    if isinstance(changed_props, dict):
+                        layout_affecting = 'style' in changed_props or 'children' in changed_props
+                    else:
+                        layout_affecting = self._is_layout_affecting_update(m)
+                    layout_check_ms += (perf_clock() - layout_start_time) * 1000.0
+                    if layout_affecting:
                         commit_paths[shifted_parent_tuple] = True
                     else:
                         commit_paths[shifted_tuple] = True
+                    process_update_ms += (perf_clock() - branch_start_time) * 1000.0
             except Exception:
                 pass
+        self._record_native_commit_perf('plan_process_ms', (perf_clock() - process_start_time) * 1000.0)
+        self._record_native_commit_perf('plan_create_count', create_count)
+        self._record_native_commit_perf('plan_delete_count', delete_count)
+        self._record_native_commit_perf('plan_move_count', move_count)
+        self._record_native_commit_perf('plan_update_count', update_count)
+        self._record_native_commit_perf('plan_process_create_ms', process_create_ms)
+        self._record_native_commit_perf('plan_process_delete_ms', process_delete_ms)
+        self._record_native_commit_perf('plan_process_move_ms', process_move_ms)
+        self._record_native_commit_perf('plan_process_update_ms', process_update_ms)
+        self._record_native_commit_perf('plan_layout_check_ms', layout_check_ms)
+        if max_path_len:
+            self._record_native_commit_perf_max('plan_max_path_len', max_path_len)
+        if deleted_old_nodes:
+            state_start_time = perf_clock()
+            removed_count = self._remove_runtime_state_for_subtrees(deleted_old_nodes)
+            state_ms = (perf_clock() - state_start_time) * 1000.0
+            self._record_native_commit_perf('runtime_state_remove_count', removed_count)
+            self._record_native_commit_perf('runtime_state_remove_ms', state_ms)
+            self._record_native_commit_perf_max('runtime_state_remove_max_ms', state_ms)
         if not commit_paths:
+            self._record_native_commit_perf('incremental_plan_ms', (perf_clock() - plan_start_time) * 1000.0)
             return
+        index_start_time = perf_clock()
         commit_path_index = self._build_commit_path_index(commit_paths)
+        self._record_native_commit_perf('plan_index_ms', (perf_clock() - index_start_time) * 1000.0)
+        self._record_native_commit_perf('plan_commit_paths', len(commit_paths))
+        self._record_native_commit_perf('plan_recreate_paths', len(recreate_paths))
+        self._record_native_commit_perf('plan_prune_paths', len(prune_parent_paths))
+        self._record_native_commit_perf('incremental_plan_ms', (perf_clock() - plan_start_time) * 1000.0)
+        walk_start_time = perf_clock()
+        try:
+            root_control = self._get_base_ui_control(self._root_path)
+        except Exception:
+            root_control = None
         self._apply_layout_to_existing_tree(
             current_node=[new_shadow_root],
             parent_control_path=self._root_path,
@@ -394,7 +607,17 @@ class RuntimeLifecycleMixin(object):
             recreate_paths=recreate_paths,
             prune_parent_paths=prune_parent_paths,
             commit_paths=commit_path_index,
+            parent_control=root_control,
         )
+        self._record_native_commit_perf('commit_walk_ms', (perf_clock() - walk_start_time) * 1000.0)
+
+    def _has_deleted_ancestor(self, shifted_path, deleted_paths):
+        index = len(shifted_path) - 1
+        while index > 0:
+            if shifted_path[:index] in deleted_paths:
+                return True
+            index -= 1
+        return False
 
     def _is_layout_affecting_update(self, mutation):
         try:
@@ -457,7 +680,7 @@ class RuntimeLifecycleMixin(object):
             return True
         return tuple(shadow_path or []) in prune_parent_paths
 
-    def _apply_layout_to_existing_tree(self, current_node, parent_control_path, parent_abs_x, parent_abs_y, shadow_path, recreate_paths, prune_parent_paths=None, commit_paths=None):
+    def _apply_layout_to_existing_tree(self, current_node, parent_control_path, parent_abs_x, parent_abs_y, shadow_path, recreate_paths, prune_parent_paths=None, commit_paths=None, parent_control=None):
         if current_node is None:
             return
 
@@ -473,20 +696,24 @@ class RuntimeLifecycleMixin(object):
             node_props = getattr(current_node, 'props', {}) or {}
 
         children_parent_path = parent_control_path
+        children_parent_control = parent_control
         if current_node_type == "Scroll" and node_layout:
             if commit_paths is not None and not self._should_visit_commit_path(shadow_path, commit_paths):
+                self._record_native_commit_perf('commit_skip_path')
                 return
             content_path = self._get_scroll_content_path(parent_control_path)
             content_control = self._get_base_ui_control(content_path)
             if content_control:
                 self._safe_set_size(content_path, node_layout.content_width, node_layout.content_height, content_control)
                 children_parent_path = content_path
+                children_parent_control = content_control
 
             self._apply_scroll_props(current_node, parent_control_path)
 
         if not children:
             if self._should_prune_prefixed_children(shadow_path, prune_parent_paths):
                 try:
+                    self._record_native_commit_perf('prune_calls')
                     # Ensure we remove stale prefixed children when the new tree has none.
                     self._prune_prefixed_children(children_parent_path, [])
                 except Exception:
@@ -494,11 +721,13 @@ class RuntimeLifecycleMixin(object):
             return
 
         index = 0
-        expected_child_names = []
+        should_prune_children = self._should_prune_prefixed_children(shadow_path, prune_parent_paths)
+        expected_child_names = [] if should_prune_children else None
         for node in children:
             node_id = self._safe_text(getattr(node, 'node_id', 'node'))
             child_name = "%s%s_%s" % (self._CONTROL_NAME_PREFIX, node_id, index)
-            expected_child_names.append(child_name)
+            if expected_child_names is not None:
+                expected_child_names.append(child_name)
             
             node_type = self._safe_text(getattr(node, 'node_type', 'Panel') or 'Panel')
             layout = getattr(node, 'layout', None)
@@ -509,10 +738,13 @@ class RuntimeLifecycleMixin(object):
 
             next_shadow_path = list(shadow_path)
             next_shadow_path.append(index)
+            self._record_native_commit_perf('commit_visit')
             if not self._should_visit_commit_path(next_shadow_path, commit_paths):
+                self._record_native_commit_perf('commit_skip_path')
                 index += 1
                 continue
             if self._can_skip_unchanged_commit_node(node, next_shadow_path, recreate_paths, commit_paths):
+                self._record_native_commit_perf('commit_skip_signature')
                 index += 1
                 continue
 
@@ -520,6 +752,7 @@ class RuntimeLifecycleMixin(object):
             child_control_paths = control_path
             recreate_key = tuple(next_shadow_path)
             if recreate_paths and recreate_key in recreate_paths:
+                self._record_native_commit_perf('commit_recreate')
                 if recreate_paths.get(recreate_key):
                     try:
                         control = self._get_base_ui_control(control_path)
@@ -530,13 +763,20 @@ class RuntimeLifecycleMixin(object):
                             self._remove_component_by_path(control_path)
                         except Exception:
                             pass
-                self._render_node(node, children_parent_path, parent_abs_x, parent_abs_y, index, True)
+                self._render_node(node, children_parent_path, parent_abs_x, parent_abs_y, index, True, children_parent_control)
                 if self._needs_render:
                     return
                 index += 1
                 continue
 
             if not self._should_apply_commit_node(node, next_shadow_path, recreate_paths, commit_paths):
+                try:
+                    control = self._get_base_ui_control(control_path)
+                except Exception:
+                    control = None
+                if not control:
+                    self._needs_render = True
+                    return
                 self._apply_layout_to_existing_tree(
                     current_node=node,
                     parent_control_path=control_path,
@@ -546,26 +786,31 @@ class RuntimeLifecycleMixin(object):
                     recreate_paths=recreate_paths,
                     prune_parent_paths=prune_parent_paths,
                     commit_paths=commit_paths,
+                    parent_control=control,
                 )
                 if self._needs_render:
                     return
                 index += 1
                 continue
 
+            self._record_native_commit_perf('commit_apply')
             control = self._get_base_ui_control(control_path)
 
             if not control:
-                parent_control = self._get_base_ui_control(children_parent_path)
+                parent_control = children_parent_control
+                if parent_control is None:
+                    parent_control = self._get_base_ui_control(children_parent_path)
                 if not parent_control:
                     self._needs_render = True
                     return
 
                 def_path = self._get_def_path(node_type)
                 try:
-                    self._clone(def_path, children_parent_path, child_name, False, False)
+                    control = self._clone(def_path, children_parent_path, child_name, False, False)
                 except Exception:
-                    pass
-                control = self._get_base_ui_control(control_path)
+                    control = None
+                if not control:
+                    control = self._get_base_ui_control(control_path)
                 if not control:
                     self._needs_render = True
                     return
@@ -583,14 +828,16 @@ class RuntimeLifecycleMixin(object):
                 recreate_paths=recreate_paths,
                 prune_parent_paths=prune_parent_paths,
                 commit_paths=commit_paths,
+                parent_control=control,
             )
 
             if self._needs_render:
                 return
             index += 1
 
-        if self._should_prune_prefixed_children(shadow_path, prune_parent_paths):
+        if should_prune_children:
             try:
+                self._record_native_commit_perf('prune_calls')
                 # Remove any orphaned prefixed children not present in the new tree.
                 self._prune_prefixed_children(children_parent_path, expected_child_names)
             except Exception:
@@ -644,10 +891,15 @@ class RuntimeLifecycleMixin(object):
         return self._shadow_node_native_signature(old_node) == self._shadow_node_native_signature(node)
 
     def _get_prev_shadow_node_by_shifted_path(self, shadow_path):
+        start_time = self._perf_clock()
         path = list(shadow_path or [])
         if not path:
+            self._record_native_commit_perf('prev_lookup_count')
+            self._record_native_commit_perf('prev_lookup_ms', (self._perf_clock() - start_time) * 1000.0)
             return None
         if path[0] != 0:
+            self._record_native_commit_perf('prev_lookup_count')
+            self._record_native_commit_perf('prev_lookup_ms', (self._perf_clock() - start_time) * 1000.0)
             return None
         node = getattr(self, '_prev_shadow_root', None)
         index = 1
@@ -656,12 +908,19 @@ class RuntimeLifecycleMixin(object):
                 children = self._get_render_children(node, self._safe_text(getattr(node, 'node_type', 'Panel') or 'Panel'))
                 node = children[path[index]]
             except Exception:
+                self._record_native_commit_perf('prev_lookup_count')
+                self._record_native_commit_perf('prev_lookup_ms', (self._perf_clock() - start_time) * 1000.0)
                 return None
             index += 1
+        self._record_native_commit_perf('prev_lookup_count')
+        self._record_native_commit_perf('prev_lookup_ms', (self._perf_clock() - start_time) * 1000.0)
         return node
 
     def _shadow_node_native_signature(self, node):
+        start_time = self._perf_clock()
         if node is None:
+            self._record_native_commit_perf('signature_count')
+            self._record_native_commit_perf('signature_ms', (self._perf_clock() - start_time) * 1000.0)
             return None
         layout = getattr(node, 'layout', None)
         layout_sig = (
@@ -676,13 +935,18 @@ class RuntimeLifecycleMixin(object):
         style = getattr(node, 'style', None)
         if not isinstance(style, dict):
             style = props.get('style') if isinstance(props.get('style'), dict) else {}
-        return (
+        result = (
             self._safe_text(getattr(node, 'node_id', '')),
             self._safe_text(getattr(node, 'node_type', '')),
             layout_sig,
             self._make_commit_signature(style),
             self._make_commit_signature(props),
         )
+        cost_ms = (self._perf_clock() - start_time) * 1000.0
+        self._record_native_commit_perf('signature_count')
+        self._record_native_commit_perf('signature_ms', cost_ms)
+        self._record_native_commit_perf_max('signature_max_ms', cost_ms)
+        return result
 
     def _make_commit_signature(self, value):
         if isinstance(value, dict):
@@ -814,32 +1078,57 @@ class RuntimeLifecycleMixin(object):
 
     def _remove_runtime_state_for_subtree(self, node):
         if node is None:
-            return
-        try:
-            node_id = self._safe_text(getattr(node, 'node_id', ''))
-        except Exception:
-            node_id = ''
-        if node_id:
-            for table_name in ('_button_callbacks', '_input_callbacks', '_input_paths'):
-                table = getattr(self, table_name, None)
-                if isinstance(table, dict) and node_id in table:
+            return 0
+        return self._remove_runtime_state_for_subtrees([node])
+
+    def _remove_runtime_state_for_subtrees(self, nodes):
+        stack = []
+        for node in nodes or []:
+            if node is not None:
+                stack.append(node)
+        if not stack:
+            return 0
+
+        ids = {}
+        count = 0
+        while stack:
+            node = stack.pop()
+            count += 1
+            try:
+                node_id = self._safe_text(getattr(node, 'node_id', ''))
+            except Exception:
+                node_id = ''
+            if node_id:
+                ids[node_id] = True
+            try:
+                children = getattr(node, 'children', None) or []
+            except Exception:
+                children = []
+            for child in children:
+                if child is not None:
+                    stack.append(child)
+
+        for table_name in ('_button_callbacks', '_input_callbacks', '_input_paths'):
+            table = getattr(self, table_name, None)
+            if not isinstance(table, dict):
+                continue
+            for node_id in ids:
+                if node_id in table:
                     try:
                         del table[node_id]
                     except Exception:
                         pass
-            refs = getattr(self, '_node_refs', None)
-            if isinstance(refs, dict) and node_id in refs:
-                try:
-                    self._set_ref_value(refs.get(node_id), None)
-                    del refs[node_id]
-                except Exception:
-                    pass
-        try:
-            children = getattr(node, 'children', None) or []
-        except Exception:
-            children = []
-        for child in children:
-            self._remove_runtime_state_for_subtree(child)
+
+        refs = getattr(self, '_node_refs', None)
+        if isinstance(refs, dict):
+            for node_id in ids:
+                if node_id in refs:
+                    try:
+                        self._set_ref_value(refs.get(node_id), None)
+                        del refs[node_id]
+                    except Exception:
+                        pass
+        return count
 
     def _refresh_button_callbacks_walk(self, current_node, parent_control_path):
         if current_node is None:
@@ -897,13 +1186,14 @@ class RuntimeLifecycleMixin(object):
             except Exception:
                 pass
 
-    def _render_children(self, children, parent_path, parent_abs_x, parent_abs_y, cache_already_cleared=False):
+    def _render_children(self, children, parent_path, parent_abs_x, parent_abs_y, cache_already_cleared=False, parent_control=None):
         index = 0
         for child in children:
-            self._render_node(child, parent_path, parent_abs_x, parent_abs_y, index, cache_already_cleared)
+            self._render_node(child, parent_path, parent_abs_x, parent_abs_y, index, cache_already_cleared, parent_control)
             index += 1
 
-    def _render_node(self, node, parent_path, parent_abs_x, parent_abs_y, sibling_index, cache_already_cleared=False):
+    def _render_node(self, node, parent_path, parent_abs_x, parent_abs_y, sibling_index, cache_already_cleared=False, parent_control=None):
+        render_start_time = self._perf_clock()
         if node is None:
             return
 
@@ -912,7 +1202,8 @@ class RuntimeLifecycleMixin(object):
         node_id = self._safe_text(getattr(node, "node_id", "node"))
         child_name = "%s%s_%s" % (self._CONTROL_NAME_PREFIX, node_id, sibling_index)
 
-        parent_control = self._get_base_ui_control(parent_path)
+        if parent_control is None:
+            parent_control = self._get_base_ui_control(parent_path)
         if not parent_control:
             return
 
@@ -936,9 +1227,12 @@ class RuntimeLifecycleMixin(object):
         self._safe_set_position(node_path, local_x, local_y, child_control)
         if node_type != "Label":
             self._safe_set_size(node_path, width, height, child_control)
+        props_start_time = self._perf_clock()
         self._apply_node_props(node, node_path, node_type, node_id, child_control, cache_already_cleared)
+        self._record_native_commit_perf('apply_props_ms', (self._perf_clock() - props_start_time) * 1000.0)
 
         children_parent_path = node_path
+        content_control = None
         if node_type == "Scroll" and layout:
             content_path = self._get_scroll_content_path(node_path)
             content_control = self._get_base_ui_control(content_path)
@@ -951,7 +1245,14 @@ class RuntimeLifecycleMixin(object):
         child_parent_x = abs_x
         child_parent_y = abs_y
         children = self._get_render_children(node, node_type)
-        self._render_children(children, children_parent_path, child_parent_x, child_parent_y, cache_already_cleared)
+        self._record_native_commit_perf('render_node_count')
+        self._record_native_commit_perf('render_node_ms', (self._perf_clock() - render_start_time) * 1000.0)
+        children_start_time = self._perf_clock()
+        next_parent_control = child_control
+        if node_type == "Scroll":
+            next_parent_control = content_control
+        self._render_children(children, children_parent_path, child_parent_x, child_parent_y, cache_already_cleared, next_parent_control)
+        self._record_native_commit_perf('render_children_ms', (self._perf_clock() - children_start_time) * 1000.0)
 
     def _apply_scroll_props(self, node, node_path):
         props = getattr(node, "props", {}) or {}
