@@ -64,6 +64,7 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         self._native_geometry_cache = {}
         self._button_bind_cache = {}
         self._button_slot_cache = {}
+        self._button_slot_perf_stats = {}
         self._pending_button_binds = {}
         self._scroll_path_cache = {}
         self._input_edit_bound = False

@@ -249,7 +249,7 @@ def UserCard(name, level):
 
 - 按钮本质上也是容器，通常内部塞 `Label` / `Image` / `Panel`。
 - 若不传 `buttonBuilder`，runtime 会为 `default/hover/pressed` 三态渲染默认贴图。
-- 若传 `buttonBuilder`，一般写成 `lambda state: Image(...)` 或函数 `def builder(state): ...`。
+- 若传 `buttonBuilder`，一般写成 `lambda state: Image(...)` 或函数 `def builder(state): ...`。当三态都返回无子节点、`width='100%'` 且 `height='100%'` 的 `Image` 时，runtime 会直接复用按钮 JSONUI 三态 Image 槽位，避免额外 clone 子 Image；更复杂的三态内容会自动走通用子树挂载。
 - `buttonBuilder` 可根据 `ButtonState.default/hover/pressed` 返回不同背景。
 
 ### 6. `Input`

@@ -452,19 +452,28 @@ class RuntimePropsMixin(object):
         if button_width <= 0.0 or button_height <= 0.0:
             return
 
+        state_elements = {}
+        all_full_image = True
+        for state in self._BUTTON_STATES:
+            state_element = self._call_button_builder(builder, state)
+            state_elements[state] = state_element
+            if not self._is_full_size_image_state_element(state_element):
+                all_full_image = False
+
         for state in self._BUTTON_STATES:
             slot_path = button_path + "/" + state
             slot_control = self._get_base_ui_control(slot_path)
             if not slot_control:
                 continue
 
-            state_element = self._call_button_builder(builder, state)
+            state_element = state_elements.get(state)
             if state_element is None:
                 if not cache_already_cleared:
                     self._clear_prefixed_children(slot_path)
+                self._make_button_slot_image_transparent(slot_path, slot_control)
                 continue
 
-            slot_signature = self._make_button_slot_signature(state_element, button_width, button_height)
+            slot_signature = self._make_button_slot_signature(state_element, button_width, button_height, all_full_image)
             slot_cache = getattr(self, '_button_slot_cache', None)
             if not isinstance(slot_cache, dict):
                 slot_cache = {}
@@ -477,6 +486,14 @@ class RuntimePropsMixin(object):
             if not cache_already_cleared:
                 self._clear_prefixed_children(slot_path)
 
+            if all_full_image:
+                self._apply_full_size_image_to_button_slot(state_element, slot_path, slot_control)
+                slot_cache[slot_path] = slot_signature
+                self._record_button_slot_perf('direct_image')
+                continue
+
+            self._make_button_slot_image_transparent(slot_path, slot_control)
+
             self._render_state_element_into_slot(
                 state_element=state_element,
                 slot_path=slot_path,
@@ -485,13 +502,76 @@ class RuntimePropsMixin(object):
                 cache_already_cleared=cache_already_cleared,
             )
             slot_cache[slot_path] = slot_signature
+            self._record_button_slot_perf('subtree')
 
-    def _make_button_slot_signature(self, state_element, slot_width, slot_height):
+    def _make_button_slot_signature(self, state_element, slot_width, slot_height, direct_image=False):
         return (
+            'direct_image' if direct_image else 'subtree',
             int(round(slot_width)),
             int(round(slot_height)),
             self._make_element_signature(state_element),
         )
+
+    def _is_full_size_image_state_element(self, state_element):
+        if state_element is None:
+            return False
+        node_type = self._safe_text(getattr(state_element, 'node_type', '') or '')
+        if node_type != 'Image':
+            return False
+        props = getattr(state_element, 'props', None) or {}
+        if not isinstance(props, dict):
+            return False
+        children = props.get('children')
+        if children:
+            return False
+        style = props.get('style')
+        if not isinstance(style, dict):
+            style = getattr(state_element, 'style', None)
+        if not isinstance(style, dict):
+            return False
+        return self._is_full_percent_value(style.get('width')) and self._is_full_percent_value(style.get('height'))
+
+    def _is_full_percent_value(self, value):
+        text = self._safe_text(value).replace(' ', '').lower()
+        return text == '100%'
+
+    def _apply_full_size_image_to_button_slot(self, state_element, slot_path, slot_control):
+        props = getattr(state_element, 'props', None) or {}
+        if not isinstance(props, dict):
+            props = {}
+        style = props.get('style')
+        if not isinstance(style, dict):
+            style = getattr(state_element, 'style', None)
+        if not isinstance(style, dict):
+            style = {}
+
+        self._apply_common_style_props(slot_path, style, props, slot_control)
+        if style.get('opacity') is None and props.get('color') is None:
+            self._safe_set_alpha(slot_path, 1.0, slot_control)
+        image_props = self._extract_image_props(props)
+        self._apply_image_style_props(slot_path, image_props, slot_control)
+
+    def _make_button_slot_image_transparent(self, slot_path, slot_control):
+        try:
+            cache = getattr(self, '_native_common_style_cache', None)
+            if isinstance(cache, dict) and slot_path in cache:
+                del cache[slot_path]
+        except Exception:
+            pass
+        self._safe_set_alpha(slot_path, 0.0, slot_control)
+
+    def _record_button_slot_perf(self, mode):
+        if not getattr(self, '_log_perf', False):
+            return
+        stats = getattr(self, '_button_slot_perf_stats', None)
+        if not isinstance(stats, dict):
+            stats = {}
+            self._button_slot_perf_stats = stats
+        item = stats.get(mode)
+        if not isinstance(item, dict):
+            item = {'count': 0}
+            stats[mode] = item
+        item['count'] = item.get('count', 0) + 1
 
     def _make_element_signature(self, value):
         if value is None:

@@ -43,13 +43,31 @@
         "clips_children": false,
         "controls": [
             {
-                "default@PyreactBase.panelBase": {}
+                "default@PyreactBase.imageBase": {
+                    "size": [
+                        "100%",
+                        "100%"
+                    ],
+                    "alpha": 0
+                }
             },
             {
-                "hover@PyreactBase.panelBase": {}
+                "hover@PyreactBase.imageBase": {
+                    "size": [
+                        "100%",
+                        "100%"
+                    ],
+                    "alpha": 0
+                }
             },
             {
-                "pressed@PyreactBase.panelBase": {}
+                "pressed@PyreactBase.imageBase": {
+                    "size": [
+                        "100%",
+                        "100%"
+                    ],
+                    "alpha": 0
+                }
             }
         ],
         "draggable": "not_draggable",

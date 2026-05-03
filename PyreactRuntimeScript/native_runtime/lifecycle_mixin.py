@@ -12,7 +12,7 @@ class RuntimeLifecycleMixin(object):
             return clock()
         return getattr(time, 'time')()
 
-    def _log_render_stage_timings(self, component_ms, build_ms, diff_ms, layout_ms, native_ms, native_stats=None, native_update_stats=None, native_apply_ms=None, update_screen_ms=None, layout_stats=None, text_stats=None, update_screen_skipped=False, mutation_stats=None):
+    def _log_render_stage_timings(self, component_ms, build_ms, diff_ms, layout_ms, native_ms, native_stats=None, native_update_stats=None, native_apply_ms=None, update_screen_ms=None, layout_stats=None, text_stats=None, update_screen_skipped=False, mutation_stats=None, button_slot_stats=None):
         if not getattr(self, '_log_perf', False):
             return
         try:
@@ -43,6 +43,11 @@ class RuntimeLifecycleMixin(object):
                     text_stats.get('cache_misses', 0),
                     text_stats.get('native_hits', 0),
                     text_stats.get('fallback_hits', 0),
+                ))
+            if isinstance(button_slot_stats, dict) and button_slot_stats:
+                print('PyreactRuntime[perf][button_slot] direct_image=%s subtree=%s' % (
+                    button_slot_stats.get('direct_image', {}).get('count', 0),
+                    button_slot_stats.get('subtree', {}).get('count', 0),
                 ))
             print('PyreactRuntime[perf] 5. 应用到原生UI: %.3fms' % native_ms)
             if native_apply_ms is not None:
@@ -157,6 +162,7 @@ class RuntimeLifecycleMixin(object):
                 return
 
             self._reset_native_api_perf_stats()
+            self._button_slot_perf_stats = {}
             width, height = self._get_root_size()
 
             new_vtree = self._tree_builder.build_tree(element)
@@ -175,7 +181,7 @@ class RuntimeLifecycleMixin(object):
             if self._prev_vtree is not None and self._prev_shadow_root is not None and not mutations:
                 self._prev_vtree = new_vtree
                 native_update_stats = self._get_native_api_perf_stats()
-                self._log_render_stage_timings(component_ms, build_ms, diff_ms, 0.0, 0.0, [], native_update_stats, 0.0, 0.0, {}, {}, True, mutation_stats)
+                self._log_render_stage_timings(component_ms, build_ms, diff_ms, 0.0, 0.0, [], native_update_stats, 0.0, 0.0, {}, {}, True, mutation_stats, {})
                 try:
                     self._cleanup_input_state()
                 except Exception:
@@ -243,7 +249,8 @@ class RuntimeLifecycleMixin(object):
                 text_stats = self._text_measurer.get_perf_stats()
             except Exception:
                 text_stats = {}
-            self._log_render_stage_timings(component_ms, build_ms, diff_ms, layout_ms, native_ms, native_apply_stats, native_update_stats, native_apply_ms, update_screen_ms, layout_stats, text_stats, update_screen_skipped, mutation_stats)
+            button_slot_stats = getattr(self, '_button_slot_perf_stats', {})
+            self._log_render_stage_timings(component_ms, build_ms, diff_ms, layout_ms, native_ms, native_apply_stats, native_update_stats, native_apply_ms, update_screen_ms, layout_stats, text_stats, update_screen_skipped, mutation_stats, button_slot_stats)
 
             self._prev_vtree = new_vtree
             self._prev_shadow_root = shadow_root
