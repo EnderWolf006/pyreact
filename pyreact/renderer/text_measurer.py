@@ -20,6 +20,14 @@ class TextMeasurer(object):
 
     def __init__(self, native_measure=None):
         self._native_measure = native_measure
+        self._measure_cache = {}
+
+    def _make_cache_key(self, text, style, max_width):
+        items = []
+        if isinstance(style, dict):
+            for key in sorted(style.keys()):
+                items.append((key, self._to_text(style.get(key))))
+        return (text, tuple(items), self._safe_float(max_width, 0.0))
 
     def measure_text(self, content, style, max_width=None):
         """
@@ -27,6 +35,10 @@ class TextMeasurer(object):
         Returns a dict: {"width": float, "height": float}
         """
         text = self._to_text(content)
+        cache_key = self._make_cache_key(text, style, max_width)
+        cached = self._measure_cache.get(cache_key)
+        if cached is not None:
+            return dict(cached)
         
         # Always prefer native measurement if available
         if callable(self._native_measure):
@@ -36,7 +48,9 @@ class TextMeasurer(object):
                     width = self._safe_float(measured.get("width"), 0.0)
                     height = self._safe_float(measured.get("height"), 0.0)
                     if width > 0 and height > 0:
-                        return {"width": width, "height": height}
+                        result = {"width": width, "height": height}
+                        self._remember_measure(cache_key, result)
+                        return dict(result)
             except Exception:
                 pass
 
@@ -62,10 +76,18 @@ class TextMeasurer(object):
             line_count = int(width / max_w) + 1
             width = max_w
             
-        return {
+        result = {
             "width": width,
             "height": line_count * (font_size * 1.2)
         }
+        self._remember_measure(cache_key, result)
+        return dict(result)
+
+    def _remember_measure(self, cache_key, result):
+        cache = self._measure_cache
+        if len(cache) >= 512:
+            cache.clear()
+        cache[cache_key] = dict(result)
 
     def _get_font_size_scale(self, style):
         if not isinstance(style, dict):

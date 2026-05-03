@@ -79,11 +79,33 @@ class RuntimePropsMixin(object):
         cache = self._get_native_common_style_cache()
         if not path_prefix:
             cache.clear()
+            try:
+                self._native_control_cache = {}
+                self._native_adapter_cache = {}
+                self._native_label_props_cache = {}
+                self._native_image_props_cache = {}
+                self._native_geometry_cache = {}
+                self._button_bind_cache = {}
+                self._button_slot_cache = {}
+                self._scroll_path_cache = {}
+            except Exception:
+                pass
             return
 
         prefix = self._safe_text(path_prefix)
         if not prefix:
             cache.clear()
+            try:
+                self._native_control_cache = {}
+                self._native_adapter_cache = {}
+                self._native_label_props_cache = {}
+                self._native_image_props_cache = {}
+                self._native_geometry_cache = {}
+                self._button_bind_cache = {}
+                self._button_slot_cache = {}
+                self._scroll_path_cache = {}
+            except Exception:
+                pass
             return
 
         prefix_with_sep = prefix + '/'
@@ -94,6 +116,91 @@ class RuntimePropsMixin(object):
                     del cache[cached_path]
                 except Exception:
                     pass
+
+        control_cache = getattr(self, '_native_control_cache', None)
+        if isinstance(control_cache, dict):
+            for cached_path in list(control_cache.keys()):
+                safe_cached_path = self._safe_text(cached_path)
+                if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
+                    try:
+                        del control_cache[cached_path]
+                    except Exception:
+                        pass
+
+        adapter_cache = getattr(self, '_native_adapter_cache', None)
+        if isinstance(adapter_cache, dict):
+            for cached_key in list(adapter_cache.keys()):
+                safe_key = self._safe_text(cached_key)
+                pos = safe_key.find(':')
+                if pos >= 0:
+                    safe_key_path = safe_key[pos + 1:]
+                else:
+                    safe_key_path = safe_key
+                if safe_key_path == prefix or safe_key_path.startswith(prefix_with_sep):
+                    try:
+                        del adapter_cache[cached_key]
+                    except Exception:
+                        pass
+
+        label_cache = getattr(self, '_native_label_props_cache', None)
+        if isinstance(label_cache, dict):
+            for cached_path in list(label_cache.keys()):
+                safe_cached_path = self._safe_text(cached_path)
+                if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
+                    try:
+                        del label_cache[cached_path]
+                    except Exception:
+                        pass
+
+        image_cache = getattr(self, '_native_image_props_cache', None)
+        if isinstance(image_cache, dict):
+            for cached_path in list(image_cache.keys()):
+                safe_cached_path = self._safe_text(cached_path)
+                if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
+                    try:
+                        del image_cache[cached_path]
+                    except Exception:
+                        pass
+
+        geometry_cache = getattr(self, '_native_geometry_cache', None)
+        if isinstance(geometry_cache, dict):
+            for cached_path in list(geometry_cache.keys()):
+                safe_cached_path = self._safe_text(cached_path)
+                if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
+                    try:
+                        del geometry_cache[cached_path]
+                    except Exception:
+                        pass
+
+        bind_cache = getattr(self, '_button_bind_cache', None)
+        if isinstance(bind_cache, dict):
+            for cached_path in list(bind_cache.keys()):
+                safe_cached_path = self._safe_text(cached_path)
+                if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
+                    try:
+                        del bind_cache[cached_path]
+                    except Exception:
+                        pass
+
+        slot_cache = getattr(self, '_button_slot_cache', None)
+        if isinstance(slot_cache, dict):
+            for cached_path in list(slot_cache.keys()):
+                safe_cached_path = self._safe_text(cached_path)
+                if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
+                    try:
+                        del slot_cache[cached_path]
+                    except Exception:
+                        pass
+
+        scroll_cache = getattr(self, '_scroll_path_cache', None)
+        if isinstance(scroll_cache, dict):
+            for cached_path in list(scroll_cache.keys()):
+                safe_cached_path = self._safe_text(cached_path)
+                if safe_cached_path == prefix or safe_cached_path.startswith(prefix_with_sep):
+                    try:
+                        del scroll_cache[cached_path]
+                    except Exception:
+                        pass
 
     def _set_ref_value(self, ref_obj, value):
         if ref_obj is None:
@@ -324,7 +431,8 @@ class RuntimePropsMixin(object):
             return
 
         builder = props.get("buttonBuilder")
-        if not callable(builder):
+        is_default_builder = not callable(builder)
+        if is_default_builder:
             builder = self._default_button_state_builder
 
         layout = getattr(button_node, "layout", None)
@@ -339,13 +447,25 @@ class RuntimePropsMixin(object):
             if not slot_control:
                 continue
 
+            state_element = self._call_button_builder(builder, state)
+            if state_element is None:
+                self._clear_prefixed_children(slot_path)
+                continue
+
+            slot_cache = None
+            slot_signature = None
+            if is_default_builder:
+                slot_signature = self._make_button_slot_signature(state_element, button_width, button_height)
+                slot_cache = getattr(self, '_button_slot_cache', None)
+                if not isinstance(slot_cache, dict):
+                    slot_cache = {}
+                    self._button_slot_cache = slot_cache
+                if slot_cache.get(slot_path) == slot_signature:
+                    continue
+
             self._safe_set_position(slot_path, 0, 0, slot_control)
             self._safe_set_size(slot_path, button_width, button_height, slot_control)
             self._clear_prefixed_children(slot_path)
-
-            state_element = self._call_button_builder(builder, state)
-            if state_element is None:
-                continue
 
             self._render_state_element_into_slot(
                 state_element=state_element,
@@ -353,6 +473,55 @@ class RuntimePropsMixin(object):
                 slot_width=button_width,
                 slot_height=button_height,
             )
+            if slot_cache is not None:
+                slot_cache[slot_path] = slot_signature
+
+    def _make_button_slot_signature(self, state_element, slot_width, slot_height):
+        return (
+            int(round(slot_width)),
+            int(round(slot_height)),
+            self._make_element_signature(state_element),
+        )
+
+    def _make_element_signature(self, value):
+        if value is None:
+            return ('none',)
+        if isinstance(value, (list, tuple)):
+            result = [('kind', 'list')]
+            for item in value:
+                result.append(self._make_element_signature(item))
+            return tuple(result)
+
+        node_type = getattr(value, 'node_type', None)
+        props = getattr(value, 'props', None)
+        children = getattr(value, 'children', None)
+        if node_type is not None or props is not None or children is not None:
+            return (
+                'node',
+                self._safe_text(getattr(node_type, '__name__', node_type)),
+                self._make_props_signature(props),
+                self._make_element_signature(children or []),
+            )
+        return ('value', self._safe_text(value))
+
+    def _make_props_signature(self, props):
+        if not isinstance(props, dict):
+            return ()
+        result = []
+        for key in sorted(props.keys()):
+            if key == 'children':
+                result.append((key, self._make_element_signature(props.get(key))))
+            else:
+                value = props.get(key)
+                if callable(value):
+                    result.append((key, 'callable'))
+                elif isinstance(value, dict):
+                    result.append((key, self._make_props_signature(value)))
+                elif isinstance(value, (list, tuple)):
+                    result.append((key, tuple([self._safe_text(v) for v in value])))
+                else:
+                    result.append((key, self._safe_text(value)))
+        return tuple(result)
 
     def _call_button_builder(self, builder, state):
         try:
@@ -584,50 +753,93 @@ class RuntimePropsMixin(object):
         if not isinstance(image_props, dict):
             image_props = {}
 
+        cache = getattr(self, '_native_image_props_cache', None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._native_image_props_cache = cache
+        cached = cache.get(node_path, {})
+        next_cached = {}
+
         src = self._safe_text(image_props.get("src", ""))
         if not src:
             src = self._DEFAULT_WHITE_TEXTURE
-        self._safe_set_sprite(node_path, src, node_control)
+        next_cached['src'] = src
+        if cached.get('src') != src:
+            self._safe_set_sprite(node_path, src, node_control)
 
         color = self._parse_text_color(image_props.get("color"))
         if color is not None:
-            self._safe_set_sprite_color(node_path, color, node_control)
+            color_sig = self._to_rgb_tuple(color)
+            next_cached['color'] = color_sig
+            if cached.get('color') != color_sig:
+                self._safe_set_sprite_color(node_path, color, node_control)
 
         gray_value = image_props.get("grayscale")
         if gray_value is not None:
-            self._safe_set_sprite_gray(node_path, self._to_bool(gray_value), node_control)
+            gray_sig = self._to_bool(gray_value)
+            next_cached['grayscale'] = gray_sig
+            if cached.get('grayscale') != gray_sig:
+                self._safe_set_sprite_gray(node_path, gray_sig, node_control)
 
         clip_ratio = image_props.get("clipRatio")
         if clip_ratio is not None:
-            self._safe_set_sprite_clip_ratio(node_path, clip_ratio, node_control)
+            clip_sig = self._to_float(clip_ratio, 1.0)
+            next_cached['clipRatio'] = clip_sig
+            if cached.get('clipRatio') != clip_sig:
+                self._safe_set_sprite_clip_ratio(node_path, clip_ratio, node_control)
 
         uv = self._parse_vec2(image_props.get("uv"))
         if uv is not None:
-            self._safe_set_sprite_uv(node_path, uv, node_control)
+            next_cached['uv'] = uv
+            if cached.get('uv') != uv:
+                self._safe_set_sprite_uv(node_path, uv, node_control)
 
         uv_size = self._parse_vec2(image_props.get("uvSize"))
         if uv_size is not None:
-            self._safe_set_sprite_uv_size(node_path, uv_size, node_control)
+            next_cached['uvSize'] = uv_size
+            if cached.get('uvSize') != uv_size:
+                self._safe_set_sprite_uv_size(node_path, uv_size, node_control)
 
         adaption_type = self._parse_image_adaption_type(image_props)
         nine_slice = self._parse_vec4(image_props.get("nineSlice"))
         if adaption_type:
-            self._safe_set_image_adaption_type(node_path, adaption_type, nine_slice, node_control)
+            adaption_sig = (adaption_type, nine_slice)
+            next_cached['imageAdaptionType'] = adaption_sig
+            if cached.get('imageAdaptionType') != adaption_sig:
+                self._safe_set_image_adaption_type(node_path, adaption_type, nine_slice, node_control)
         elif nine_slice is not None:
             nine_slice_type = self._safe_text(image_props.get("nineSliceType", "originNineSlice"))
             if nine_slice_type not in ("oldNineSlice", "originNineSlice"):
                 nine_slice_type = "originNineSlice"
-            self._safe_set_image_adaption_type(node_path, nine_slice_type, nine_slice, node_control)
+            adaption_sig = (nine_slice_type, nine_slice)
+            next_cached['imageAdaptionType'] = adaption_sig
+            if cached.get('imageAdaptionType') != adaption_sig:
+                self._safe_set_image_adaption_type(node_path, nine_slice_type, nine_slice, node_control)
 
         rotation = image_props.get("rotation")
         if rotation is not None:
-            self._safe_rotate(node_path, self._to_float(rotation, 0.0), node_control)
+            rotation_sig = self._to_float(rotation, 0.0)
+            next_cached['rotation'] = rotation_sig
+            if cached.get('rotation') != rotation_sig:
+                self._safe_rotate(node_path, rotation_sig, node_control)
 
         rotate_pivot = self._parse_vec2(image_props.get("rotatePivot"))
         if rotate_pivot is not None:
-            self._safe_set_rotate_pivot(node_path, rotate_pivot, node_control)
+            next_cached['rotatePivot'] = rotate_pivot
+            if cached.get('rotatePivot') != rotate_pivot:
+                self._safe_set_rotate_pivot(node_path, rotate_pivot, node_control)
+
+        cache[node_path] = next_cached
 
     def _bind_button_click(self, button_path, node_id):
+        bind_cache = getattr(self, '_button_bind_cache', None)
+        if not isinstance(bind_cache, dict):
+            bind_cache = {}
+            self._button_bind_cache = bind_cache
+        safe_button_path = self._safe_text(button_path)
+        if bind_cache.get(safe_button_path):
+            return
+
         control = self._get_base_ui_control(button_path)
         if not control:
             return
@@ -645,6 +857,7 @@ class RuntimePropsMixin(object):
                 self._dispatch_click(node_id)
 
             self._native_api_call('SetButtonTouchUpCallback', button_control.SetButtonTouchUpCallback, _callback)
+            bind_cache[safe_button_path] = True
         except Exception:
             pass
 

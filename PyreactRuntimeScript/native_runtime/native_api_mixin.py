@@ -49,6 +49,43 @@ class RuntimeNativeApiMixin(object):
         stats = getattr(self, '_native_api_perf_stats', None)
         if not isinstance(stats, dict):
             return []
+        return self._format_native_api_perf_stats(stats)
+
+    def _copy_native_api_perf_stats(self):
+        stats = getattr(self, '_native_api_perf_stats', None)
+        result = {}
+        if not isinstance(stats, dict):
+            return result
+
+        for api_name, item in stats.items():
+            try:
+                result[api_name] = {
+                    'count': int(item.get('count', 0)),
+                    'total_ms': float(item.get('total_ms', 0.0)),
+                }
+            except Exception:
+                pass
+        return result
+
+    def _diff_native_api_perf_stats(self, before_stats):
+        current = self._copy_native_api_perf_stats()
+        before_stats = before_stats or {}
+        result = {}
+        for api_name, item in current.items():
+            before_item = before_stats.get(api_name, {})
+            try:
+                count = int(item.get('count', 0)) - int(before_item.get('count', 0))
+                total_ms = float(item.get('total_ms', 0.0)) - float(before_item.get('total_ms', 0.0))
+            except Exception:
+                continue
+            if count <= 0 and total_ms <= 0.0:
+                continue
+            result[api_name] = {'count': count, 'total_ms': total_ms}
+        return self._format_native_api_perf_stats(result)
+
+    def _format_native_api_perf_stats(self, stats):
+        if not isinstance(stats, dict):
+            return []
 
         result = []
         for api_name, item in stats.items():
@@ -59,8 +96,35 @@ class RuntimeNativeApiMixin(object):
         result.sort(key=lambda x: x[2], reverse=True)
         return result
 
+    def _sum_native_api_perf_stats(self, stats_list):
+        total = 0.0
+        for _, _, total_ms in stats_list or []:
+            try:
+                total += float(total_ms)
+            except Exception:
+                pass
+        return total
+
+    def _get_native_adapter_cache(self):
+        cache = getattr(self, '_native_adapter_cache', None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._native_adapter_cache = cache
+        return cache
+
     def _get_base_ui_control(self, path):
-        return self._native_api_call('GetBaseUIControl', self._screen.GetBaseUIControl, path)
+        safe_path = self._safe_text(path)
+        cache = getattr(self, '_native_control_cache', None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._native_control_cache = cache
+        cached = cache.get(safe_path)
+        if cached:
+            return cached
+        control = self._native_api_call('GetBaseUIControl', self._screen.GetBaseUIControl, path)
+        if control:
+            cache[safe_path] = control
+        return control
 
     def _get_children_name(self, parent_path):
         return self._native_api_call('GetChildrenName', self._screen.GetChildrenName, parent_path)
@@ -136,6 +200,13 @@ class RuntimeNativeApiMixin(object):
         if not label_path:
             return None
 
+        try:
+            cache = getattr(self, '_native_label_props_cache', None)
+            if isinstance(cache, dict) and label_path in cache:
+                del cache[label_path]
+        except Exception:
+            pass
+
         label_control = self._to_label_control(control, label_path)
         if not label_control:
             return None
@@ -185,6 +256,12 @@ class RuntimeNativeApiMixin(object):
             self._native_api_call('SetText', label_control.SetText, "", True)
         except Exception:
             self._safe_set_text(label_path, "", label_control)
+        try:
+            cache = getattr(self, '_native_label_props_cache', None)
+            if isinstance(cache, dict) and isinstance(cache.get(label_path), dict):
+                cache[label_path]['text'] = ""
+        except Exception:
+            pass
         self._safe_set_position(label_path, -100000.0, -100000.0, label_control)
 
         if width <= 0.0 or height <= 0.0:
@@ -209,11 +286,15 @@ class RuntimeNativeApiMixin(object):
                     self._native_api_call('SetText', control.SetText, text)
                 return
             try:
-                label_control = self._native_api_call('asLabel', control.asLabel)
+                label_control = self._to_label_control(control, path)
+                if not label_control:
+                    return
                 self._native_api_call('SetText', label_control.SetText, text+"1", True)
                 self._native_api_call('SetText', label_control.SetText, text, True)
             except TypeError:
-                label_control = self._native_api_call('asLabel', control.asLabel)
+                label_control = self._to_label_control(control, path)
+                if not label_control:
+                    return
                 self._native_api_call('SetText', label_control.SetText, text+"1")
                 self._native_api_call('SetText', label_control.SetText, text)
         except Exception:
@@ -274,38 +355,61 @@ class RuntimeNativeApiMixin(object):
         if not isinstance(label_props, dict):
             label_props = {}
 
+        cache = getattr(self, '_native_label_props_cache', None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._native_label_props_cache = cache
+        cached = cache.get(path, {})
+        next_cached = {}
+
         line_padding = self._parse_line_padding(label_props.get("linePadding"))
+        next_cached['linePadding'] = line_padding
         if line_padding is not None:
-            self._safe_set_text_line_padding(path, line_padding, control)
+            if cached.get('linePadding') != line_padding:
+                self._safe_set_text_line_padding(path, line_padding, control)
 
         text_font_size = self._parse_text_font_scale(label_props.get("fontSize"))
+        next_cached['fontSize'] = text_font_size
         if text_font_size is not None:
-            self._safe_set_text_font_size(path, text_font_size, control)
+            if cached.get('fontSize') != text_font_size:
+                self._safe_set_text_font_size(path, text_font_size, control)
 
         text_align = self._parse_text_alignment(label_props.get("textAlign"))
+        next_cached['textAlign'] = text_align
         if text_align:
-            self._safe_set_text_alignment(path, text_align, control)
+            if cached.get('textAlign') != text_align:
+                self._safe_set_text_alignment(path, text_align, control)
 
         if label_props.get("shadow") is not None:
-            self._safe_set_text_shadow(path, self._to_bool(label_props.get("shadow")), control)
+            shadow_enabled = self._to_bool(label_props.get("shadow"))
+            next_cached['shadow'] = shadow_enabled
+            if cached.get('shadow') != shadow_enabled:
+                self._safe_set_text_shadow(path, shadow_enabled, control)
 
         text_color = self._parse_text_color(label_props.get("color"))
+        color_key = None
         if text_color is not None:
-            self._safe_set_text_color(path, text_color, control)
+            color_key = self._to_rgb_tuple(text_color)
+            if cached.get('color') != color_key:
+                self._safe_set_text_color(path, text_color, control)
 
-        self._safe_set_text(path, self._safe_text(text), control)
+        next_cached['color'] = color_key
+        safe_text = self._safe_text(text)
+        next_cached['text'] = safe_text
+        if cached.get('text') != safe_text:
+            self._safe_set_text(path, safe_text, control)
+        cache[path] = next_cached
 
     def _safe_set_sprite(self, path, sprite, control=None):
         sprite_text = self._safe_text(sprite)
         if not sprite_text:
             return False
 
-        if control and hasattr(control, "asImage"):
+        image_control = self._to_image_control(control, path)
+        if image_control and hasattr(image_control, "SetSprite"):
             try:
-                image_control = self._native_api_call('asImage', control.asImage)
-                if image_control and hasattr(image_control, "SetSprite"):
-                    ret = self._native_api_call('SetSprite', image_control.SetSprite, sprite_text)
-                    return ret is not False
+                ret = self._native_api_call('SetSprite', image_control.SetSprite, sprite_text)
+                return ret is not False
             except Exception:
                 pass
 
@@ -421,10 +525,17 @@ class RuntimeNativeApiMixin(object):
                 pass
 
     def _to_image_control(self, control, path):
+        cache_key = 'Image:' + self._safe_text(path)
+        cache = self._get_native_adapter_cache()
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+
         if control and hasattr(control, "asImage"):
             try:
                 image_control = self._native_api_call('asImage', control.asImage)
                 if image_control:
+                    cache[cache_key] = image_control
                     return image_control
             except Exception:
                 pass
@@ -432,16 +543,26 @@ class RuntimeNativeApiMixin(object):
         try:
             base_control = self._get_base_ui_control(path)
             if base_control and hasattr(base_control, "asImage"):
-                return self._native_api_call('asImage', base_control.asImage)
+                image_control = self._native_api_call('asImage', base_control.asImage)
+                if image_control:
+                    cache[cache_key] = image_control
+                return image_control
         except Exception:
             pass
         return None
 
     def _to_item_renderer_control(self, control, path):
+        cache_key = 'Item:' + self._safe_text(path)
+        cache = self._get_native_adapter_cache()
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+
         if control and hasattr(control, 'asItemRenderer'):
             try:
                 item_control = self._native_api_call('asItemRenderer', control.asItemRenderer)
                 if item_control:
+                    cache[cache_key] = item_control
                     return item_control
             except Exception:
                 pass
@@ -449,16 +570,26 @@ class RuntimeNativeApiMixin(object):
         try:
             base_control = self._get_base_ui_control(path)
             if base_control and hasattr(base_control, 'asItemRenderer'):
-                return self._native_api_call('asItemRenderer', base_control.asItemRenderer)
+                item_control = self._native_api_call('asItemRenderer', base_control.asItemRenderer)
+                if item_control:
+                    cache[cache_key] = item_control
+                return item_control
         except Exception:
             pass
         return None
 
     def _to_label_control(self, control, path):
+        cache_key = 'Label:' + self._safe_text(path)
+        cache = self._get_native_adapter_cache()
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+
         if control and hasattr(control, "asLabel"):
             try:
                 label_control = self._native_api_call('asLabel', control.asLabel)
                 if label_control:
+                    cache[cache_key] = label_control
                     return label_control
             except Exception:
                 pass
@@ -466,7 +597,10 @@ class RuntimeNativeApiMixin(object):
         try:
             base_control = self._get_base_ui_control(path)
             if base_control and hasattr(base_control, "asLabel"):
-                return self._native_api_call('asLabel', base_control.asLabel)
+                label_control = self._native_api_call('asLabel', base_control.asLabel)
+                if label_control:
+                    cache[cache_key] = label_control
+                return label_control
         except Exception:
             pass
         return None
@@ -476,12 +610,11 @@ class RuntimeNativeApiMixin(object):
         if rgb is None:
             return
 
-        if control and hasattr(control, "asLabel"):
+        label_control = self._to_label_control(control, path)
+        if label_control and hasattr(label_control, "SetTextColor"):
             try:
-                label_control = self._native_api_call('asLabel', control.asLabel)
-                if label_control and hasattr(label_control, "SetTextColor"):
-                    self._native_api_call('SetTextColor', label_control.SetTextColor, rgb)
-                    return
+                self._native_api_call('SetTextColor', label_control.SetTextColor, rgb)
+                return
             except Exception:
                 pass
 
@@ -538,23 +671,45 @@ class RuntimeNativeApiMixin(object):
     def _safe_set_position(self, path, x, y, control=None):
         try:
             pos = (int(round(x)), int(round(y)))
+            safe_path = self._safe_text(path)
+            geometry_cache = getattr(self, '_native_geometry_cache', None)
+            if not isinstance(geometry_cache, dict):
+                geometry_cache = {}
+                self._native_geometry_cache = geometry_cache
+            cached = geometry_cache.get(safe_path)
+            if isinstance(cached, dict) and cached.get('pos') == pos:
+                return
             if control:
-                used_full = False
                 if hasattr(control, "SetFullPosition"):
-                    ret_x = self._native_api_call('SetFullPosition', control.SetFullPosition, axis="x", paramDict={"absoluteValue": float(pos[0]), "followType": "none", "relativeValue": 0.0})
-                    ret_y = self._native_api_call('SetFullPosition', control.SetFullPosition, axis="y", paramDict={"absoluteValue": float(pos[1]), "followType": "none", "relativeValue": 0.0})
-                    used_full = bool(ret_x) and bool(ret_y)
+                    try:
+                        self._native_api_call('SetFullPosition', control.SetFullPosition, axis="x", paramDict={"absoluteValue": float(pos[0]), "followType": "none", "relativeValue": 0.0})
+                        self._native_api_call('SetFullPosition', control.SetFullPosition, axis="y", paramDict={"absoluteValue": float(pos[1]), "followType": "none", "relativeValue": 0.0})
+                        item = geometry_cache.get(safe_path)
+                        if not isinstance(item, dict):
+                            item = {}
+                            geometry_cache[safe_path] = item
+                        item['pos'] = pos
+                        return
+                    except Exception:
+                        pass
 
                 if hasattr(control, "SetPosition"):
                     try:
                         self._native_api_call('SetPosition', control.SetPosition, pos)
                     except TypeError:
                         self._native_api_call('SetPosition', control.SetPosition, float(pos[0]), float(pos[1]))
-                    except Exception:
-                        if not used_full:
-                            raise
+                item = geometry_cache.get(safe_path)
+                if not isinstance(item, dict):
+                    item = {}
+                    geometry_cache[safe_path] = item
+                item['pos'] = pos
                 return
             self._native_api_call('SetPosition', self._screen.SetPosition, path, pos)
+            item = geometry_cache.get(safe_path)
+            if not isinstance(item, dict):
+                item = {}
+                geometry_cache[safe_path] = item
+            item['pos'] = pos
         except Exception:
             pass
 
@@ -567,23 +722,45 @@ class RuntimeNativeApiMixin(object):
             if height < 0:
                 height = 0
             size = (width, height)
+            safe_path = self._safe_text(path)
+            geometry_cache = getattr(self, '_native_geometry_cache', None)
+            if not isinstance(geometry_cache, dict):
+                geometry_cache = {}
+                self._native_geometry_cache = geometry_cache
+            cached = geometry_cache.get(safe_path)
+            if isinstance(cached, dict) and cached.get('size') == size:
+                return
             if control:
-                used_full = False
                 if hasattr(control, "SetFullSize"):
-                    ret_w = self._native_api_call('SetFullSize', control.SetFullSize, axis="x", paramDict={"absoluteValue": float(size[0]), "followType": "none", "relativeValue": 0.0})
-                    ret_h = self._native_api_call('SetFullSize', control.SetFullSize, axis="y", paramDict={"absoluteValue": float(size[1]), "followType": "none", "relativeValue": 0.0})
-                    used_full = bool(ret_w) and bool(ret_h)
+                    try:
+                        self._native_api_call('SetFullSize', control.SetFullSize, axis="x", paramDict={"absoluteValue": float(size[0]), "followType": "none", "relativeValue": 0.0})
+                        self._native_api_call('SetFullSize', control.SetFullSize, axis="y", paramDict={"absoluteValue": float(size[1]), "followType": "none", "relativeValue": 0.0})
+                        item = geometry_cache.get(safe_path)
+                        if not isinstance(item, dict):
+                            item = {}
+                            geometry_cache[safe_path] = item
+                        item['size'] = size
+                        return
+                    except Exception:
+                        pass
 
                 if hasattr(control, "SetSize"):
                     try:
                         self._native_api_call('SetSize', control.SetSize, size, True)
                     except TypeError:
                         self._native_api_call('SetSize', control.SetSize, size)
-                    except Exception:
-                        if not used_full:
-                            raise
+                item = geometry_cache.get(safe_path)
+                if not isinstance(item, dict):
+                    item = {}
+                    geometry_cache[safe_path] = item
+                item['size'] = size
                 return
             self._native_api_call('SetSize', self._screen.SetSize, path, size, True)
+            item = geometry_cache.get(safe_path)
+            if not isinstance(item, dict):
+                item = {}
+                geometry_cache[safe_path] = item
+            item['size'] = size
         except Exception:
             pass
 

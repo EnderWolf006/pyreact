@@ -12,7 +12,7 @@ class RuntimeLifecycleMixin(object):
             return clock()
         return getattr(time, 'time')()
 
-    def _log_render_stage_timings(self, component_ms, build_ms, diff_ms, layout_ms, native_ms):
+    def _log_render_stage_timings(self, component_ms, build_ms, diff_ms, layout_ms, native_ms, native_stats=None, native_update_stats=None, native_apply_ms=None, update_screen_ms=None):
         if not getattr(self, '_log_perf', False):
             return
         try:
@@ -21,7 +21,17 @@ class RuntimeLifecycleMixin(object):
             print('PyreactRuntime[perf] 3. Diff计算: %.3fms' % diff_ms)
             print('PyreactRuntime[perf] 4. 布局计算: %.3fms' % layout_ms)
             print('PyreactRuntime[perf] 5. 应用到原生UI: %.3fms' % native_ms)
-            for api_name, count, total_ms in self._get_native_api_perf_stats():
+            if native_apply_ms is not None:
+                print('PyreactRuntime[perf] 5.1 原生控件应用: %.3fms' % native_apply_ms)
+            if update_screen_ms is not None:
+                print('PyreactRuntime[perf] 5.2 UpdateScreen: %.3fms' % update_screen_ms)
+            stats = native_stats
+            if stats is None:
+                stats = self._get_native_api_perf_stats()
+            print('PyreactRuntime[perf][native] 应用到原生UI total=%.3fms' % self._sum_native_api_perf_stats(stats))
+            if native_update_stats is not None:
+                print('PyreactRuntime[perf][native][update] 本次更新所有阶段 total=%.3fms' % self._sum_native_api_perf_stats(native_update_stats))
+            for api_name, count, total_ms in stats:
                 print('PyreactRuntime[perf][native] %s: count=%s total=%.3fms' % (api_name, count, total_ms))
         except Exception:
             pass
@@ -140,10 +150,10 @@ class RuntimeLifecycleMixin(object):
             shadow_root = self._layout_engine.calculate(new_vtree, width, height)
             layout_ms = (self._perf_clock() - layout_start_time) * 1000.0
 
+            native_before_apply = self._copy_native_api_perf_stats()
             native_start_time = self._perf_clock()
             if self._can_apply_incremental(mutations):
                 self._apply_incremental_updates(shadow_root, mutations)
-                self._refresh_button_callbacks(shadow_root)
             else:
                 if getattr(self, '_debug_render', False):
                     counts = {}
@@ -157,16 +167,21 @@ class RuntimeLifecycleMixin(object):
                     parent_path=self._root_path,
                     parent_abs_x=0.0,
                     parent_abs_y=0.0,
+                    cache_already_cleared=True,
                 )
-            native_ms = (self._perf_clock() - native_start_time) * 1000.0
+            native_apply_ms = (self._perf_clock() - native_start_time) * 1000.0
 
+            update_screen_start_time = self._perf_clock()
             try:
                 self._update_screen()
             except Exception:
                 pass
+            update_screen_ms = (self._perf_clock() - update_screen_start_time) * 1000.0
             native_ms = (self._perf_clock() - native_start_time) * 1000.0
 
-            self._log_render_stage_timings(component_ms, build_ms, diff_ms, layout_ms, native_ms)
+            native_apply_stats = self._diff_native_api_perf_stats(native_before_apply)
+            native_update_stats = self._get_native_api_perf_stats()
+            self._log_render_stage_timings(component_ms, build_ms, diff_ms, layout_ms, native_ms, native_apply_stats, native_update_stats, native_apply_ms, update_screen_ms)
 
             self._prev_vtree = new_vtree
             self._prev_shadow_root = shadow_root
@@ -214,20 +229,137 @@ class RuntimeLifecycleMixin(object):
         if self._prev_vtree is None or self._prev_shadow_root is None:
             return False
 
+        structural_count = 0
+        created_node_count = 0
+        removed_node_count = 0
+        moved_node_count = 0
+        max_created_subtree = 0
+        max_removed_subtree = 0
+        deleted_paths = {}
+        created_paths = {}
+        for m in mutations or []:
+            try:
+                mutation_type = self._safe_text(getattr(m, 'type_', ''))
+            except Exception:
+                mutation_type = ''
+            if mutation_type == 'CREATE' or mutation_type == 'DELETE' or mutation_type == 'MOVE':
+                structural_count += 1
+                if mutation_type == 'CREATE':
+                    node_count = self._count_vnode_subtree(getattr(m, 'new_node', None))
+                    created_node_count += node_count
+                    if node_count > max_created_subtree:
+                        max_created_subtree = node_count
+                    created_paths[tuple(getattr(m, 'path', []) or [])] = True
+                elif mutation_type == 'DELETE':
+                    node_count = self._count_vnode_subtree(getattr(m, 'old_node', None))
+                    removed_node_count += node_count
+                    if node_count > max_removed_subtree:
+                        max_removed_subtree = node_count
+                    deleted_paths[tuple(getattr(m, 'path', []) or [])] = True
+                else:
+                    moved_node_count += self._count_vnode_subtree(getattr(m, 'new_node', None))
+
+        limit = getattr(self, '_full_rebuild_structural_mutation_limit', 16)
+        try:
+            limit = int(limit)
+        except Exception:
+            limit = 16
+        if limit > 0 and structural_count > limit:
+            return False
+
+        created_limit = getattr(self, '_full_rebuild_created_node_limit', 64)
+        try:
+            created_limit = int(created_limit)
+        except Exception:
+            created_limit = 64
+        if created_limit > 0 and created_node_count > created_limit:
+            return False
+
+        removed_limit = getattr(self, '_full_rebuild_removed_node_limit', 64)
+        try:
+            removed_limit = int(removed_limit)
+        except Exception:
+            removed_limit = 64
+        if removed_limit > 0 and removed_node_count > removed_limit:
+            return False
+
+        total_node_limit = getattr(self, '_full_rebuild_structural_node_limit', 96)
+        try:
+            total_node_limit = int(total_node_limit)
+        except Exception:
+            total_node_limit = 96
+        structural_node_count = created_node_count + removed_node_count + moved_node_count
+        if total_node_limit > 0 and structural_node_count > total_node_limit:
+            return False
+
+        max_subtree_limit = getattr(self, '_full_rebuild_single_subtree_node_limit', 48)
+        try:
+            max_subtree_limit = int(max_subtree_limit)
+        except Exception:
+            max_subtree_limit = 48
+        if max_subtree_limit > 0 and (max_created_subtree > max_subtree_limit or max_removed_subtree > max_subtree_limit):
+            return False
+
+        replace_pair_count = 0
+        has_near_root_replace = False
+        for path_tuple in created_paths:
+            if path_tuple in deleted_paths:
+                replace_pair_count += 1
+                if len(path_tuple) <= 2:
+                    has_near_root_replace = True
+
+        replace_pair_limit = getattr(self, '_full_rebuild_replace_pair_limit', 8)
+        try:
+            replace_pair_limit = int(replace_pair_limit)
+        except Exception:
+            replace_pair_limit = 8
+        if replace_pair_limit > 0 and replace_pair_count >= replace_pair_limit:
+            return False
+
+        if has_near_root_replace:
+            return False
+
         # Incremental render can handle CREATE/DELETE/MOVE by creating missing
         # controls and pruning orphaned prefixed children during the layout walk.
-        # We only fall back to a full rebuild when the previous tree is absent.
+        # For large structural switches, full root rebuild is faster because it
+        # deletes subtree roots once instead of probing/removing many nodes.
         return True
+
+    def _count_vnode_subtree(self, node):
+        if node is None:
+            return 0
+        count = 1
+        try:
+            children = getattr(node, 'children', None) or []
+        except Exception:
+            children = []
+        for child in children:
+            count += self._count_vnode_subtree(child)
+        return count
 
     def _apply_incremental_updates(self, new_shadow_root, mutations):
         recreate_paths = {}
+        prune_parent_paths = {}
         muts = mutations or []
         for m in muts:
             try:
-                if self._safe_text(getattr(m, 'type_', '')) != 'CREATE':
-                    continue
+                mutation_type = self._safe_text(getattr(m, 'type_', ''))
                 path = getattr(m, 'path', []) or []
-                recreate_paths[tuple(path)] = True
+                path_tuple = tuple(path)
+                if mutation_type == 'CREATE':
+                    recreate_paths[path_tuple] = True
+                    shifted = [0]
+                    shifted.extend(path)
+                    recreate_paths[tuple(shifted)] = True
+                    parent_path = list(path[:-1])
+                    shifted_parent = [0]
+                    shifted_parent.extend(parent_path)
+                    prune_parent_paths[tuple(shifted_parent)] = True
+                elif mutation_type == 'DELETE' or mutation_type == 'MOVE':
+                    parent_path = list(path[:-1])
+                    shifted_parent = [0]
+                    shifted_parent.extend(parent_path)
+                    prune_parent_paths[tuple(shifted_parent)] = True
             except Exception:
                 pass
         self._apply_layout_to_existing_tree(
@@ -237,9 +369,15 @@ class RuntimeLifecycleMixin(object):
             parent_abs_y=0.0,
             shadow_path=[],
             recreate_paths=recreate_paths,
+            prune_parent_paths=prune_parent_paths,
         )
 
-    def _apply_layout_to_existing_tree(self, current_node, parent_control_path, parent_abs_x, parent_abs_y, shadow_path, recreate_paths):
+    def _should_prune_prefixed_children(self, shadow_path, prune_parent_paths):
+        if prune_parent_paths is None:
+            return True
+        return tuple(shadow_path or []) in prune_parent_paths
+
+    def _apply_layout_to_existing_tree(self, current_node, parent_control_path, parent_abs_x, parent_abs_y, shadow_path, recreate_paths, prune_parent_paths=None):
         if current_node is None:
             return
 
@@ -265,11 +403,12 @@ class RuntimeLifecycleMixin(object):
             self._apply_scroll_props(current_node, parent_control_path)
 
         if not children:
-            try:
-                # Ensure we remove stale prefixed children when the new tree has none.
-                self._prune_prefixed_children(children_parent_path, [])
-            except Exception:
-                pass
+            if self._should_prune_prefixed_children(shadow_path, prune_parent_paths):
+                try:
+                    # Ensure we remove stale prefixed children when the new tree has none.
+                    self._prune_prefixed_children(children_parent_path, [])
+                except Exception:
+                    pass
             return
 
         index = 0
@@ -320,7 +459,6 @@ class RuntimeLifecycleMixin(object):
                 if not control:
                     self._needs_render = True
                     return
-                self._drop_native_common_style_cache(control_path)
             self._safe_set_position(control_path, abs_x - parent_abs_x, abs_y - parent_abs_y, control)
             if node_type != "Label":
                 self._safe_set_size(control_path, width, height, control)
@@ -333,17 +471,19 @@ class RuntimeLifecycleMixin(object):
                 parent_abs_y=abs_y,
                 shadow_path=next_shadow_path,
                 recreate_paths=recreate_paths,
+                prune_parent_paths=prune_parent_paths,
             )
 
             if self._needs_render:
                 return
             index += 1
 
-        try:
-            # Remove any orphaned prefixed children not present in the new tree.
-            self._prune_prefixed_children(children_parent_path, expected_child_names)
-        except Exception:
-            pass
+        if self._should_prune_prefixed_children(shadow_path, prune_parent_paths):
+            try:
+                # Remove any orphaned prefixed children not present in the new tree.
+                self._prune_prefixed_children(children_parent_path, expected_child_names)
+            except Exception:
+                pass
 
     def _refresh_button_callbacks(self, shadow_root):
         self._button_callbacks = {}
@@ -405,13 +545,13 @@ class RuntimeLifecycleMixin(object):
             except Exception:
                 pass
 
-    def _render_children(self, children, parent_path, parent_abs_x, parent_abs_y):
+    def _render_children(self, children, parent_path, parent_abs_x, parent_abs_y, cache_already_cleared=False):
         index = 0
         for child in children:
-            self._render_node(child, parent_path, parent_abs_x, parent_abs_y, index)
+            self._render_node(child, parent_path, parent_abs_x, parent_abs_y, index, cache_already_cleared)
             index += 1
 
-    def _render_node(self, node, parent_path, parent_abs_x, parent_abs_y, sibling_index):
+    def _render_node(self, node, parent_path, parent_abs_x, parent_abs_y, sibling_index, cache_already_cleared=False):
         if node is None:
             return
 
@@ -431,7 +571,8 @@ class RuntimeLifecycleMixin(object):
             return
 
         node_path = parent_path + "/" + child_name
-        self._drop_native_common_style_cache(node_path)
+        if not cache_already_cleared:
+            self._drop_native_common_style_cache(node_path)
         layout = getattr(node, "layout", None)
         abs_x = self._to_float(getattr(layout, "x", 0.0), 0.0)
         abs_y = self._to_float(getattr(layout, "y", 0.0), 0.0)
@@ -458,7 +599,7 @@ class RuntimeLifecycleMixin(object):
         child_parent_x = abs_x
         child_parent_y = abs_y
         children = self._get_render_children(node, node_type)
-        self._render_children(children, children_parent_path, child_parent_x, child_parent_y)
+        self._render_children(children, children_parent_path, child_parent_x, child_parent_y, cache_already_cleared)
 
     def _apply_scroll_props(self, node, node_path):
         props = getattr(node, "props", {}) or {}
@@ -472,12 +613,22 @@ class RuntimeLifecycleMixin(object):
         if not scroll_node_path:
             return ""
 
+        cache = getattr(self, '_scroll_path_cache', None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._scroll_path_cache = cache
+        safe_scroll_node_path = self._safe_text(scroll_node_path)
+        cached = cache.get(safe_scroll_node_path)
+        if cached is not None:
+            return cached
+
         touch_path = scroll_node_path + "/scroll_touch/scroll_view"
         try:
             touch_children = self._get_children_name(touch_path) or []
         except Exception:
             touch_children = []
         if touch_children:
+            cache[safe_scroll_node_path] = touch_path
             return touch_path
 
         mouse_path = scroll_node_path + "/scroll_mouse/scroll_view"
@@ -486,8 +637,10 @@ class RuntimeLifecycleMixin(object):
         except Exception:
             mouse_children = []
         if mouse_children:
+            cache[safe_scroll_node_path] = mouse_path
             return mouse_path
 
+        cache[safe_scroll_node_path] = ""
         return ""
 
     def _get_scroll_content_path(self, scroll_node_path):

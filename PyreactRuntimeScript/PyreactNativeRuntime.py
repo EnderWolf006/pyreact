@@ -57,6 +57,14 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         self._node_refs = {}
         self._prev_node_refs = {}
         self._native_common_style_cache = {}
+        self._native_control_cache = {}
+        self._native_adapter_cache = {}
+        self._native_label_props_cache = {}
+        self._native_image_props_cache = {}
+        self._native_geometry_cache = {}
+        self._button_bind_cache = {}
+        self._button_slot_cache = {}
+        self._scroll_path_cache = {}
         self._input_edit_bound = False
         self._input_edit_handler_method_name = None
 
