@@ -22,7 +22,6 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         "Scroll": "scrollBase",
     }
     _DEFAULT_WHITE_TEXTURE = "textures/ui/white_bg"
-    _MEASURE_LABEL_NAME = "__pyreact_measure_label"
 
     _BUTTON_STATES = (ButtonState.default, ButtonState.hover, ButtonState.pressed)
     _BUTTON_STATE_TEXTURES = {
@@ -79,6 +78,5 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
             app_label = ""
         self._debug_render = ("example" in app_label)
         self._debug_input = ("example" in app_label)
-        self._measure_label_path = None
 
         self._init_pyreact_runtime()

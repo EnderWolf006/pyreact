@@ -66,50 +66,19 @@ class TextMeasurer(object):
             stats["cache_hits"] = stats.get("cache_hits", 0) + 1
             return dict(cached)
         stats["cache_misses"] = stats.get("cache_misses", 0) + 1
-        
-        # Always prefer native measurement if available
-        if callable(self._native_measure):
-            try:
-                measured = self._native_measure(text, style, max_width=max_width)
-                if isinstance(measured, dict):
-                    width = self._safe_float(measured.get("width"), 0.0)
-                    height = self._safe_float(measured.get("height"), 0.0)
-                    if width > 0 and height > 0:
-                        result = {"width": width, "height": height}
-                        self._remember_measure(cache_key, result)
-                        stats["native_hits"] = stats.get("native_hits", 0) + 1
-                        return dict(result)
-            except Exception:
-                pass
 
-        # Fallback to a very simple heuristic if native measure fails or is not provided.
-        # Use fontSize as scale factor (same semantics as native SetTextFontSize).
-        font_size = self._get_font_size_px(style)
-        
-        # Simple estimation: 
-        # - Latin/Symbols: ~0.6 * font_size
-        # - CJK: ~1.0 * font_size
-        width = 0.0
-        for ch in text:
-            code = ord(ch)
-            if code < 128:
-                width += font_size * 0.6
-            else:
-                width += font_size * 1.0
-        
-        # Basic line wrapping estimation
-        line_count = 1
-        max_w = self._safe_float(max_width, 0.0)
-        if max_w > 0 and width > max_w:
-            line_count = int(width / max_w) + 1
-            width = max_w
-            
-        result = {
-            "width": width,
-            "height": line_count * (font_size * 1.2)
-        }
+        measured = self._native_measure(text, style, max_width=max_width)
+        if isinstance(measured, dict):
+            width = self._safe_float(measured.get("width"), 0.0)
+            height = self._safe_float(measured.get("height"), 0.0)
+            if width > 0 and height > 0:
+                result = {"width": width, "height": height}
+                self._remember_measure(cache_key, result)
+                stats["native_hits"] = stats.get("native_hits", 0) + 1
+                return dict(result)
+
+        result = {"width": 100.0, "height": 20.0}
         self._remember_measure(cache_key, result)
-        stats["fallback_hits"] = stats.get("fallback_hits", 0) + 1
         return dict(result)
 
     def _remember_measure(self, cache_key, result):
@@ -127,37 +96,6 @@ class TextMeasurer(object):
                 cache.pop(old_key, None)
                 remove_count -= 1
         cache[cache_key] = dict(result)
-
-    def _get_font_size_scale(self, style):
-        if not isinstance(style, dict):
-            return 1.0
-
-        font_size = style.get("fontSize")
-        if font_size is None:
-            return 1.0
-
-        if isinstance(font_size, bool):
-            return 1.0
-
-        if isinstance(font_size, _TEXT_TYPES):
-            token = self._to_text(font_size)
-            try:
-                token = token.strip()
-            except Exception:
-                pass
-            try:
-                return float(token)
-            except Exception:
-                return 1.0
-
-        # Numeric fontSize is treated as scale in runtime
-        return self._safe_float(font_size, 1.0)
-
-    def _get_font_size_px(self, style):
-        scale = self._get_font_size_scale(style)
-        if scale <= 0.0:
-            scale = 1.0
-        return float(self.BASE_FONT_PX) * float(scale)
 
     def _to_text(self, value):
         if value is None:

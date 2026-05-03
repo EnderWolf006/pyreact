@@ -164,20 +164,18 @@ def _clamp_axis(value, min_value, max_value):
 
 
 def _measure_label_size(node, style, text_measurer, max_width=None):
-    if text_measurer is not None:
-        content = ""
-        measure_style = {}
-        if hasattr(node, "props") and isinstance(node.props, dict):
-            content = node.props.get("content", "")
-            for key in ("fontSize", "font", "textAlign", "linePadding", "shadow"):
-                if node.props.get(key) is not None:
-                    measure_style[key] = node.props.get(key)
-        measured = text_measurer.measure_text(content, measure_style, max_width=max_width)
-        return (
-            max(0.0, _safe_float(measured.get("width", 100.0), 100.0)),
-            max(0.0, _safe_float(measured.get("height", 20.0), 20.0)),
-        )
-    return 100.0, 20.0
+    content = ""
+    measure_style = {}
+    if hasattr(node, "props") and isinstance(node.props, dict):
+        content = node.props.get("content", "")
+        for key in ("fontSize", "font", "textAlign", "linePadding", "shadow"):
+            if node.props.get(key) is not None:
+                measure_style[key] = node.props.get(key)
+    measured = text_measurer.measure_text(content, measure_style, max_width=max_width)
+    return (
+        max(0.0, _safe_float(measured.get("width", 100.0), 100.0)),
+        max(0.0, _safe_float(measured.get("height", 20.0), 20.0)),
+    )
 
 
 def _reuse_label_layout_size(node, width, height):
@@ -224,26 +222,20 @@ def _resolve_own_size(node, style, available_width, available_height, forced_wid
         width, height = _reuse_label_layout_size(node, width, height)
 
     if node.node_type == "Label" and (width is None or height is None):
-        if text_measurer is not None:
-            content = node.props.get("content", "")
-            measure_style = {}
-            if isinstance(node.props, dict):
-                for key in ("fontSize", "font", "textAlign", "linePadding", "shadow"):
-                    if node.props.get(key) is not None:
-                        measure_style[key] = node.props.get(key)
-            measure_limit = width
-            if measure_limit is None:
-                measure_limit = max_width
-            measured = text_measurer.measure_text(content, measure_style, max_width=measure_limit)
-            if width is None:
-                width = measured.get("width", 100.0)
-            if height is None:
-                height = measured.get("height", 20.0)
-        else:
-            if width is None:
-                width = 100.0
-            if height is None:
-                height = 20.0
+        content = node.props.get("content", "")
+        measure_style = {}
+        if isinstance(node.props, dict):
+            for key in ("fontSize", "font", "textAlign", "linePadding", "shadow"):
+                if node.props.get(key) is not None:
+                    measure_style[key] = node.props.get(key)
+        measure_limit = width
+        if measure_limit is None:
+            measure_limit = max_width
+        measured = text_measurer.measure_text(content, measure_style, max_width=measure_limit)
+        if width is None:
+            width = measured.get("width", 100.0)
+        if height is None:
+            height = measured.get("height", 20.0)
 
     if width is None:
         width = float(available_width)

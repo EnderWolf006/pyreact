@@ -169,7 +169,6 @@ class RuntimeLifecycleMixin(object):
 
     def mount(self):
         self._mounted = True
-        self._ensure_measure_label()
         self.render()
 
     def unmount(self):
@@ -189,7 +188,6 @@ class RuntimeLifecycleMixin(object):
             pass
         self._prev_vtree = None
         self._prev_shadow_root = None
-        self._measure_label_path = None
         self._drop_native_common_style_cache()
         self._clear_root_children()
 

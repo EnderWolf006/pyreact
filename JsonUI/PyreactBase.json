@@ -449,6 +449,14 @@
                         -6666
                     ]
                 }
+            },
+            {
+                "measureText@PyreactBase.textBase": {
+                    "offset": [
+                        -6666,
+                        -6666
+                    ]
+                }
             }
         ]
     }

@@ -161,80 +161,32 @@ class RuntimeNativeApiMixin(object):
             self._drop_native_common_style_cache(safe_path)
         return self._remove_component(safe_path, parent_path)
 
-    def _ensure_measure_label(self):
-        measure_path = self._root_path + "/" + self._MEASURE_LABEL_NAME
-        self._measure_label_path = measure_path
-
-        control = None
-        try:
-            control = self._get_base_ui_control(measure_path)
-        except Exception:
-            control = None
-
-        if not control:
-            try:
-                root_control = self._get_base_ui_control(self._root_path)
-            except Exception:
-                root_control = None
-            if not root_control:
-                return None
-
-            def_name = "%s.%s" % (self._base_namespace, "textBase")
-            try:
-                control = self._native_api_call('CreateChildControl', self._screen.CreateChildControl, def_name, self._MEASURE_LABEL_NAME, root_control, False)
-                self._cache_base_ui_control(measure_path, control)
-            except Exception:
-                control = None
-            if not control:
-                return None
-
-            try:
-                self._update_screen()
-            except Exception:
-                pass
-
-        self._safe_set_position(measure_path, -100000.0, -100000.0, control)
-        try:
-            if hasattr(control, "SetVisible"):
-                self._native_api_call('SetVisible', control.SetVisible, True)
-        except Exception:
-            pass
-        try:
-            if hasattr(control, "SetAlpha"):
-                self._native_api_call('SetAlpha', control.SetAlpha, 0.0)
-        except Exception:
-            pass
-        return control
-
     def _measure_text_native(self, content, style, max_width=None):
-        control = self._ensure_measure_label()
+        measure_path = self._root_path + "/measureText"
+        control = self._get_base_ui_control(measure_path)
         if not control:
             return None
 
-        label_path = self._measure_label_path
-        if not label_path:
+        label_control = self._to_label_control(control, measure_path)
+        if not label_control:
             return None
 
         try:
             cache = getattr(self, '_native_label_props_cache', None)
-            if isinstance(cache, dict) and label_path in cache:
-                del cache[label_path]
+            if isinstance(cache, dict) and measure_path in cache:
+                del cache[measure_path]
         except Exception:
             pass
 
-        label_control = self._to_label_control(control, label_path)
-        if not label_control:
-            return None
-
-        self._safe_set_text_line_padding(label_path, 0.0, label_control)
-        self._safe_set_text_font_size(label_path, 1.0, label_control)
-        self._safe_set_text_alignment(label_path, "left", label_control)
-        self._safe_set_text_shadow(label_path, False, label_control)
+        self._safe_set_text_line_padding(measure_path, 0.0, label_control)
+        self._safe_set_text_font_size(measure_path, 1.0, label_control)
+        self._safe_set_text_alignment(measure_path, "left", label_control)
+        self._safe_set_text_shadow(measure_path, False, label_control)
 
         limit_width = self._to_float(max_width, 0.0)
 
         self._apply_label_native_props_then_text(
-            path=label_path,
+            path=measure_path,
             label_props=style,
             text=content,
             control=label_control,
@@ -249,7 +201,7 @@ class RuntimeNativeApiMixin(object):
 
         if (not size) or len(size) < 2:
             try:
-                size = self._native_api_call('GetSize', self._screen.GetSize, label_path)
+                size = self._native_api_call('GetSize', self._screen.GetSize, measure_path)
             except Exception:
                 size = None
 
@@ -270,14 +222,13 @@ class RuntimeNativeApiMixin(object):
         try:
             self._native_api_call('SetText', label_control.SetText, "", True)
         except Exception:
-            self._safe_set_text(label_path, "", label_control)
+            self._safe_set_text(measure_path, "", label_control)
         try:
             cache = getattr(self, '_native_label_props_cache', None)
-            if isinstance(cache, dict) and isinstance(cache.get(label_path), dict):
-                cache[label_path]['text'] = ""
+            if isinstance(cache, dict) and isinstance(cache.get(measure_path), dict):
+                cache[measure_path]['text'] = ""
         except Exception:
             pass
-        self._safe_set_position(label_path, -100000.0, -100000.0, label_control)
 
         if width <= 0.0 or height <= 0.0:
             return None
