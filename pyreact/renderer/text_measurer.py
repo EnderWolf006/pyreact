@@ -22,6 +22,25 @@ class TextMeasurer(object):
         self._native_measure = native_measure
         self._measure_cache = {}
         self._measure_cache_order = []
+        self._perf_stats = self._new_perf_stats()
+
+    def _new_perf_stats(self):
+        return {
+            "calls": 0,
+            "cache_hits": 0,
+            "cache_misses": 0,
+            "native_hits": 0,
+            "fallback_hits": 0,
+        }
+
+    def reset_perf_stats(self):
+        self._perf_stats = self._new_perf_stats()
+
+    def get_perf_stats(self):
+        stats = getattr(self, '_perf_stats', None)
+        if not isinstance(stats, dict):
+            return self._new_perf_stats()
+        return dict(stats)
 
     def _make_cache_key(self, text, style, max_width):
         items = []
@@ -36,10 +55,17 @@ class TextMeasurer(object):
         Returns a dict: {"width": float, "height": float}
         """
         text = self._to_text(content)
+        stats = getattr(self, '_perf_stats', None)
+        if not isinstance(stats, dict):
+            stats = self._new_perf_stats()
+            self._perf_stats = stats
+        stats["calls"] = stats.get("calls", 0) + 1
         cache_key = self._make_cache_key(text, style, max_width)
         cached = self._measure_cache.get(cache_key)
         if cached is not None:
+            stats["cache_hits"] = stats.get("cache_hits", 0) + 1
             return dict(cached)
+        stats["cache_misses"] = stats.get("cache_misses", 0) + 1
         
         # Always prefer native measurement if available
         if callable(self._native_measure):
@@ -51,6 +77,7 @@ class TextMeasurer(object):
                     if width > 0 and height > 0:
                         result = {"width": width, "height": height}
                         self._remember_measure(cache_key, result)
+                        stats["native_hits"] = stats.get("native_hits", 0) + 1
                         return dict(result)
             except Exception:
                 pass
@@ -82,6 +109,7 @@ class TextMeasurer(object):
             "height": line_count * (font_size * 1.2)
         }
         self._remember_measure(cache_key, result)
+        stats["fallback_hits"] = stats.get("fallback_hits", 0) + 1
         return dict(result)
 
     def _remember_measure(self, cache_key, result):

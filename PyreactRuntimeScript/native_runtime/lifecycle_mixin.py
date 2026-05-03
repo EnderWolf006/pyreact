@@ -12,19 +12,46 @@ class RuntimeLifecycleMixin(object):
             return clock()
         return getattr(time, 'time')()
 
-    def _log_render_stage_timings(self, component_ms, build_ms, diff_ms, layout_ms, native_ms, native_stats=None, native_update_stats=None, native_apply_ms=None, update_screen_ms=None):
+    def _log_render_stage_timings(self, component_ms, build_ms, diff_ms, layout_ms, native_ms, native_stats=None, native_update_stats=None, native_apply_ms=None, update_screen_ms=None, layout_stats=None, text_stats=None, update_screen_skipped=False, mutation_stats=None):
         if not getattr(self, '_log_perf', False):
             return
         try:
             print('PyreactRuntime[perf] 1. 组件函数执行: %.3fms' % component_ms)
             print('PyreactRuntime[perf] 2. 构建VNode树: %.3fms' % build_ms)
             print('PyreactRuntime[perf] 3. Diff计算: %.3fms' % diff_ms)
+            if mutation_stats is not None:
+                print('PyreactRuntime[perf][diff] CREATE=%s UPDATE=%s DELETE=%s MOVE=%s total=%s' % (
+                    mutation_stats.get('CREATE', 0),
+                    mutation_stats.get('UPDATE', 0),
+                    mutation_stats.get('DELETE', 0),
+                    mutation_stats.get('MOVE', 0),
+                    mutation_stats.get('total', 0),
+                ))
             print('PyreactRuntime[perf] 4. 布局计算: %.3fms' % layout_ms)
+            if isinstance(layout_stats, dict) and layout_stats:
+                print('PyreactRuntime[perf][layout] shadow_nodes=%s build=%.3fms measure=%.3fms layout=%.3fms stabilize=%.3fms' % (
+                    layout_stats.get('shadow_nodes', 0),
+                    layout_stats.get('build_shadow_ms', 0.0),
+                    layout_stats.get('measure_pass_ms', 0.0),
+                    layout_stats.get('layout_pass_ms', 0.0),
+                    layout_stats.get('stabilize_pass_ms', 0.0),
+                ))
+            if isinstance(text_stats, dict) and text_stats:
+                print('PyreactRuntime[perf][text] calls=%s hits=%s misses=%s native=%s fallback=%s' % (
+                    text_stats.get('calls', 0),
+                    text_stats.get('cache_hits', 0),
+                    text_stats.get('cache_misses', 0),
+                    text_stats.get('native_hits', 0),
+                    text_stats.get('fallback_hits', 0),
+                ))
             print('PyreactRuntime[perf] 5. 应用到原生UI: %.3fms' % native_ms)
             if native_apply_ms is not None:
                 print('PyreactRuntime[perf] 5.1 原生控件应用: %.3fms' % native_apply_ms)
             if update_screen_ms is not None:
-                print('PyreactRuntime[perf] 5.2 UpdateScreen: %.3fms' % update_screen_ms)
+                if update_screen_skipped:
+                    print('PyreactRuntime[perf] 5.2 UpdateScreen: skipped')
+                else:
+                    print('PyreactRuntime[perf] 5.2 UpdateScreen: %.3fms' % update_screen_ms)
             stats = native_stats
             if stats is None:
                 stats = self._get_native_api_perf_stats()
@@ -143,9 +170,34 @@ class RuntimeLifecycleMixin(object):
 
             self._refresh_button_callbacks_from_vtree(new_vtree)
 
+            mutation_stats = self._summarize_mutations(mutations)
+
+            if self._prev_vtree is not None and self._prev_shadow_root is not None and not mutations:
+                self._prev_vtree = new_vtree
+                native_update_stats = self._get_native_api_perf_stats()
+                self._log_render_stage_timings(component_ms, build_ms, diff_ms, 0.0, 0.0, [], native_update_stats, 0.0, 0.0, {}, {}, True, mutation_stats)
+                try:
+                    self._cleanup_input_state()
+                except Exception:
+                    pass
+                try:
+                    self._cleanup_refs()
+                except Exception:
+                    pass
+                return
+
+            try:
+                self._text_measurer.reset_perf_stats()
+            except Exception:
+                pass
+
             layout_start_time = self._perf_clock()
             shadow_root = self._layout_engine.calculate(new_vtree, width, height)
             layout_ms = (self._perf_clock() - layout_start_time) * 1000.0
+            try:
+                layout_stats = self._layout_engine.get_last_perf_stats()
+            except Exception:
+                layout_stats = {}
 
             native_before_apply = self._copy_native_api_perf_stats()
             native_start_time = self._perf_clock()
@@ -171,17 +223,27 @@ class RuntimeLifecycleMixin(object):
                 pass
             native_apply_ms = (self._perf_clock() - native_start_time) * 1000.0
 
-            update_screen_start_time = self._perf_clock()
-            try:
-                self._update_screen()
-            except Exception:
-                pass
-            update_screen_ms = (self._perf_clock() - update_screen_start_time) * 1000.0
+            native_apply_stats = self._diff_native_api_perf_stats(native_before_apply)
+
+            update_screen_skipped = False
+            if (not getattr(self, '_log_perf', False)) or self._has_native_api_perf_entries(native_apply_stats):
+                update_screen_start_time = self._perf_clock()
+                try:
+                    self._update_screen()
+                except Exception:
+                    pass
+                update_screen_ms = (self._perf_clock() - update_screen_start_time) * 1000.0
+            else:
+                update_screen_ms = 0.0
+                update_screen_skipped = True
             native_ms = (self._perf_clock() - native_start_time) * 1000.0
 
-            native_apply_stats = self._diff_native_api_perf_stats(native_before_apply)
             native_update_stats = self._get_native_api_perf_stats()
-            self._log_render_stage_timings(component_ms, build_ms, diff_ms, layout_ms, native_ms, native_apply_stats, native_update_stats, native_apply_ms, update_screen_ms)
+            try:
+                text_stats = self._text_measurer.get_perf_stats()
+            except Exception:
+                text_stats = {}
+            self._log_render_stage_timings(component_ms, build_ms, diff_ms, layout_ms, native_ms, native_apply_stats, native_update_stats, native_apply_ms, update_screen_ms, layout_stats, text_stats, update_screen_skipped, mutation_stats)
 
             self._prev_vtree = new_vtree
             self._prev_shadow_root = shadow_root
@@ -229,6 +291,32 @@ class RuntimeLifecycleMixin(object):
         if self._prev_vtree is None or self._prev_shadow_root is None:
             return False
         return True
+
+    def _summarize_mutations(self, mutations):
+        stats = {'CREATE': 0, 'UPDATE': 0, 'DELETE': 0, 'MOVE': 0, 'total': 0}
+        for m in mutations or []:
+            try:
+                mutation_type = self._safe_text(getattr(m, 'type_', ''))
+            except Exception:
+                mutation_type = ''
+            if mutation_type in stats:
+                stats[mutation_type] = stats.get(mutation_type, 0) + 1
+            stats['total'] = stats.get('total', 0) + 1
+        return stats
+
+    def _has_native_api_perf_entries(self, stats):
+        for _, count, total_ms in stats or []:
+            try:
+                if int(count) > 0:
+                    return True
+            except Exception:
+                pass
+            try:
+                if float(total_ms) > 0.0:
+                    return True
+            except Exception:
+                pass
+        return False
 
     def _count_vnode_subtree(self, node):
         if node is None:

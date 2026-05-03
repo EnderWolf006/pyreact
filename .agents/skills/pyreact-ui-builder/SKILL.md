@@ -731,6 +731,7 @@ Label(content='§a成功§r：任务完成')
 - 不要把 Image/Label 专属 props 错写进 `style`。
 - 不要省略 `@Component`。
 - 不要在动态列表里省略稳定 `key`。
+- 遇到列表/标签页切换性能问题时，业务侧优先检查动态列表 `key` 是否跨标签稳定，避免同一业务项因为展示模式前缀不同而触发整项删除/重建；可打开 `log_perf=True` 查看 CREATE / UPDATE / DELETE / MOVE、三轮布局耗时与文本测量缓存命中。
 - 不要直接 import 非公开网易模块。
 - 不要使用 Python3 语法。
 - 文档没覆盖的网易 API，不要猜。

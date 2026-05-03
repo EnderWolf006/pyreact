@@ -50,6 +50,13 @@ def normalize_style(style):
     return data
 
 
+def _get_node_style(node):
+    style = getattr(node, "style", None)
+    if isinstance(style, dict):
+        return style
+    return normalize_style(style)
+
+
 def parse_length(value, parent_size):
     if value is None:
         return None
@@ -173,6 +180,19 @@ def _measure_label_size(node, style, text_measurer, max_width=None):
     return 100.0, 20.0
 
 
+def _reuse_label_layout_size(node, width, height):
+    layout = getattr(node, "layout", None)
+    if layout is None:
+        return width, height
+    layout_width = getattr(layout, "width", None)
+    if width is None:
+        width = layout_width
+    if height is None:
+        if width is not None and layout_width is not None and abs(_safe_float(width, 0.0) - _safe_float(layout_width, 0.0)) < 0.001:
+            height = getattr(layout, "height", None)
+    return width, height
+
+
 def _resolve_own_size(node, style, available_width, available_height, forced_width, forced_height, text_measurer=None, measure_pass=False):
     width = forced_width
     height = forced_height
@@ -199,6 +219,9 @@ def _resolve_own_size(node, style, available_width, available_height, forced_wid
                 height = node.layout.height
 
     min_width, max_width, min_height, max_height = _resolve_min_max(style, available_width, available_height)
+
+    if node.node_type == "Label" and (not measure_pass) and (width is None or height is None):
+        width, height = _reuse_label_layout_size(node, width, height)
 
     if node.node_type == "Label" and (width is None or height is None):
         if text_measurer is not None:
@@ -233,9 +256,11 @@ def _resolve_own_size(node, style, available_width, available_height, forced_wid
 
 
 def compute_layout(node, x, y, available_width, available_height, forced_width=None, forced_height=None, text_measurer=None, measure_pass=False):
-    style = normalize_style(node.style)
+    style = _get_node_style(node)
     display_value = style.get("display")
-    if isinstance(display_value, TEXT_TYPES) and display_value.strip().lower() == "none":
+    if display_value is not None and isinstance(display_value, TEXT_TYPES):
+        display_value = display_value.strip().lower()
+    if display_value == "none":
         node.layout = LayoutResult(
             x=x,
             y=y,
@@ -337,7 +362,7 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
     flow_items = []
     absolute_items = []
     for child in node.children:
-        child_style = normalize_style(child.style)
+        child_style = _get_node_style(child)
         c_min_w, c_max_w, c_min_h, c_max_h = _resolve_min_max(child_style, content_width, content_height)
 
         c_margin_top, c_margin_right, c_margin_bottom, c_margin_left = parse_box(
@@ -347,7 +372,10 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
         c_width = parse_length(child_style.get("width"), content_width)
         c_height = parse_length(child_style.get("height"), content_height)
 
-        if child.node_type == "Label":
+        if child.node_type == "Label" and (not measure_pass) and (c_width is None or c_height is None):
+            c_width, c_height = _reuse_label_layout_size(child, c_width, c_height)
+
+        if child.node_type == "Label" and (c_width is None or c_height is None):
             label_max_width = c_width
             if label_max_width is None:
                 label_max_width = c_max_w
