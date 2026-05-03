@@ -6,15 +6,23 @@ import mod.client.extraClientApi as clientApi
 
 
 class RuntimeLifecycleMixin(object):
+    def _perf_clock(self):
+        clock = getattr(time, 'clock', None)
+        if clock:
+            return clock()
+        return getattr(time, 'time')()
+
     def _log_render_stage_timings(self, component_ms, build_ms, diff_ms, layout_ms, native_ms):
         if not getattr(self, '_log_perf', False):
             return
         try:
-            print('=====> PyreactRuntime[perf] 1. 组件函数执行: %.3fms <=====' % component_ms)
-            print('=====> PyreactRuntime[perf] 2. 构建VNode树: %.3fms <=====' % build_ms)
-            print('=====> PyreactRuntime[perf] 3. Diff计算: %.3fms <=====' % diff_ms)
-            print('=====> PyreactRuntime[perf] 4. 布局计算: %.3fms <=====' % layout_ms)
-            print('=====> PyreactRuntime[perf] 5. 应用到原生UI: %.3fms <=====' % native_ms)
+            print('PyreactRuntime[perf] 1. 组件函数执行: %.3fms' % component_ms)
+            print('PyreactRuntime[perf] 2. 构建VNode树: %.3fms' % build_ms)
+            print('PyreactRuntime[perf] 3. Diff计算: %.3fms' % diff_ms)
+            print('PyreactRuntime[perf] 4. 布局计算: %.3fms' % layout_ms)
+            print('PyreactRuntime[perf] 5. 应用到原生UI: %.3fms' % native_ms)
+            for api_name, count, total_ms in self._get_native_api_perf_stats():
+                print('PyreactRuntime[perf][native] %s: count=%s total=%.3fms' % (api_name, count, total_ms))
         except Exception:
             pass
 
@@ -91,11 +99,12 @@ class RuntimeLifecycleMixin(object):
             build_ms = 0.0
 
             if element is None:
-                diff_start_time = time.time()
+                diff_start_time = self._perf_clock()
                 mutations = self._reconciler.reconcile(self._prev_vtree, None)
-                diff_ms = (time.time() - diff_start_time) * 1000.0
+                diff_ms = (self._perf_clock() - diff_start_time) * 1000.0
 
-                native_start_time = time.time()
+                self._reset_native_api_perf_stats()
+                native_start_time = self._perf_clock()
                 self._prev_vtree = None
                 self._prev_shadow_root = None
                 self._input_callbacks = {}
@@ -111,10 +120,11 @@ class RuntimeLifecycleMixin(object):
                 except Exception:
                     pass
                 self._clear_root_children()
-                native_ms = (time.time() - native_start_time) * 1000.0
+                native_ms = (self._perf_clock() - native_start_time) * 1000.0
                 self._log_render_stage_timings(component_ms, build_ms, diff_ms, 0.0, native_ms)
                 return
 
+            self._reset_native_api_perf_stats()
             width, height = self._get_root_size()
 
             new_vtree = self._tree_builder.build_tree(element)
@@ -122,15 +132,15 @@ class RuntimeLifecycleMixin(object):
             component_ms += tree_perf.get('component_exec_ms', 0.0)
             build_ms = tree_perf.get('build_only_ms', 0.0)
 
-            diff_start_time = time.time()
+            diff_start_time = self._perf_clock()
             mutations = self._reconciler.reconcile(self._prev_vtree, new_vtree)
-            diff_ms = (time.time() - diff_start_time) * 1000.0
+            diff_ms = (self._perf_clock() - diff_start_time) * 1000.0
 
-            layout_start_time = time.time()
+            layout_start_time = self._perf_clock()
             shadow_root = self._layout_engine.calculate(new_vtree, width, height)
-            layout_ms = (time.time() - layout_start_time) * 1000.0
+            layout_ms = (self._perf_clock() - layout_start_time) * 1000.0
 
-            native_start_time = time.time()
+            native_start_time = self._perf_clock()
             if self._can_apply_incremental(mutations):
                 self._apply_incremental_updates(shadow_root, mutations)
                 self._refresh_button_callbacks(shadow_root)
@@ -148,12 +158,13 @@ class RuntimeLifecycleMixin(object):
                     parent_abs_x=0.0,
                     parent_abs_y=0.0,
                 )
-            native_ms = (time.time() - native_start_time) * 1000.0
+            native_ms = (self._perf_clock() - native_start_time) * 1000.0
 
             try:
-                self._screen.UpdateScreen()
+                self._update_screen()
             except Exception:
                 pass
+            native_ms = (self._perf_clock() - native_start_time) * 1000.0
 
             self._log_render_stage_timings(component_ms, build_ms, diff_ms, layout_ms, native_ms)
 
@@ -189,7 +200,7 @@ class RuntimeLifecycleMixin(object):
 
     def _get_root_size(self):
         try:
-            size = self._screen.GetSize(self._root_path)
+            size = self._native_api_call('GetSize', self._screen.GetSize, self._root_path)
             if size and len(size) >= 2:
                 width = float(size[0])
                 height = float(size[1])
@@ -246,7 +257,7 @@ class RuntimeLifecycleMixin(object):
         children_parent_path = parent_control_path
         if current_node_type == "Scroll" and node_layout:
             content_path = self._get_scroll_content_path(parent_control_path)
-            content_control = self._screen.GetBaseUIControl(content_path)
+            content_control = self._get_base_ui_control(content_path)
             if content_control:
                 self._safe_set_size(content_path, node_layout.content_width, node_layout.content_height, content_control)
                 children_parent_path = content_path
@@ -277,7 +288,7 @@ class RuntimeLifecycleMixin(object):
 
             control_path = children_parent_path + '/' + child_name
             child_control_paths = control_path
-            control = self._screen.GetBaseUIControl(control_path)
+            control = self._get_base_ui_control(control_path)
 
             next_shadow_path = list(shadow_path)
             next_shadow_path.append(index)
@@ -287,16 +298,15 @@ class RuntimeLifecycleMixin(object):
             try:
                 if recreate_paths and recreate_paths.get(tuple(next_shadow_path)) and control:
                     try:
-                        self._screen.RemoveChildControl(control)
+                        self._remove_component_by_path(control_path)
                     except Exception:
                         pass
-                    self._drop_native_common_style_cache(control_path)
                     control = None
             except Exception:
                 pass
 
             if not control:
-                parent_control = self._screen.GetBaseUIControl(children_parent_path)
+                parent_control = self._get_base_ui_control(children_parent_path)
                 if not parent_control:
                     self._needs_render = True
                     return
@@ -306,7 +316,7 @@ class RuntimeLifecycleMixin(object):
                     self._clone(def_path, children_parent_path, child_name, False, False)
                 except Exception:
                     pass
-                control = self._screen.GetBaseUIControl(control_path)
+                control = self._get_base_ui_control(control_path)
                 if not control:
                     self._needs_render = True
                     return
@@ -382,7 +392,7 @@ class RuntimeLifecycleMixin(object):
     def _clear_root_children(self):
         self._drop_native_common_style_cache()
         try:
-            names = self._screen.GetChildrenName(self._root_path) or []
+            names = self._get_children_name(self._root_path) or []
         except Exception:
             names = []
 
@@ -391,9 +401,7 @@ class RuntimeLifecycleMixin(object):
                 continue
             child_path = self._root_path + "/" + name
             try:
-                child_control = self._screen.GetBaseUIControl(child_path)
-                if child_control:
-                    self._screen.RemoveChildControl(child_control)
+                self._remove_component_by_path(child_path)
             except Exception:
                 pass
 
@@ -412,7 +420,7 @@ class RuntimeLifecycleMixin(object):
         node_id = self._safe_text(getattr(node, "node_id", "node"))
         child_name = "%s%s_%s" % (self._CONTROL_NAME_PREFIX, node_id, sibling_index)
 
-        parent_control = self._screen.GetBaseUIControl(parent_path)
+        parent_control = self._get_base_ui_control(parent_path)
         if not parent_control:
             return
 
@@ -440,7 +448,7 @@ class RuntimeLifecycleMixin(object):
         children_parent_path = node_path
         if node_type == "Scroll" and layout:
             content_path = self._get_scroll_content_path(node_path)
-            content_control = self._screen.GetBaseUIControl(content_path)
+            content_control = self._get_base_ui_control(content_path)
             if content_control:
                 self._safe_set_size(content_path, layout.content_width, layout.content_height, content_control)
                 children_parent_path = content_path
@@ -466,7 +474,7 @@ class RuntimeLifecycleMixin(object):
 
         touch_path = scroll_node_path + "/scroll_touch/scroll_view"
         try:
-            touch_children = self._screen.GetChildrenName(touch_path) or []
+            touch_children = self._get_children_name(touch_path) or []
         except Exception:
             touch_children = []
         if touch_children:
@@ -474,7 +482,7 @@ class RuntimeLifecycleMixin(object):
 
         mouse_path = scroll_node_path + "/scroll_mouse/scroll_view"
         try:
-            mouse_children = self._screen.GetChildrenName(mouse_path) or []
+            mouse_children = self._get_children_name(mouse_path) or []
         except Exception:
             mouse_children = []
         if mouse_children:

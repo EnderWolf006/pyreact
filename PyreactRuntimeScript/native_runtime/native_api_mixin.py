@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import time
+
 from pyreact.components.color import Color
 
 
@@ -13,19 +15,87 @@ except NameError:
 class RuntimeNativeApiMixin(object):
     _TEXT_FONT_SIZE_BASE = 10.0
 
+    def _perf_clock(self):
+        clock = getattr(time, 'clock', None)
+        if clock:
+            return clock()
+        return getattr(time, 'time')()
+
+    def _reset_native_api_perf_stats(self):
+        if getattr(self, '_log_perf', False):
+            self._native_api_perf_stats = {}
+
+    def _native_api_call(self, api_name, fn, *args, **kwargs):
+        if not getattr(self, '_log_perf', False):
+            return fn(*args, **kwargs)
+
+        start_time = self._perf_clock()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            cost_ms = (self._perf_clock() - start_time) * 1000.0
+            stats = getattr(self, '_native_api_perf_stats', None)
+            if not isinstance(stats, dict):
+                stats = {}
+                self._native_api_perf_stats = stats
+            item = stats.get(api_name)
+            if not isinstance(item, dict):
+                item = {'count': 0, 'total_ms': 0.0}
+                stats[api_name] = item
+            item['count'] = item.get('count', 0) + 1
+            item['total_ms'] = item.get('total_ms', 0.0) + cost_ms
+
+    def _get_native_api_perf_stats(self):
+        stats = getattr(self, '_native_api_perf_stats', None)
+        if not isinstance(stats, dict):
+            return []
+
+        result = []
+        for api_name, item in stats.items():
+            try:
+                result.append((api_name, int(item.get('count', 0)), float(item.get('total_ms', 0.0))))
+            except Exception:
+                pass
+        result.sort(key=lambda x: x[2], reverse=True)
+        return result
+
+    def _get_base_ui_control(self, path):
+        return self._native_api_call('GetBaseUIControl', self._screen.GetBaseUIControl, path)
+
+    def _get_children_name(self, parent_path):
+        return self._native_api_call('GetChildrenName', self._screen.GetChildrenName, parent_path)
+
+    def _update_screen(self):
+        return self._native_api_call('UpdateScreen', self._screen.UpdateScreen)
+
+    def _remove_component(self, component_path, parent_path):
+        return self._native_api_call('RemoveComponent', self._screen.RemoveComponent, component_path, parent_path)
+
+    def _remove_component_by_path(self, component_path):
+        safe_path = self._safe_text(component_path)
+        if not safe_path:
+            return None
+        pos = safe_path.rfind('/')
+        if pos <= 0:
+            parent_path = '/'
+        else:
+            parent_path = safe_path[:pos]
+        self._drop_native_common_style_cache(safe_path)
+        return self._remove_component(safe_path, parent_path)
+
     def _ensure_measure_label(self):
         measure_path = self._root_path + "/" + self._MEASURE_LABEL_NAME
         self._measure_label_path = measure_path
 
         control = None
         try:
-            control = self._screen.GetBaseUIControl(measure_path)
+            control = self._get_base_ui_control(measure_path)
         except Exception:
             control = None
 
         if not control:
             try:
-                root_control = self._screen.GetBaseUIControl(self._root_path)
+                root_control = self._get_base_ui_control(self._root_path)
             except Exception:
                 root_control = None
             if not root_control:
@@ -33,26 +103,26 @@ class RuntimeNativeApiMixin(object):
 
             def_name = "%s.%s" % (self._base_namespace, "textBase")
             try:
-                control = self._screen.CreateChildControl(def_name, self._MEASURE_LABEL_NAME, root_control, False)
+                control = self._native_api_call('CreateChildControl', self._screen.CreateChildControl, def_name, self._MEASURE_LABEL_NAME, root_control, False)
             except Exception:
                 control = None
             if not control:
                 return None
 
             try:
-                self._screen.UpdateScreen()
+                self._update_screen()
             except Exception:
                 pass
 
         self._safe_set_position(measure_path, -100000.0, -100000.0, control)
         try:
             if hasattr(control, "SetVisible"):
-                control.SetVisible(True)
+                self._native_api_call('SetVisible', control.SetVisible, True)
         except Exception:
             pass
         try:
             if hasattr(control, "SetAlpha"):
-                control.SetAlpha(0.0)
+                self._native_api_call('SetAlpha', control.SetAlpha, 0.0)
         except Exception:
             pass
         return control
@@ -87,13 +157,13 @@ class RuntimeNativeApiMixin(object):
         width = 0.0
         height = 0.0
         try:
-            size = label_control.GetSize()
+            size = self._native_api_call('GetSize', label_control.GetSize)
         except Exception:
             size = None
 
         if (not size) or len(size) < 2:
             try:
-                size = self._screen.GetSize(label_path)
+                size = self._native_api_call('GetSize', self._screen.GetSize, label_path)
             except Exception:
                 size = None
 
@@ -112,7 +182,7 @@ class RuntimeNativeApiMixin(object):
             width = 4.0 * font_scale
 
         try:
-            label_control.SetText("", True)
+            self._native_api_call('SetText', label_control.SetText, "", True)
         except Exception:
             self._safe_set_text(label_path, "", label_control)
         self._safe_set_position(label_path, -100000.0, -100000.0, label_control)
@@ -132,31 +202,33 @@ class RuntimeNativeApiMixin(object):
         try:
             if control and hasattr(control, "SetText"):
                 try:
-                    control.SetText(text+"1", True)
-                    control.SetText(text, True)
+                    self._native_api_call('SetText', control.SetText, text+"1", True)
+                    self._native_api_call('SetText', control.SetText, text, True)
                 except TypeError:
-                    control.SetText(text+"1")
-                    control.SetText(text)
+                    self._native_api_call('SetText', control.SetText, text+"1")
+                    self._native_api_call('SetText', control.SetText, text)
                 return
             try:
-                control.asLabel().SetText(text+"1", True)
-                control.asLabel().SetText(text, True)
+                label_control = self._native_api_call('asLabel', control.asLabel)
+                self._native_api_call('SetText', label_control.SetText, text+"1", True)
+                self._native_api_call('SetText', label_control.SetText, text, True)
             except TypeError:
-                control.asLabel().SetText(text+"1")
-                control.asLabel().SetText(text)
+                label_control = self._native_api_call('asLabel', control.asLabel)
+                self._native_api_call('SetText', label_control.SetText, text+"1")
+                self._native_api_call('SetText', label_control.SetText, text)
         except Exception:
             pass
 
     def _to_text_edit_box_control(self, control, path):
         if not control:
             try:
-                control = self._screen.GetBaseUIControl(path)
+                control = self._get_base_ui_control(path)
             except Exception:
                 control = None
 
         if control and hasattr(control, 'asTextEditBox'):
             try:
-                te = control.asTextEditBox()
+                te = self._native_api_call('asTextEditBox', control.asTextEditBox)
                 if te:
                     return te
             except Exception:
@@ -168,7 +240,7 @@ class RuntimeNativeApiMixin(object):
         if not te:
             return None
         try:
-            return te.GetEditText()
+            return self._native_api_call('GetEditText', te.GetEditText)
         except Exception:
             return None
 
@@ -177,7 +249,7 @@ class RuntimeNativeApiMixin(object):
         if not te:
             return False
         try:
-            te.SetEditText(self._safe_text(text))
+            self._native_api_call('SetEditText', te.SetEditText, self._safe_text(text))
             return True
         except Exception:
             return False
@@ -193,7 +265,7 @@ class RuntimeNativeApiMixin(object):
         if max_len <= 0:
             return False
         try:
-            te.SetEditTextMaxLength(max_len)
+            self._native_api_call('SetEditTextMaxLength', te.SetEditTextMaxLength, max_len)
             return True
         except Exception:
             return False
@@ -230,16 +302,16 @@ class RuntimeNativeApiMixin(object):
 
         if control and hasattr(control, "asImage"):
             try:
-                image_control = control.asImage()
+                image_control = self._native_api_call('asImage', control.asImage)
                 if image_control and hasattr(image_control, "SetSprite"):
-                    ret = image_control.SetSprite(sprite_text)
+                    ret = self._native_api_call('SetSprite', image_control.SetSprite, sprite_text)
                     return ret is not False
             except Exception:
                 pass
 
         if control and hasattr(control, "SetSprite"):
             try:
-                ret = control.SetSprite(sprite_text)
+                ret = self._native_api_call('SetSprite', control.SetSprite, sprite_text)
                 return ret is not False
             except Exception:
                 pass
@@ -254,7 +326,7 @@ class RuntimeNativeApiMixin(object):
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "SetSpriteColor"):
             try:
-                image_control.SetSpriteColor(rgb)
+                self._native_api_call('SetSpriteColor', image_control.SetSpriteColor, rgb)
             except Exception:
                 pass
 
@@ -262,7 +334,7 @@ class RuntimeNativeApiMixin(object):
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "SetSpriteGray"):
             try:
-                image_control.SetSpriteGray(bool(gray))
+                self._native_api_call('SetSpriteGray', image_control.SetSpriteGray, bool(gray))
             except Exception:
                 pass
 
@@ -277,7 +349,7 @@ class RuntimeNativeApiMixin(object):
         if r > 1.0:
             r = 1.0
         try:
-            image_control.SetSpriteClipRatio(r)
+            self._native_api_call('SetSpriteClipRatio', image_control.SetSpriteClipRatio, r)
         except Exception:
             pass
 
@@ -285,7 +357,7 @@ class RuntimeNativeApiMixin(object):
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "SetSpriteUV"):
             try:
-                image_control.SetSpriteUV(uv)
+                self._native_api_call('SetSpriteUV', image_control.SetSpriteUV, uv)
             except Exception:
                 pass
 
@@ -293,7 +365,7 @@ class RuntimeNativeApiMixin(object):
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "SetSpriteUVSize"):
             try:
-                image_control.SetSpriteUVSize(uv_size)
+                self._native_api_call('SetSpriteUVSize', image_control.SetSpriteUVSize, uv_size)
             except Exception:
                 pass
 
@@ -315,12 +387,12 @@ class RuntimeNativeApiMixin(object):
         item_control = self._to_item_renderer_control(control, path)
         if item_control and hasattr(item_control, 'SetUiItem'):
             try:
-                return item_control.SetUiItem(item_name, aux_number, enchant_flag, payload_user_data) is not False
+                return self._native_api_call('SetUiItem', item_control.SetUiItem, item_name, aux_number, enchant_flag, payload_user_data) is not False
             except Exception:
                 pass
 
         try:
-            return self._screen.SetUiItem(path, item_name, aux_number, enchant_flag, payload_user_data) is not False
+            return self._native_api_call('SetUiItem', self._screen.SetUiItem, path, item_name, aux_number, enchant_flag, payload_user_data) is not False
         except Exception:
             return False
 
@@ -328,7 +400,7 @@ class RuntimeNativeApiMixin(object):
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "SetImageAdaptionType"):
             try:
-                image_control.SetImageAdaptionType(adaption_type, adaption_data)
+                self._native_api_call('SetImageAdaptionType', image_control.SetImageAdaptionType, adaption_type, adaption_data)
             except Exception:
                 pass
 
@@ -336,7 +408,7 @@ class RuntimeNativeApiMixin(object):
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "Rotate"):
             try:
-                image_control.Rotate(angle)
+                self._native_api_call('Rotate', image_control.Rotate, angle)
             except Exception:
                 pass
 
@@ -344,23 +416,23 @@ class RuntimeNativeApiMixin(object):
         image_control = self._to_image_control(control, path)
         if image_control and hasattr(image_control, "SetRotatePivot"):
             try:
-                image_control.SetRotatePivot(pivot)
+                self._native_api_call('SetRotatePivot', image_control.SetRotatePivot, pivot)
             except Exception:
                 pass
 
     def _to_image_control(self, control, path):
         if control and hasattr(control, "asImage"):
             try:
-                image_control = control.asImage()
+                image_control = self._native_api_call('asImage', control.asImage)
                 if image_control:
                     return image_control
             except Exception:
                 pass
 
         try:
-            base_control = self._screen.GetBaseUIControl(path)
+            base_control = self._get_base_ui_control(path)
             if base_control and hasattr(base_control, "asImage"):
-                return base_control.asImage()
+                return self._native_api_call('asImage', base_control.asImage)
         except Exception:
             pass
         return None
@@ -368,16 +440,16 @@ class RuntimeNativeApiMixin(object):
     def _to_item_renderer_control(self, control, path):
         if control and hasattr(control, 'asItemRenderer'):
             try:
-                item_control = control.asItemRenderer()
+                item_control = self._native_api_call('asItemRenderer', control.asItemRenderer)
                 if item_control:
                     return item_control
             except Exception:
                 pass
 
         try:
-            base_control = self._screen.GetBaseUIControl(path)
+            base_control = self._get_base_ui_control(path)
             if base_control and hasattr(base_control, 'asItemRenderer'):
-                return base_control.asItemRenderer()
+                return self._native_api_call('asItemRenderer', base_control.asItemRenderer)
         except Exception:
             pass
         return None
@@ -385,16 +457,16 @@ class RuntimeNativeApiMixin(object):
     def _to_label_control(self, control, path):
         if control and hasattr(control, "asLabel"):
             try:
-                label_control = control.asLabel()
+                label_control = self._native_api_call('asLabel', control.asLabel)
                 if label_control:
                     return label_control
             except Exception:
                 pass
 
         try:
-            base_control = self._screen.GetBaseUIControl(path)
+            base_control = self._get_base_ui_control(path)
             if base_control and hasattr(base_control, "asLabel"):
-                return base_control.asLabel()
+                return self._native_api_call('asLabel', base_control.asLabel)
         except Exception:
             pass
         return None
@@ -406,16 +478,16 @@ class RuntimeNativeApiMixin(object):
 
         if control and hasattr(control, "asLabel"):
             try:
-                label_control = control.asLabel()
+                label_control = self._native_api_call('asLabel', control.asLabel)
                 if label_control and hasattr(label_control, "SetTextColor"):
-                    label_control.SetTextColor(rgb)
+                    self._native_api_call('SetTextColor', label_control.SetTextColor, rgb)
                     return
             except Exception:
                 pass
 
         if control and hasattr(control, "SetTextColor"):
             try:
-                control.SetTextColor(rgb)
+                self._native_api_call('SetTextColor', control.SetTextColor, rgb)
                 return
             except Exception:
                 pass
@@ -423,7 +495,7 @@ class RuntimeNativeApiMixin(object):
         try:
             if hasattr(self._screen, "SetTextColor"):
                 rgba = (rgb[0], rgb[1], rgb[2], 1.0)
-                self._screen.SetTextColor(path, rgba)
+                self._native_api_call('SetTextColor', self._screen.SetTextColor, path, rgba)
         except Exception:
             pass
 
@@ -431,7 +503,7 @@ class RuntimeNativeApiMixin(object):
         label_control = self._to_label_control(control, path)
         if label_control and hasattr(label_control, "SetTextFontSize"):
             try:
-                label_control.SetTextFontSize(scale)
+                self._native_api_call('SetTextFontSize', label_control.SetTextFontSize, scale)
             except Exception:
                 pass
 
@@ -439,7 +511,7 @@ class RuntimeNativeApiMixin(object):
         label_control = self._to_label_control(control, path)
         if label_control and hasattr(label_control, "SetTextAlignment"):
             try:
-                label_control.SetTextAlignment(alignment)
+                self._native_api_call('SetTextAlignment', label_control.SetTextAlignment, alignment)
             except Exception:
                 pass
 
@@ -447,7 +519,7 @@ class RuntimeNativeApiMixin(object):
         label_control = self._to_label_control(control, path)
         if label_control and hasattr(label_control, "SetTextLinePadding"):
             try:
-                label_control.SetTextLinePadding(text_line_padding)
+                self._native_api_call('SetTextLinePadding', label_control.SetTextLinePadding, text_line_padding)
             except Exception:
                 pass
 
@@ -457,9 +529,9 @@ class RuntimeNativeApiMixin(object):
             return
         try:
             if enabled and hasattr(label_control, "EnableTextShadow"):
-                label_control.EnableTextShadow()
+                self._native_api_call('EnableTextShadow', label_control.EnableTextShadow)
             elif (not enabled) and hasattr(label_control, "DisableTextShadow"):
-                label_control.DisableTextShadow()
+                self._native_api_call('DisableTextShadow', label_control.DisableTextShadow)
         except Exception:
             pass
 
@@ -469,20 +541,20 @@ class RuntimeNativeApiMixin(object):
             if control:
                 used_full = False
                 if hasattr(control, "SetFullPosition"):
-                    ret_x = control.SetFullPosition(axis="x", paramDict={"absoluteValue": float(pos[0]), "followType": "none", "relativeValue": 0.0})
-                    ret_y = control.SetFullPosition(axis="y", paramDict={"absoluteValue": float(pos[1]), "followType": "none", "relativeValue": 0.0})
+                    ret_x = self._native_api_call('SetFullPosition', control.SetFullPosition, axis="x", paramDict={"absoluteValue": float(pos[0]), "followType": "none", "relativeValue": 0.0})
+                    ret_y = self._native_api_call('SetFullPosition', control.SetFullPosition, axis="y", paramDict={"absoluteValue": float(pos[1]), "followType": "none", "relativeValue": 0.0})
                     used_full = bool(ret_x) and bool(ret_y)
 
                 if hasattr(control, "SetPosition"):
                     try:
-                        control.SetPosition(pos)
+                        self._native_api_call('SetPosition', control.SetPosition, pos)
                     except TypeError:
-                        control.SetPosition(float(pos[0]), float(pos[1]))
+                        self._native_api_call('SetPosition', control.SetPosition, float(pos[0]), float(pos[1]))
                     except Exception:
                         if not used_full:
                             raise
                 return
-            self._screen.SetPosition(path, pos)
+            self._native_api_call('SetPosition', self._screen.SetPosition, path, pos)
         except Exception:
             pass
 
@@ -498,42 +570,42 @@ class RuntimeNativeApiMixin(object):
             if control:
                 used_full = False
                 if hasattr(control, "SetFullSize"):
-                    ret_w = control.SetFullSize(axis="x", paramDict={"absoluteValue": float(size[0]), "followType": "none", "relativeValue": 0.0})
-                    ret_h = control.SetFullSize(axis="y", paramDict={"absoluteValue": float(size[1]), "followType": "none", "relativeValue": 0.0})
+                    ret_w = self._native_api_call('SetFullSize', control.SetFullSize, axis="x", paramDict={"absoluteValue": float(size[0]), "followType": "none", "relativeValue": 0.0})
+                    ret_h = self._native_api_call('SetFullSize', control.SetFullSize, axis="y", paramDict={"absoluteValue": float(size[1]), "followType": "none", "relativeValue": 0.0})
                     used_full = bool(ret_w) and bool(ret_h)
 
                 if hasattr(control, "SetSize"):
                     try:
-                        control.SetSize(size, True)
+                        self._native_api_call('SetSize', control.SetSize, size, True)
                     except TypeError:
-                        control.SetSize(size)
+                        self._native_api_call('SetSize', control.SetSize, size)
                     except Exception:
                         if not used_full:
                             raise
                 return
-            self._screen.SetSize(path, size, True)
+            self._native_api_call('SetSize', self._screen.SetSize, path, size, True)
         except Exception:
             pass
 
     def _safe_set_visible(self, path, visible, control=None):
         try:
             if control and hasattr(control, "SetVisible"):
-                control.SetVisible(bool(visible))
+                self._native_api_call('SetVisible', control.SetVisible, bool(visible))
                 return
-            base = self._screen.GetBaseUIControl(path)
+            base = self._get_base_ui_control(path)
             if base and hasattr(base, "SetVisible"):
-                base.SetVisible(bool(visible))
+                self._native_api_call('SetVisible', base.SetVisible, bool(visible))
         except Exception:
             pass
 
     def _safe_set_alpha(self, path, alpha, control=None):
         try:
             if control and hasattr(control, "SetAlpha"):
-                control.SetAlpha(float(alpha))
+                self._native_api_call('SetAlpha', control.SetAlpha, float(alpha))
                 return
-            base = self._screen.GetBaseUIControl(path)
+            base = self._get_base_ui_control(path)
             if base and hasattr(base, "SetAlpha"):
-                base.SetAlpha(float(alpha))
+                self._native_api_call('SetAlpha', base.SetAlpha, float(alpha))
         except Exception:
             pass
 
@@ -545,29 +617,29 @@ class RuntimeNativeApiMixin(object):
 
         try:
             if control and hasattr(control, "SetLayer"):
-                control.SetLayer(layer_value)
+                self._native_api_call('SetLayer', control.SetLayer, layer_value)
                 return
         except Exception:
             pass
 
         try:
-            base = self._screen.GetBaseUIControl(path)
+            base = self._get_base_ui_control(path)
             if base and hasattr(base, "SetLayer"):
-                base.SetLayer(layer_value)
+                self._native_api_call('SetLayer', base.SetLayer, layer_value)
                 return
         except Exception:
             pass
 
         try:
             if hasattr(self._screen, "SetLayer"):
-                self._screen.SetLayer(path, layer_value)
+                self._native_api_call('SetLayer', self._screen.SetLayer, path, layer_value)
         except Exception:
             pass
     
     def _clone(self, componentPath, parentPath, newName, syncRefresh, forceUpdate):
         try:
-            self._screen.Clone(componentPath, parentPath, newName, syncRefresh, forceUpdate)
-            return self._screen.GetBaseUIControl(parentPath + "/" + newName)
+            self._native_api_call('Clone', self._screen.Clone, componentPath, parentPath, newName, syncRefresh, forceUpdate)
+            return self._get_base_ui_control(parentPath + "/" + newName)
         except Exception:
             pass
 

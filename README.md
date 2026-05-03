@@ -111,7 +111,7 @@ class MyScreen(ScreenNode):
 
 `render_app(..., bind={'root': '/root', ...})` 默认会把控件挂载到一个名为 `root` 的容器节点下。
 
-如需打印每次更新的 5 段性能日志（组件执行 / VNode 构建 / Diff / 布局 / 原生 UI 应用），可传入 `log_perf=True`。
+如需打印每次更新的性能日志，可传入 `log_perf=True`：日志会输出组件执行 / VNode 构建 / Diff / 布局 / 原生 UI 应用耗时，并按总耗时降序列出本次更新中各 native API 的调用次数和总耗时。
 
 下面是一个最小 Screen JSON（同样可直接参考 `JsonUI/PyreactExample.json`）：
 

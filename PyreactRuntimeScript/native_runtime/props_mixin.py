@@ -120,7 +120,7 @@ class RuntimePropsMixin(object):
         control_obj = node_control
         if not control_obj:
             try:
-                control_obj = self._screen.GetBaseUIControl(node_path)
+                control_obj = self._get_base_ui_control(node_path)
             except Exception:
                 control_obj = None
         try:
@@ -335,7 +335,7 @@ class RuntimePropsMixin(object):
 
         for state in self._BUTTON_STATES:
             slot_path = button_path + "/" + state
-            slot_control = self._screen.GetBaseUIControl(slot_path)
+            slot_control = self._get_base_ui_control(slot_path)
             if not slot_control:
                 continue
 
@@ -628,23 +628,23 @@ class RuntimePropsMixin(object):
             self._safe_set_rotate_pivot(node_path, rotate_pivot, node_control)
 
     def _bind_button_click(self, button_path, node_id):
-        control = self._screen.GetBaseUIControl(button_path)
+        control = self._get_base_ui_control(button_path)
         if not control:
             return
         try:
-            button_control = control.asButton()
+            button_control = self._native_api_call('asButton', control.asButton)
             if not button_control:
                 return
 
             try:
-                button_control.AddTouchEventParams({"isSwallow":True})
+                self._native_api_call('AddTouchEventParams', button_control.AddTouchEventParams, {"isSwallow":True})
             except Exception:
                 pass
 
             def _callback(args=None):
                 self._dispatch_click(node_id)
 
-            button_control.SetButtonTouchUpCallback(_callback)
+            self._native_api_call('SetButtonTouchUpCallback', button_control.SetButtonTouchUpCallback, _callback)
         except Exception:
             pass
 
@@ -655,7 +655,7 @@ class RuntimePropsMixin(object):
 
     def _clear_prefixed_children(self, parent_path):
         try:
-            names = self._screen.GetChildrenName(parent_path) or []
+            names = self._get_children_name(parent_path) or []
         except Exception:
             names = []
 
@@ -664,10 +664,7 @@ class RuntimePropsMixin(object):
                 continue
             child_path = parent_path + "/" + name
             try:
-                child_control = self._screen.GetBaseUIControl(child_path)
-                if child_control:
-                    self._screen.RemoveChildControl(child_control)
-                    self._drop_native_common_style_cache(child_path)
+                self._remove_component_by_path(child_path)
             except Exception:
                 pass
 
@@ -681,7 +678,7 @@ class RuntimePropsMixin(object):
                 pass
 
         try:
-            names = self._screen.GetChildrenName(parent_path) or []
+            names = self._get_children_name(parent_path) or []
         except Exception:
             names = []
 
@@ -694,9 +691,6 @@ class RuntimePropsMixin(object):
 
             child_path = parent_path + "/" + safe_name
             try:
-                child_control = self._screen.GetBaseUIControl(child_path)
-                if child_control:
-                    self._screen.RemoveChildControl(child_control)
-                    self._drop_native_common_style_cache(child_path)
+                self._remove_component_by_path(child_path)
             except Exception:
                 pass
