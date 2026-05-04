@@ -49,3 +49,9 @@ class ButtonState(object):
     default = "default"
     hover = "hover"
     pressed = "pressed"
+
+
+class RenderType(object):
+    entity = "entity"
+    skeleton = "skeleton"
+    blockGeometry = "blockGeometry"

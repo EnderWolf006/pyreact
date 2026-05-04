@@ -68,6 +68,11 @@ class RuntimePropsMixin(object):
             self._apply_input_props(node_path, node_id, props, node_control)
             return
 
+        if node_type == "PaperDoll":
+            paper_doll_props = self._extract_paper_doll_props(props)
+            self._apply_paper_doll_native_props(node_path, paper_doll_props, node_control)
+            return
+
     def _get_native_common_style_cache(self):
         cache = getattr(self, '_native_common_style_cache', None)
         if not isinstance(cache, dict):
@@ -87,11 +92,13 @@ class RuntimePropsMixin(object):
                 getattr(self, '_native_adapter_cache', None),
                 getattr(self, '_native_label_props_cache', None),
                 getattr(self, '_native_image_props_cache', None),
+                getattr(self, '_native_paper_doll_props_cache', None),
                 getattr(self, '_native_geometry_cache', None),
                 getattr(self, '_button_bind_cache', None),
                 getattr(self, '_button_slot_cache', None),
                 getattr(self, '_pending_button_binds', None),
                 getattr(self, '_scroll_path_cache', None),
+                getattr(self, '_button_slot_base_alpha_cache', None),
             ):
                 if isinstance(cache_obj, dict):
                     scanned += len(cache_obj)
@@ -102,11 +109,13 @@ class RuntimePropsMixin(object):
                 self._native_adapter_cache = {}
                 self._native_label_props_cache = {}
                 self._native_image_props_cache = {}
+                self._native_paper_doll_props_cache = {}
                 self._native_geometry_cache = {}
                 self._button_bind_cache = {}
                 self._button_slot_cache = {}
                 self._pending_button_binds = {}
                 self._scroll_path_cache = {}
+                self._button_slot_base_alpha_cache = {}
             except Exception:
                 pass
             self._record_native_commit_perf('cache_drop_calls')
@@ -140,11 +149,13 @@ class RuntimePropsMixin(object):
             (getattr(self, '_native_adapter_cache', None), True),
             (getattr(self, '_native_label_props_cache', None), False),
             (getattr(self, '_native_image_props_cache', None), False),
+            (getattr(self, '_native_paper_doll_props_cache', None), False),
             (getattr(self, '_native_geometry_cache', None), False),
             (getattr(self, '_button_bind_cache', None), False),
             (getattr(self, '_button_slot_cache', None), False),
             (getattr(self, '_pending_button_binds', None), False),
             (getattr(self, '_scroll_path_cache', None), False),
+            (getattr(self, '_button_slot_base_alpha_cache', None), False),
         )
         for cache_obj, is_adapter_cache in cache_items:
             if not isinstance(cache_obj, dict):
@@ -447,6 +458,8 @@ class RuntimePropsMixin(object):
                 slot_cache = {}
                 self._button_slot_cache = slot_cache
             if slot_cache.get(slot_path) == slot_signature:
+                if all_full_image:
+                    self._restore_button_slot_image_alpha(state_element, slot_path, slot_control)
                 continue
 
             self._safe_set_position(slot_path, 0, 0, slot_control)
@@ -514,10 +527,21 @@ class RuntimePropsMixin(object):
             style = {}
 
         self._apply_common_style_props(slot_path, style, props, slot_control)
-        if style.get('opacity') is None and props.get('color') is None:
-            self._safe_set_alpha(slot_path, 1.0, slot_control)
+        self._cache_button_slot_base_alpha(slot_path, self._resolve_common_alpha(style, props))
         image_props = self._extract_image_props(props)
         self._apply_image_style_props(slot_path, image_props, slot_control)
+
+    def _restore_button_slot_image_alpha(self, state_element, slot_path, slot_control):
+        props = getattr(state_element, 'props', None) or {}
+        if not isinstance(props, dict):
+            props = {}
+        style = props.get('style')
+        if not isinstance(style, dict):
+            style = getattr(state_element, 'style', None)
+        if not isinstance(style, dict):
+            style = {}
+        self._apply_common_style_props(slot_path, style, props, slot_control)
+        self._cache_button_slot_base_alpha(slot_path, self._resolve_common_alpha(style, props))
 
     def _make_button_slot_image_transparent(self, slot_path, slot_control):
         try:
@@ -526,7 +550,45 @@ class RuntimePropsMixin(object):
                 del cache[slot_path]
         except Exception:
             pass
+        try:
+            slot_cache = getattr(self, '_button_slot_cache', None)
+            if isinstance(slot_cache, dict) and slot_path in slot_cache:
+                del slot_cache[slot_path]
+        except Exception:
+            pass
+        try:
+            alpha_cache = getattr(self, '_button_slot_base_alpha_cache', None)
+            if isinstance(alpha_cache, dict) and slot_path in alpha_cache:
+                del alpha_cache[slot_path]
+        except Exception:
+            pass
         self._safe_set_alpha(slot_path, 0.0, slot_control)
+
+    def _cache_button_slot_base_alpha(self, slot_path, alpha):
+        cache = getattr(self, '_button_slot_base_alpha_cache', None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._button_slot_base_alpha_cache = cache
+        cache[slot_path] = alpha
+
+    def _resolve_common_alpha(self, style, props):
+        if not isinstance(style, dict):
+            style = {}
+        if not isinstance(props, dict):
+            props = {}
+        opacity = style.get('opacity')
+        color = props.get('color')
+        base_opacity = self._to_float(opacity, 1.0) if opacity is not None else 1.0
+        try:
+            color_alpha = color.alpha if color is not None else 1.0
+        except Exception:
+            color_alpha = 1.0
+        final_alpha = base_opacity * color_alpha
+        if final_alpha < 0.0:
+            final_alpha = 0.0
+        elif final_alpha > 1.0:
+            final_alpha = 1.0
+        return final_alpha
 
     def _record_button_slot_perf(self, mode):
         if not getattr(self, '_log_perf', False):
@@ -765,6 +827,92 @@ class RuntimePropsMixin(object):
             node_control,
         )
 
+    def _extract_paper_doll_props(self, props):
+        result = {}
+        if not isinstance(props, dict):
+            return result
+        for key in (
+            'renderType',
+            'entityId',
+            'entityIdentifier',
+            'skeletonModelName',
+            'animation',
+            'animationLooped',
+            'blockGeometryModelName',
+            'scale',
+            'renderDepth',
+            'initRotX',
+            'initRotY',
+            'initRotZ',
+            'molangDict',
+            'rotationAxis',
+            'lightDirection',
+        ):
+            if props.get(key) is not None:
+                result[key] = props.get(key)
+        return result
+
+    def _apply_paper_doll_native_props(self, node_path, paper_doll_props, node_control=None):
+        if not isinstance(paper_doll_props, dict):
+            return
+        control = self._to_paper_doll_control(node_control, node_path)
+        if not control:
+            return
+
+        params = self._build_paper_doll_params(paper_doll_props)
+        signature = self._make_props_signature(params)
+        cache = getattr(self, '_native_paper_doll_props_cache', None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._native_paper_doll_props_cache = cache
+        if cache.get(node_path) == signature:
+            return
+
+        render_type = self._safe_text(paper_doll_props.get('renderType') or 'entity')
+        ok = False
+        if render_type == 'skeleton':
+            if hasattr(control, 'RenderSkeletonModel'):
+                ok = self._native_api_call('RenderSkeletonModel', control.RenderSkeletonModel, params)
+        elif render_type == 'blockGeometry':
+            if hasattr(control, 'RenderBlockGeometryModel'):
+                ok = self._native_api_call('RenderBlockGeometryModel', control.RenderBlockGeometryModel, params)
+        else:
+            if hasattr(control, 'RenderEntity'):
+                ok = self._native_api_call('RenderEntity', control.RenderEntity, params)
+        if ok is not False:
+            cache[node_path] = signature
+
+    def _build_paper_doll_params(self, props):
+        params = {}
+        key_map = {
+            'entityId': 'entity_id',
+            'entityIdentifier': 'entity_identifier',
+            'skeletonModelName': 'skeleton_model_name',
+            'animation': 'animation',
+            'animationLooped': 'animation_looped',
+            'blockGeometryModelName': 'block_geometry_model_name',
+            'scale': 'scale',
+            'renderDepth': 'render_depth',
+            'initRotX': 'init_rot_x',
+            'initRotY': 'init_rot_y',
+            'initRotZ': 'init_rot_z',
+            'molangDict': 'molang_dict',
+            'rotationAxis': 'rotation_axis',
+            'lightDirection': 'light_direction',
+        }
+        for key, native_key in key_map.items():
+            if props.get(key) is None:
+                continue
+            value = props.get(key)
+            if key in ('rotationAxis', 'lightDirection'):
+                parsed = self._parse_vec3(value)
+                if parsed is not None:
+                    value = parsed
+                else:
+                    continue
+            params[native_key] = value
+        return params
+
     def _apply_common_style_props(self, node_path, style, props, node_control):
         if not isinstance(style, dict):
             return
@@ -966,6 +1114,11 @@ class RuntimePropsMixin(object):
         remove_paths = []
         for name in names:
             safe_name = self._safe_text(name)
+            try:
+                if self._is_exit_animation_ghost_child_name(safe_name):
+                    continue
+            except Exception:
+                pass
             if not safe_name.startswith(self._CONTROL_NAME_PREFIX):
                 continue
             child_path = parent_path + "/" + safe_name
@@ -976,6 +1129,10 @@ class RuntimePropsMixin(object):
 
         for child_path in remove_paths:
             try:
+                try:
+                    self._remove_animation_state_for_path(child_path)
+                except Exception:
+                    pass
                 self._remove_component_by_path(child_path, skip_cache_drop=True)
                 self._record_native_commit_perf('remove_component')
             except Exception:
@@ -998,6 +1155,11 @@ class RuntimePropsMixin(object):
         remove_paths = []
         for name in names:
             safe_name = self._safe_text(name)
+            try:
+                if self._is_exit_animation_ghost_child_name(safe_name):
+                    continue
+            except Exception:
+                pass
             if not safe_name.startswith(self._CONTROL_NAME_PREFIX):
                 continue
             if safe_name in expected:
@@ -1006,11 +1168,18 @@ class RuntimePropsMixin(object):
             child_path = parent_path + "/" + safe_name
             remove_paths.append(child_path)
 
-        if remove_paths:
-            self._drop_native_common_style_cache_many(remove_paths)
-
         for child_path in remove_paths:
             try:
+                if self._start_exit_animation_for_existing_path(child_path):
+                    continue
+            except Exception:
+                pass
+            try:
+                self._drop_native_common_style_cache(child_path)
+                try:
+                    self._remove_animation_state_for_path(child_path)
+                except Exception:
+                    pass
                 self._remove_component_by_path(child_path, skip_cache_drop=True)
                 self._record_native_commit_perf('remove_component')
             except Exception:

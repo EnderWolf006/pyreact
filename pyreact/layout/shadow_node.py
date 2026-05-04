@@ -1,4 +1,4 @@
-# pyright: reportMissingParameterType=false, reportUnknownParameterType=false, reportImplicitOverride=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
+# pyright: reportMissingParameterType=false, reportUnknownParameterType=false, reportImplicitOverride=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnannotatedClassAttribute=false, reportUnknownVariableType=false
 
 class LayoutResult(object):
     def __init__(self,
@@ -15,9 +15,17 @@ class LayoutResult(object):
                  margin_bottom=0.0,
                  margin_left=0.0,
                  content_width=0.0,
-                 content_height=0.0):
+                 content_height=0.0,
+                 flow_x=None,
+                 flow_y=None):
         self.x = float(x)
         self.y = float(y)
+        if flow_x is None:
+            flow_x = x
+        if flow_y is None:
+            flow_y = y
+        self.flow_x = float(flow_x)
+        self.flow_y = float(flow_y)
         self.width = float(width)
         self.height = float(height)
 

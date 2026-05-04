@@ -5,9 +5,10 @@ from pyreact.components.enums import ButtonState
 from PyreactRuntimeScript.native_runtime.lifecycle_mixin import RuntimeLifecycleMixin
 from PyreactRuntimeScript.native_runtime.props_mixin import RuntimePropsMixin
 from PyreactRuntimeScript.native_runtime.native_api_mixin import RuntimeNativeApiMixin
+from PyreactRuntimeScript.native_runtime.animation_mixin import RuntimeAnimationMixin
 
 
-class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNativeApiMixin):
+class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNativeApiMixin, RuntimeAnimationMixin):
     """Render pyreact component tree into NetEase ScreenNode controls."""
 
     _CONTROL_NAME_PREFIX = "pyreact_"
@@ -20,6 +21,7 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         "Button": "buttonBase",
         "Input": "inputBase",
         "Scroll": "scrollBase",
+        "PaperDoll": "paperDollBase",
     }
     _DEFAULT_WHITE_TEXTURE = "textures/ui/white_bg"
 
@@ -60,13 +62,19 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         self._native_adapter_cache = {}
         self._native_label_props_cache = {}
         self._native_image_props_cache = {}
+        self._native_paper_doll_props_cache = {}
         self._native_geometry_cache = {}
         self._button_bind_cache = {}
         self._button_slot_cache = {}
+        self._button_slot_base_alpha_cache = {}
         self._button_slot_perf_stats = {}
         self._native_commit_perf_stats = {}
         self._pending_button_binds = {}
         self._scroll_path_cache = {}
+        self._animation_states = {}
+        self._pending_animation_removals = {}
+        self._force_layout_next_render = False
+        self._last_root_size = None
         self._input_edit_bound = False
         self._input_edit_handler_method_name = None
 
@@ -80,3 +88,4 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         self._debug_input = ("example" in app_label)
 
         self._init_pyreact_runtime()
+        self._init_animation_runtime_state()

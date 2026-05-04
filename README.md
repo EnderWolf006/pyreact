@@ -8,8 +8,10 @@
 
 - **函数式组件**：通过 `@Component` 声明组件
 - **Hooks**：`useState` / `useEffect` / `useMemo` / `useCallback` / `useRef`
-- **基础控件**（Primitives）：`Panel` / `Image` / `Label` / `Button` / `Input` / `Scroll`
-- **布局**：Flexbox 风格布局（子集），支持 `width/height/padding/margin/flexDirection/justifyContent/alignItems/...`
+- **基础控件**（Primitives）：`Panel` / `Image` / `Label` / `Item` / `PaperDoll` / `Button` / `Input` / `Scroll`
+- **复合组件**：`FilledButton` / `ImageButton` / `Animated`
+- **动画描述**：`Animation` / `Transition` / `Easing` 与 `fadeIn`、`slideInUp` 等预设，运行时按当前扁平渲染链路驱动 `opacity` / `translateX` / `translateY` / `width` / `height`
+- **布局**：Flexbox 风格布局（子集），支持 `width/height/padding/margin/flexDirection/justifyContent/alignItems/position/...`
 - **运行时桥接**：将组件树渲染到 NetEase UI（通过 Runtime 系统统一管理挂载/卸载/重渲染）
 
 
@@ -133,7 +135,75 @@ native API 明细默认对应“应用到原生UI”阶段；`5.1` / `5.2` 会�
 }
 ```
 
-同时需要在资源包 `ui/` 里提供 `PyreactBase.json`，作为运行时创建控件时的基础 type_def（`panelBase` / `imageBase` / `textBase` / `buttonBase` / `inputBase` / `scrollBase`）。
+同时需要在资源包 `ui/` 里提供 `PyreactBase.json`，作为运行时创建控件时的基础 type_def（`panelBase` / `imageBase` / `textBase` / `itemBase` / `paperDollBase` / `buttonBase` / `inputBase` / `scrollBase`）。
+
+## 公开组件补充
+
+## 布局与定位
+
+未设置 `position` 时等同于 `Position.relative`。相对定位节点仍占据原本的 Flex 流位置，然后只在视觉上按 `top/right/bottom/left` 偏移；同一轴同时设置时，`left` 优先于 `right`，`top` 优先于 `bottom`。
+
+```python
+from pyreact import Image, Position, Style
+
+Image(style=Style(width=40, height=20, left=8, top=4))
+```
+
+`Position.absolute` 节点脱离 Flex 流，不挤占兄弟节点空间，并按父节点内容区解析 `top/right/bottom/left`。同时设置左右且未设置 `width` 时会撑满剩余宽度；同时设置上下且未设置 `height` 时会撑满剩余高度。
+
+```python
+Image(style=Style(position=Position.absolute, right=6, bottom=6, width=24, height=24))
+```
+
+### PaperDoll
+
+`PaperDoll` 用于渲染网易纸娃娃控件。渲染类型使用 `RenderType.entity`、`RenderType.skeleton` 或 `RenderType.blockGeometry`，位置和尺寸仍写在 `style`，纸娃娃渲染参数写在 props。
+
+```python
+from pyreact import PaperDoll, RenderType, Style
+
+PaperDoll(
+    style=Style(width=80, height=100),
+    renderType=RenderType.entity,
+    entityIdentifier='minecraft:player',
+    scale=1.0,
+    initRotY=60,
+)
+```
+
+常用 props：`entityId`、`entityIdentifier`、`skeletonModelName`、`animation`、`animationLooped`、`blockGeometryModelName`、`scale`、`renderDepth`、`initRotX/Y/Z`、`molangDict`、`rotationAxis`、`lightDirection`。
+
+### 复合按钮
+
+`FilledButton(default, hover=None, pressed=None, **kwargs)` 用纯色 Image 生成三态背景；`ImageButton(default, hover=None, pressed=None, imageBuilder=None, **kwargs)` 用自定义 `Image` 构建三态背景。两者都会继续接收普通 `Button` props，例如 `style`、`children`、`onClick`。
+
+```python
+from pyreact import FilledButton, Label, Colors, Style
+
+FilledButton(
+    default=Colors.black.withOpacity(0.5),
+    hover=Colors.black.withOpacity(0.65),
+    style=Style(width=120, height=32),
+    children=[Label(content='OK', color=Colors.white)],
+)
+```
+
+### Animated 与动画描述
+
+`Animated` 包裹一个子节点，并把 `enter` / `animate` / `exit` 描述分发到非 `Panel` 后代。当前运行时支持 `opacity`、`translateX`、`translateY`、`width`、`height`；`Panel` 仍主要承担布局容器职责。
+
+```python
+from pyreact import Animated, Image, Style, fadeIn, Transition
+
+Animated(
+    key='notice_anim',
+    enter=fadeIn(duration=180),
+    animate=Transition({'translateY': 6}, duration=120),
+    children=Image(style=Style(width=120, height=24)),
+)
+```
+
+动画描述是 Python 侧的轻量对象；运行时按 `GameRenderTickEvent` 驱动已挂载控件，不复用废弃 grid 分支的旧布局实现。
 
 ## 目录结构
 

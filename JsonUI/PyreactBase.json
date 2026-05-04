@@ -317,7 +317,7 @@
             100,
             100
         ],
-        "layer": 1000,
+        "layer": 1,
         "alpha": 1.0,
         "visible": true,
         "init_rot_y": 60.0,
@@ -420,6 +420,14 @@
             },
             {
                 "itemBase@PyreactBase.itemBase": {
+                    "offset": [
+                        -6666,
+                        -6666
+                    ]
+                }
+            },
+            {
+                "paperDollBase@PyreactBase.paperDollBase": {
                     "offset": [
                         -6666,
                         -6666

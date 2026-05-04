@@ -52,6 +52,48 @@ def _build_node(node_type, values):
     return node
 
 
+def _clone_value(value):
+    if isinstance(value, ComponentNode):
+        props = {}
+        for key, prop_value in (value.props or {}).items():
+            props[key] = _clone_value(prop_value)
+        cloned = ComponentNode(value.node_type, props=props)
+        if hasattr(value, 'key'):
+            try:
+                cloned.key = value.key
+            except Exception:
+                pass
+        return cloned
+    if isinstance(value, dict):
+        result = {}
+        for key, item in value.items():
+            result[key] = _clone_value(item)
+        return result
+    if isinstance(value, list):
+        return [_clone_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple([_clone_value(item) for item in value])
+    return value
+
+
+def clone_component(component, **overrides):
+    if not isinstance(component, ComponentNode):
+        raise TypeError("clone_component expects a ComponentNode")
+    cloned = _clone_value(component)
+    if not isinstance(cloned, ComponentNode):
+        raise TypeError("clone_component expects a ComponentNode")
+    props = getattr(cloned, 'props', None)
+    if not isinstance(props, dict):
+        props = {}
+        cloned.props = props
+    for key, value in overrides.items():
+        if key == 'key':
+            cloned.key = value
+        else:
+            props[key] = value
+    return cloned
+
+
 @Component
 def Panel(style=None, children=None):
     # type: (object, object) -> ComponentNode
@@ -155,6 +197,48 @@ def Item(style=None, children=None, identifier=None, aux=None, enchant=None, use
             "enchant": enchant,
             "userData": userData,
             "itemDict": itemDict,
+        },
+    )
+
+
+@Component
+def PaperDoll(
+    style=None,
+    renderType=None,
+    entityId=None,
+    entityIdentifier=None,
+    skeletonModelName=None,
+    animation=None,
+    animationLooped=None,
+    blockGeometryModelName=None,
+    scale=None,
+    renderDepth=None,
+    initRotX=None,
+    initRotY=None,
+    initRotZ=None,
+    molangDict=None,
+    rotationAxis=None,
+    lightDirection=None,
+):
+    return _build_node(
+        "PaperDoll",
+        {
+            "style": style,
+            "renderType": renderType,
+            "entityId": entityId,
+            "entityIdentifier": entityIdentifier,
+            "skeletonModelName": skeletonModelName,
+            "animation": animation,
+            "animationLooped": animationLooped,
+            "blockGeometryModelName": blockGeometryModelName,
+            "scale": scale,
+            "renderDepth": renderDepth,
+            "initRotX": initRotX,
+            "initRotY": initRotY,
+            "initRotZ": initRotZ,
+            "molangDict": molangDict,
+            "rotationAxis": rotationAxis,
+            "lightDirection": lightDirection,
         },
     )
 

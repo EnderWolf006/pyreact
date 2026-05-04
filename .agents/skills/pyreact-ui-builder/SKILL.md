@@ -21,7 +21,7 @@ metadata:
 
 - 新建或修改基于 Pyreact 的页面、弹窗、HUD、列表、表单、详情面板。
 - 需要决定某个能力应该写在 `style` 还是组件 props 上。
-- 需要在业务 UI 中正确使用 `Label` / `Image` / `Button` / `Input` / `Scroll` / `Item`。
+- 需要在业务 UI 中正确使用 `Label` / `Image` / `Button` / `Input` / `Scroll` / `Item` / `PaperDoll`。
 - 需要把 Pyreact 页面挂载到 NetEase `ScreenNode` 上。
 
 不要在以下场景只依赖本 skill：
@@ -69,8 +69,10 @@ metadata:
 可直接使用的核心导出包括：
 
 - 组件装饰器：`Component`
-- primitive 组件：`Panel`、`Image`、`Label`、`Item`、`Button`、`Input`、`Scroll`
-- 样式与枚举：`Style`、`AlignItems`、`JustifyContent`、`FlexDirection`、`FontSize`、`Position`、`ButtonState`
+- primitive 组件：`Panel`、`Image`、`Label`、`Item`、`PaperDoll`、`Button`、`Input`、`Scroll`
+- 复合组件：`FilledButton`、`ImageButton`、`Animated`
+- 动画描述：`Animation`、`Transition`、`Easing`、`fadeIn`、`slideInUp` 等预设
+- 样式与枚举：`Style`、`AlignItems`、`JustifyContent`、`FlexDirection`、`FontSize`、`Position`、`ButtonState`、`RenderType`
 - 颜色：`Color`、`Colors`
 - hooks：`useState`、`useEffect`、`useMemo`、`useCallback`、`useRef`
 - 挂载入口：`render_app`
@@ -234,7 +236,33 @@ def UserCard(name, level):
 - 可直接传扁平 props。
 - 也可传 `itemDict`，runtime 会自动兼容 `newItemName` / `itemName`、`newAuxValue` / `auxValue` 等字段。
 
-### 5. `Button`
+### 5. `PaperDoll`
+
+用途：渲染网易纸娃娃控件，例如实体、骨骼模型或方块几何模型预览。
+
+常用 props：
+
+- `renderType`：优先用 `RenderType.entity` / `RenderType.skeleton` / `RenderType.blockGeometry`
+- `entityId`
+- `entityIdentifier`
+- `skeletonModelName`
+- `animation`
+- `animationLooped`
+- `blockGeometryModelName`
+- `scale`
+- `renderDepth`
+- `initRotX` / `initRotY` / `initRotZ`
+- `molangDict`
+- `rotationAxis`
+- `lightDirection`
+
+要点：
+
+- 位置、尺寸、透明度、层级仍走 `style`。
+- 纸娃娃渲染参数全部走 props，不要写进 `style`。
+- 使用前确认项目资源与模型/实体标识存在；本库只负责把参数映射到网易 paper doll renderer。
+
+### 6. `Button`
 
 用途：可点击容器。
 
@@ -251,8 +279,10 @@ def UserCard(name, level):
 - 若不传 `buttonBuilder`，runtime 会为 `default/hover/pressed` 三态渲染默认贴图。
 - 若传 `buttonBuilder`，一般写成 `lambda state: Image(...)` 或函数 `def builder(state): ...`。当三态都返回无子节点、`width='100%'` 且 `height='100%'` 的 `Image` 时，runtime 会直接复用按钮 JSONUI 三态 Image 槽位，避免额外 clone 子 Image；更复杂的三态内容会自动走通用子树挂载。
 - `buttonBuilder` 可根据 `ButtonState.default/hover/pressed` 返回不同背景。
+- 常用纯色三态按钮可直接用 `FilledButton(default, hover=None, pressed=None, **button_props)`。
+- 常用图片三态按钮可直接用 `ImageButton(default, hover=None, pressed=None, imageBuilder=..., **button_props)`，`imageBuilder` 必须返回 `Image`。
 
-### 6. `Input`
+### 7. `Input`
 
 用途：文本输入。
 
@@ -269,7 +299,7 @@ def UserCard(name, level):
 - 只传 `onChange` 或不传 `value` 时，runtime 会尽量保持非受控输入在整树重渲染后的内容。
 - 搜索框、昵称编辑框等都优先走受控写法，便于和 `useState` 保持一致。
 
-### 7. `Scroll`
+### 8. `Scroll`
 
 用途：滚动列表容器。
 
@@ -345,6 +375,30 @@ def UserCard(name, level):
 - `userData`
 - `itemDict`
 
+#### PaperDoll props
+
+- `renderType`
+- `entityId`
+- `entityIdentifier`
+- `skeletonModelName`
+- `animation`
+- `animationLooped`
+- `blockGeometryModelName`
+- `scale`
+- `renderDepth`
+- `initRotX` / `initRotY` / `initRotZ`
+- `molangDict`
+- `rotationAxis`
+- `lightDirection`
+
+#### Animated props
+
+- `enter`
+- `animate`
+- `exit`
+
+`Animated` 的动画描述可以使用 `Animation`、`Transition` 或预设函数。当前运行时支持 `opacity`、`translateX`、`translateY`、`width`、`height`，不要把动画字段写进 `style`。
+
 ### 判断不清时怎么做
 
 先查两处：
@@ -394,6 +448,14 @@ Panel(
 ```
 
 ### 绝对定位
+
+未设置 `position` 时等同于 `Position.relative`。相对定位节点仍保留原本的 Flex 流占位，只把最终显示位置按 `top/right/bottom/left` 偏移；同一轴冲突时，`left` 优先于 `right`，`top` 优先于 `bottom`。适合做轻微视觉偏移，不适合用来影响兄弟节点排布。
+
+```python
+Image(style=Style(width=40, height=20, left=6, top=3))
+```
+
+`Position.absolute` 会让节点脱离 Flex 流，按父节点内容区定位，不占据兄弟节点空间。左右同时设置且未设置 `width` 时会计算剩余宽度；上下同时设置且未设置 `height` 时会计算剩余高度。
 
 浮动按钮常用：
 

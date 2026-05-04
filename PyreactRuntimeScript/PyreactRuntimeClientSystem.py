@@ -14,6 +14,7 @@ class PyreactRuntimeClientSystem(ClientSystem):
         self._apps = {}
         self.ListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), 'UiInitFinished', self, self.UiInitFinished)
         self.ListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), 'ScreenSizeChangedClientEvent', self, self.ScreenSizeChangedClientEvent)
+        self.ListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(), 'GameRenderTickEvent', self, self.GameRenderTickEvent)
 
     def UiInitFinished(self, args):
        print('=====> PyreactRuntime UiInitFinished <=====')
@@ -25,8 +26,8 @@ class PyreactRuntimeClientSystem(ClientSystem):
         after_x = args.get('afterX')
         after_y = args.get('afterY')
 
-        # Only rerender when width/height actually changed.
-        if before_x == after_x and before_y == after_y:
+        has_size_args = before_x is not None and before_y is not None and after_x is not None and after_y is not None
+        if has_size_args and before_x == after_x and before_y == after_y:
             return
 
         app_ids = list(self._apps.keys())
@@ -38,9 +39,36 @@ class PyreactRuntimeClientSystem(ClientSystem):
             if runtime is None:
                 continue
             try:
-                runtime.request_render()
+                if hasattr(runtime, 'request_layout_render'):
+                    runtime.request_layout_render()
+                else:
+                    runtime.render()
             except Exception as e:
                 print('=====> PyreactRuntime resize rerender failed: %s, %s <=====' % (app_id, e))
+
+    def GameRenderTickEvent(self, args):
+        app_ids = list(self._apps.keys())
+        if not app_ids:
+            return
+        changed = False
+        for app_id in app_ids:
+            runtime = self._apps.get(app_id)
+            if runtime is None or not hasattr(runtime, 'tick_animations'):
+                continue
+            try:
+                if runtime.tick_animations():
+                    changed = True
+            except Exception:
+                pass
+        if changed:
+            try:
+                for app_id in app_ids:
+                    runtime = self._apps.get(app_id)
+                    if runtime is not None:
+                        runtime._update_screen()
+                        break
+            except Exception:
+                pass
 
     def MountApp(self, params):
         params = params or {}

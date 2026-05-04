@@ -1,4 +1,4 @@
-# pyright: reportConstantRedefinition=false, reportMissingParameterType=false, reportUnknownParameterType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
+# pyright: reportConstantRedefinition=false, reportMissingParameterType=false, reportUnknownParameterType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportAny=false, reportUnusedParameter=false
 
 import types
 
@@ -92,6 +92,38 @@ def _is_absolute_position(style):
     return False
 
 
+def _is_relative_position(style):
+    if not isinstance(style, dict):
+        return True
+    pos_value = style.get("position")
+    if pos_value is None:
+        return True
+    if isinstance(pos_value, TEXT_TYPES):
+        return pos_value.strip().lower() == "relative"
+    return False
+
+
+def _resolve_relative_offsets(style, parent_width, parent_height):
+    left = parse_length(style.get("left"), parent_width)
+    right = parse_length(style.get("right"), parent_width)
+    top = parse_length(style.get("top"), parent_height)
+    bottom = parse_length(style.get("bottom"), parent_height)
+
+    dx = 0.0
+    dy = 0.0
+    if left is not None:
+        dx = left
+    elif right is not None:
+        dx = -right
+
+    if top is not None:
+        dy = top
+    elif bottom is not None:
+        dy = -bottom
+
+    return dx, dy
+
+
 def parse_box(style, prefix, parent_width, parent_height):
     base = parse_length(style.get(prefix), parent_width)
     if base is None:
@@ -171,6 +203,8 @@ def _measure_label_size(node, style, text_measurer, max_width=None):
         for key in ("fontSize", "font", "textAlign", "linePadding", "shadow"):
             if node.props.get(key) is not None:
                 measure_style[key] = node.props.get(key)
+    if text_measurer is None:
+        return (100.0, 20.0)
     measured = text_measurer.measure_text(content, measure_style, max_width=max_width)
     return (
         max(0.0, _safe_float(measured.get("width", 100.0), 100.0)),
@@ -207,8 +241,7 @@ def _resolve_own_size(node, style, available_width, available_height, forced_wid
         (not measure_pass)
         and node.node_type != "Label"
         and bool(node.children)
-        and explicit_width is None
-        and explicit_height is None
+        and (explicit_width is None or explicit_height is None)
     ):
         if hasattr(node, "_measured_shrunk") and node._measured_shrunk and node.layout is not None:
             if width is None:
@@ -231,7 +264,10 @@ def _resolve_own_size(node, style, available_width, available_height, forced_wid
         measure_limit = width
         if measure_limit is None:
             measure_limit = max_width
-        measured = text_measurer.measure_text(content, measure_style, max_width=measure_limit)
+        if text_measurer is None:
+            measured = {"width": 100.0, "height": 20.0}
+        else:
+            measured = text_measurer.measure_text(content, measure_style, max_width=measure_limit)
         if width is None:
             width = measured.get("width", 100.0)
         if height is None:
@@ -671,6 +707,13 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
         child_width = max(0.0, child_width)
         child_height = max(0.0, child_height)
 
+        flow_x = child_x
+        flow_y = child_y
+        if _is_relative_position(item["style"]):
+            offset_x, offset_y = _resolve_relative_offsets(item["style"], content_width, content_height)
+            child_x += offset_x
+            child_y += offset_y
+
         if is_scroll:
             item["child"]._parent_is_scroll = True
 
@@ -685,6 +728,9 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             text_measurer=text_measurer,
             measure_pass=measure_pass,
         )
+        if item["child"].layout is not None:
+            item["child"].layout.flow_x = float(flow_x)
+            item["child"].layout.flow_y = float(flow_y)
 
     for item in absolute_items:
         child_style = item["style"]
@@ -752,9 +798,11 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
         max_y = None
 
         for child in node.children:
+            if _is_absolute_position(_get_node_style(child)):
+                continue
             if child.layout:
-                child_left = child.layout.x
-                child_top = child.layout.y
+                child_left = getattr(child.layout, "flow_x", child.layout.x)
+                child_top = getattr(child.layout, "flow_y", child.layout.y)
                 child_right = child_left + child.layout.width
                 child_bottom = child_top + child.layout.height
 
@@ -779,13 +827,18 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
                 node.layout.content_width = max(0.0, intrinsic_width)
                 node.layout.content_height = max(0.0, intrinsic_height)
 
-            # If node has no explicit size, it shrinks to fit children (except for Label which handles itself).
+            # If an axis has no explicit size, shrink that axis to fit children (except for Label which handles itself).
             # Scroll children should always shrink to content, never inherit the large measure space
             if node.node_type != "Label" and node.node_type != "Scroll":
                 parent_is_scroll = hasattr(node, '_parent_is_scroll') and node._parent_is_scroll
-                if explicit_width is None and explicit_height is None:
+                did_shrink = False
+                if explicit_width is None:
                     node.layout.width = max(0.0, intrinsic_width)
+                    did_shrink = True
+                if explicit_height is None:
                     node.layout.height = max(0.0, intrinsic_height)
+                    did_shrink = True
+                if did_shrink:
                     node._measured_shrunk = True
                 elif parent_is_scroll and explicit_height is None:
                     # Scroll's direct child with no explicit height should fit content

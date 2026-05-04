@@ -606,6 +606,35 @@ class RuntimeNativeApiMixin(object):
             pass
         return None
 
+    def _to_paper_doll_control(self, control, path):
+        cache_key = 'PaperDoll:' + self._safe_text(path)
+        cache = self._get_native_adapter_cache()
+        cached = cache.get(cache_key)
+        if cached:
+            self._record_native_commit_perf('adapter_cache_hit')
+            return cached
+        self._record_native_commit_perf('adapter_cache_miss')
+
+        if control and hasattr(control, 'asNeteasePaperDoll'):
+            try:
+                paper_doll_control = self._native_api_call('asNeteasePaperDoll', control.asNeteasePaperDoll)
+                if paper_doll_control:
+                    cache[cache_key] = paper_doll_control
+                    return paper_doll_control
+            except Exception:
+                pass
+
+        try:
+            base_control = self._get_base_ui_control(path)
+            if base_control and hasattr(base_control, 'asNeteasePaperDoll'):
+                paper_doll_control = self._native_api_call('asNeteasePaperDoll', base_control.asNeteasePaperDoll)
+                if paper_doll_control:
+                    cache[cache_key] = paper_doll_control
+                return paper_doll_control
+        except Exception:
+            pass
+        return None
+
     def _safe_set_text_color(self, path, color, control=None):
         rgb = self._to_rgb_tuple(color)
         if rgb is None:
@@ -897,6 +926,15 @@ class RuntimeNativeApiMixin(object):
         return (
             self._to_float(value[0], 0.0),
             self._to_float(value[1], 0.0),
+        )
+
+    def _parse_vec3(self, value):
+        if not isinstance(value, (list, tuple)) or len(value) < 3:
+            return None
+        return (
+            self._to_float(value[0], 0.0),
+            self._to_float(value[1], 0.0),
+            self._to_float(value[2], 0.0),
         )
 
     def _parse_vec4(self, value):

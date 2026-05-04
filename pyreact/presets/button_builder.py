@@ -1,9 +1,7 @@
 # coding=utf-8
-from pyreact import Image, ButtonState, Style, Color
+from pyreact.components import Image, ButtonState, Style
 
 def flat_button_builder_preset(default, hover=None, pressed=None):
-    # type: (Color, Color, Color) -> callable
-
     if hover is None and pressed is None:
         hover = default
         pressed = default
