@@ -791,6 +791,52 @@ class RuntimeLifecycleMixin(object):
         index = 0
         should_prune_children = self._should_prune_prefixed_children(shadow_path, prune_parent_paths)
         expected_child_names = [] if should_prune_children else None
+        precleared_remove_paths = {}
+        preclear_cache_paths = []
+        preclear_index = 0
+        for preclear_node in children:
+            try:
+                preclear_shadow_path = list(shadow_path)
+                preclear_shadow_path.append(preclear_index)
+                preclear_key = tuple(preclear_shadow_path)
+                if recreate_paths and preclear_key in recreate_paths:
+                    preclear_node_id = self._safe_text(getattr(preclear_node, 'node_id', 'node'))
+                    preclear_child_name = "%s%s_%s" % (self._CONTROL_NAME_PREFIX, preclear_node_id, preclear_index)
+                    preclear_control_path = children_parent_path + '/' + preclear_child_name
+                    old_control_path = None
+                    old_control = None
+                    if recreate_paths.get(preclear_key):
+                        try:
+                            old_node = self._get_prev_shadow_node_by_shifted_path(preclear_shadow_path)
+                            old_node_id = self._safe_text(getattr(old_node, 'node_id', 'node'))
+                            old_child_name = "%s%s_%s" % (self._CONTROL_NAME_PREFIX, old_node_id, preclear_index)
+                            old_control_path = children_parent_path + '/' + old_child_name
+                            old_control = self._get_base_ui_control(old_control_path)
+                        except Exception:
+                            old_control_path = preclear_control_path
+                            old_control = None
+                    else:
+                        try:
+                            old_entry = self._find_prev_shadow_node_path_by_id(preclear_node_id)
+                            if isinstance(old_entry, tuple) and len(old_entry) == 2:
+                                old_control_path = old_entry[1]
+                                old_control = self._get_base_ui_control(old_control_path)
+                        except Exception:
+                            old_control_path = None
+                            old_control = None
+                    if old_control_path and old_control:
+                        precleared_remove_paths[old_control_path] = True
+                        preclear_cache_paths.append(old_control_path)
+                        if preclear_control_path != old_control_path:
+                            preclear_cache_paths.append(preclear_control_path)
+            except Exception:
+                pass
+            preclear_index += 1
+        if preclear_cache_paths:
+            try:
+                self._drop_native_common_style_cache_many(preclear_cache_paths)
+            except Exception:
+                pass
         for node in children:
             node_id = self._safe_text(getattr(node, 'node_id', 'node'))
             child_name = "%s%s_%s" % (self._CONTROL_NAME_PREFIX, node_id, index)
@@ -848,7 +894,7 @@ class RuntimeLifecycleMixin(object):
                                     self._remove_animation_states_for_nodes([old_node])
                                 except Exception:
                                     pass
-                                self._remove_component_by_path(old_control_path)
+                                self._remove_component_by_path(old_control_path, skip_cache_drop=bool(precleared_remove_paths.get(old_control_path)))
                         except Exception:
                             pass
                 elif moved_old_node is not None:
@@ -870,7 +916,7 @@ class RuntimeLifecycleMixin(object):
                             'translateY': old_abs_y - abs_y,
                         }
                         if old_control_path and old_control_path != control_path:
-                            self._remove_component_by_path(old_control_path)
+                            self._remove_component_by_path(old_control_path, skip_cache_drop=bool(precleared_remove_paths.get(old_control_path)))
                     except Exception:
                         pass
                 self._render_node(node, children_parent_path, parent_abs_x, parent_abs_y, index, True, children_parent_control)
