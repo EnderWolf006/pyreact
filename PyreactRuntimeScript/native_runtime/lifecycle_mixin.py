@@ -869,7 +869,7 @@ class RuntimeLifecycleMixin(object):
 
             control_path = children_parent_path + '/' + child_name
             try:
-                self._cancel_pending_animation_removal(control_path)
+                self._cancel_pending_animation_removal(control_path, True)
             except Exception:
                 pass
             child_control_paths = control_path
