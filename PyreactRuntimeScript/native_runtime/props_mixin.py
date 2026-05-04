@@ -140,6 +140,8 @@ class RuntimePropsMixin(object):
         if not prefix_set:
             return
 
+        prefix_set = self._compact_cache_prefixes(prefix_set)
+
         start_time = self._perf_clock()
         scanned = 0
         deleted = 0
@@ -179,6 +181,19 @@ class RuntimePropsMixin(object):
         self._record_native_commit_perf('cache_drop_scanned', scanned)
         self._record_native_commit_perf('cache_drop_deleted', deleted)
         self._record_native_commit_perf('cache_drop_ms', (self._perf_clock() - start_time) * 1000.0)
+
+    def _compact_cache_prefixes(self, prefixes):
+        compact = {}
+        items = []
+        try:
+            items = list(prefixes.keys())
+        except Exception:
+            return prefixes
+        items.sort(key=lambda item: len(item))
+        for prefix in items:
+            if not self._matches_any_cache_prefix(prefix, compact):
+                compact[prefix] = True
+        return compact
 
     def _matches_any_cache_prefix(self, safe_key, prefixes):
         if safe_key in prefixes:
@@ -1168,14 +1183,20 @@ class RuntimePropsMixin(object):
             child_path = parent_path + "/" + safe_name
             remove_paths.append(child_path)
 
+        actual_remove_paths = []
         for child_path in remove_paths:
             try:
                 if self._start_exit_animation_for_existing_path(child_path):
                     continue
             except Exception:
                 pass
+            actual_remove_paths.append(child_path)
+
+        if actual_remove_paths:
+            self._drop_native_common_style_cache_many(actual_remove_paths)
+
+        for child_path in actual_remove_paths:
             try:
-                self._drop_native_common_style_cache(child_path)
                 try:
                     self._remove_animation_state_for_path(child_path)
                 except Exception:

@@ -8,9 +8,9 @@ Project URL: https://github.com/EnderWolf006/pyreact
 
 Attribution Requirement for Derivative Works
 
-If you use this UI framework (Pyreact) in your Minecraft Bedrock Edition ModSDK project, you MUST display the following attribution in your mod:
+If you use this UI framework (Pyreact) in your Minecraft Bedrock Edition project, you MUST display the following attribution in your mod:
 
-1. Location: The attribution must appear in at least one of these locations:
+1. Location: The attribution must appear in all of these locations:
    - Server/World loading screen
    - Dimension switching screen
 
@@ -25,6 +25,6 @@ If you use this UI framework (Pyreact) in your Minecraft Bedrock Edition ModSDK 
 
 Example Implementation:
 You can add a text label or image in your loading screen JSON that includes:
-"Powered by Pyreact | Author: EnderWolf006 | github.com/EnderWolf006/pyreact"
+"UI Powered by Pyreact | Author: EnderWolf006 | github.com/EnderWolf006/pyreact"
 
 This requirement ensures proper attribution for the open-source framework and helps other developers discover and benefit from this project.

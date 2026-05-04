@@ -274,9 +274,9 @@ def _resolve_own_size(node, style, available_width, available_height, forced_wid
             height = measured.get("height", 20.0)
 
     if width is None:
-        width = float(available_width)
+        width = 0.0
     if height is None:
-        height = float(available_height)
+        height = 0.0
 
     width = _clamp_axis(width, min_width, max_width)
     height = _clamp_axis(height, min_height, max_height)
@@ -376,9 +376,11 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
     if flex_direction == "row":
         main_size = content_width
         cross_size = content_height
+        parent_cross_specified = forced_height is not None or parse_length(style.get("height"), available_height) is not None
     else:
         main_size = content_height
         cross_size = content_width
+        parent_cross_specified = forced_width is not None or parse_length(style.get("width"), available_width) is not None
 
     # Handle Scroll: children can expand in the scroll direction.
     is_scroll = node.node_type == "Scroll"
@@ -481,8 +483,6 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
         if base_main is None and flex_value <= 0:
             if (not measure_pass) and measured_main is not None:
                 base_main = measured_main
-            elif measure_pass and child.children:
-                base_main = main_size
             else:
                 base_main = 0.0
 
@@ -585,8 +585,6 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
                 cross = _clamp_axis(item["explicit_cross"], item["min_cross"], item["max_cross"])
             elif (not measure_pass) and item["measured_cross"] is not None:
                 cross = _clamp_axis(item["measured_cross"], item["min_cross"], item["max_cross"])
-            elif measure_pass and item["child"].children:
-                cross = _clamp_axis(cross_size, item["min_cross"], item["max_cross"])
             else:
                 cross = _clamp_axis(0.0, item["min_cross"], item["max_cross"])
 
@@ -595,7 +593,7 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             if outer_cross > max_cross_outer:
                 max_cross_outer = outer_cross
 
-        if flex_wrap == "nowrap":
+        if flex_wrap == "nowrap" and parent_cross_specified:
             line_cross_size = cross_size
         else:
             line_cross_size = max_cross_outer
@@ -661,7 +659,7 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
                 effective_align = align_items
 
             cross = item["final_cross"]
-            if effective_align == "stretch" and not item["cross_specified"]:
+            if effective_align == "stretch" and parent_cross_specified and not item["cross_specified"]:
                 cross = line_cross_size - item["margin_cross_lead"] - item["margin_cross_trail"]
                 cross = _clamp_axis(cross, item["min_cross"], item["max_cross"])
                 item["final_cross"] = cross
@@ -698,11 +696,24 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             child_y = content_y + item["cross_pos"]
             child_width = item["final_main"]
             child_height = item["final_cross"]
+            force_child_width = item["explicit_width"] is not None or item["flex"] > 0
+            force_child_height = item["explicit_height"] is not None
         else:
             child_x = content_x + item["cross_pos"]
             child_y = content_y + item["main_pos"]
             child_width = item["final_cross"]
             child_height = item["final_main"]
+            force_child_width = item["explicit_width"] is not None
+            force_child_height = item["explicit_height"] is not None or item["flex"] > 0
+
+        effective_align = item["align_self"]
+        if effective_align == "auto":
+            effective_align = align_items
+        if effective_align == "stretch" and parent_cross_specified and not item["cross_specified"]:
+            if flex_direction == "row":
+                force_child_height = True
+            else:
+                force_child_width = True
 
         child_width = max(0.0, child_width)
         child_height = max(0.0, child_height)
@@ -723,8 +734,8 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             child_y,
             child_width,
             child_height,
-            forced_width=child_width,
-            forced_height=child_height,
+            forced_width=child_width if force_child_width else None,
+            forced_height=child_height if force_child_height else None,
             text_measurer=text_measurer,
             measure_pass=measure_pass,
         )
@@ -747,6 +758,9 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             child_width = content_width - left - right - item["margin_left"] - item["margin_right"]
         if child_height is None and top is not None and bottom is not None:
             child_height = content_height - top - bottom - item["margin_top"] - item["margin_bottom"]
+
+        force_child_width = child_width is not None
+        force_child_height = child_height is not None
 
         if child_width is not None:
             child_width = _clamp_axis(child_width, item["min_width"], item["max_width"])
@@ -781,8 +795,8 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             child_y,
             max(0.0, available_w),
             max(0.0, available_h),
-            forced_width=child_width,
-            forced_height=child_height,
+            forced_width=child_width if force_child_width else None,
+            forced_height=child_height if force_child_height else None,
             text_measurer=text_measurer,
             measure_pass=measure_pass,
         )
@@ -832,16 +846,18 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             if node.node_type != "Label" and node.node_type != "Scroll":
                 parent_is_scroll = hasattr(node, '_parent_is_scroll') and node._parent_is_scroll
                 did_shrink = False
-                if explicit_width is None:
+                if explicit_width is None and forced_width is None:
                     node.layout.width = max(0.0, intrinsic_width)
                     did_shrink = True
-                if explicit_height is None:
+                if explicit_height is None and forced_height is None:
+                    node.layout.height = max(0.0, intrinsic_height)
+                    did_shrink = True
+                if parent_is_scroll and explicit_height is None:
+                    # Scroll's direct child with no explicit height should fit content,
+                    # even when the parent passed a temporary flex line cross size.
                     node.layout.height = max(0.0, intrinsic_height)
                     did_shrink = True
                 if did_shrink:
                     node._measured_shrunk = True
-                elif parent_is_scroll and explicit_height is None:
-                    # Scroll's direct child with no explicit height should fit content
-                    node.layout.height = max(0.0, intrinsic_height)
 
     return node

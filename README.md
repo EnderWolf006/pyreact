@@ -74,41 +74,41 @@ class YourClientSystem(ClientSystem):
 # -*- coding: utf-8 -*-
 
 import mod.client.extraClientApi as clientApi
-from pyreact import (
-    Component,
-    Panel,
-    Label,
-    Button,
-    Style,
-    Colors,
-    AlignItems,
-    JustifyContent,
-    useState,
-    render_app,
-)
+from pyreact import *
 
 ScreenNode = clientApi.GetScreenNodeCls()
 
 
 @Component
 def CounterApp():
-    count, set_count = useState(0)
+    count, setCount = useState(0)
+
+    def increment():
+        setCount(count + 1)
 
     return Panel(
         style=Style(
-            width='100%',
-            height='100%',
+            width="100%",
+            height="100%",
             alignItems=AlignItems.center,
             justifyContent=JustifyContent.center,
         ),
         children=[
-            Label(content='Count: %s' % count, color=Colors.white),
-            Button(
-                style=Style(width=120, height=36, marginTop=12),
-                onClick=(lambda: set_count(count + 1)),
-                children=[Label(content='Click Me', color=Colors.white)],
+            Label(
+                style=Style(marginBottom=8),
+                fontSize=FontSize.large,
+                shadow=True,
+                content="这是一个计数器示例"
             ),
-        ],
+            FilledButton(
+                style=Style(padding=8),
+                default=Colors.dodgerBlue,
+                hover=Colors.dodgerBlue.withAlpha(0.8),
+                pressed=Colors.dodgerBlue.withAlpha(0.6),
+                onClick=increment,
+                children=Label(shadow=True, content="Count: " + str(count))
+            ),
+        ]
     )
 
 
@@ -184,10 +184,12 @@ class YourScreenNode(ScreenNode):
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `width` / `height` | `int / float / str` | 宽高，可写数值或 `'100%'` |
+| `width` / `height` | `int / float / str` | 宽高，可写数值或 `'100%'`；不填写时按内容自适应，受 `flex` 与交叉轴 `stretch` 影响时除外 |
 | `minWidth` / `maxWidth` | `int / float / str` | 最小/最大宽度 |
 | `minHeight` / `maxHeight` | `int / float / str` | 最小/最大高度 |
 | `minSize` / `maxSize` | `tuple / list` | 尺寸约束 |
+
+不填写 `width` / `height` 时，该轴默认按内容包裹：容器取非绝对子节点边界，`Label` 取文本测量结果，无内容的普通节点为 `0`。如果节点在 Flex 主轴上设置了 `flex`，主轴尺寸会按剩余空间分配；如果交叉轴继承或设置了 `alignItems` / `alignSelf=stretch`，且父节点该交叉轴有确定尺寸，则交叉轴会被拉伸。
 
 间距相关：
 
