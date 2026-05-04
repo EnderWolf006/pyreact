@@ -154,29 +154,31 @@ class YourScreenNode(ScreenNode):
 
 ### 公共 props
 
-#### `key`
+#### `key` (自动处理)
 
 - 用途：给节点提供稳定身份，便于 Diff、列表复用、动画状态和输入/滚动状态对齐
 - 建议：动态列表、可重排节点、筛选结果必须使用业务唯一 ID
 - 说明：自定义组件不用在形参里声明 `key`，`@Component` 会自动注入
 
-#### `children`
-
-- 用途：传入子节点
-- 支持：单个节点，或 `list` / `tuple` 节点列表
-- 说明：基础组件和复合组件都支持 `children`
-
-#### `style`
-
-- 用途：布局、定位、尺寸、层级、透明度等通用属性
-- 支持：`Style(...)`（推荐）或 `dict`
-- 原则：图片路径、文本字号、物品参数、纸娃娃参数等组件专属能力必须走 props，不要写进 `style`
-
-#### `ref`
+#### `ref` （自动处理）
 
 - 用途：获取对应原生控件实例，访问底层 API
 - 支持：`useRef` 创建的 ref 对象
 - 说明：`ref` 由 `@Component` 注入，会透传到最终 primitive 节点
+
+#### `children` （形参处理）
+
+- 用途：传入子节点
+- 支持：单个节点，或 `list` / `tuple` 节点列表
+- 说明：自定义组件需要在形参里声明 `children`（非强制但最好支持），并把它传给子组件；primitive 组件会自动把 `children` 里的节点渲染到对应控件上
+
+#### `style` （形参处理）
+
+- 用途：布局、定位、尺寸、层级、透明度等通用属性
+- 支持：`Style(...)`（推荐）或 `dict`
+- 原则：图片路径、文本字号、物品参数、纸娃娃参数等组件专属能力必须走 props，不要写进 `style`
+- 说明：自定义组件需要在形参里声明 `style`（非强制但最好支持），并把它传给子组件；primitive 组件全部原生支持
+
 
 ### `style` 字段
 
@@ -217,7 +219,7 @@ Flex 相关：
 | --- | --- | --- |
 | `position` | `str` | 默认按 `Position.relative`；也可写 `Position.absolute` |
 | `top` / `right` / `bottom` / `left` | `int / float` | 定位偏移 |
-| `opacity` | `float` | 透明度，建议 `0.0 ~ 1.0` |
+| `opacity` | `float` | 透明度，取值范围 `0.0 ~ 1.0` |
 | `display` | `str` | 显示状态，例如 `'none'` |
 | `zIndex` | `int` | 原生 layer 微调 |
 
@@ -226,7 +228,6 @@ Flex 相关：
 - 未传 `position` 时等同于 `Position.relative`
 - `Position.relative`：节点保留原本 Flex 流占位，再按 `top/right/bottom/left` 做视觉偏移；同轴冲突时 `left` 优先于 `right`，`top` 优先于 `bottom`
 - `Position.absolute`：节点脱离 Flex 流，按父节点内容区解析 `top/right/bottom/left`；左右同时设置且未设置 `width` 时会撑满剩余宽度，上下同时设置且未设置 `height` 时会撑满剩余高度
-- 自适应背景建议写四边定位，而不是百分比宽高：`Style(position=Position.absolute, top=0, right=0, bottom=0, left=0)`
 
 ---
 
@@ -307,10 +308,8 @@ Flex 相关：
 
 要点：
 
-- 位置、尺寸、透明度、层级仍写在 `style`
-- 渲染参数全部写在 props
-- 当前模板默认普通 layer，不额外加 1000 层；如需层级控制请用外层布局和 `style.zIndex`
-- runtime 映射的网易 API 已按本地知识库确认：`RenderEntity` / `RenderSkeletonModel` / `RenderBlockGeometryModel`
+- 注意该组件 `layer` 不要设置太高会导致渲染问题，如需调整可加一个父 Panel 调整层级
+- runtime 映射的网易 API：`RenderEntity` / `RenderSkeletonModel` / `RenderBlockGeometryModel`
 
 ### `Button`
 
@@ -333,7 +332,7 @@ Flex 相关：
 | `onChange` | `callable` | 输入变化回调 |
 | `placeholder` | `str` | 占位文本 |
 
-建议优先使用 `value + onChange` 受控写法；只传 `onChange` 或不传 `value` 时，runtime 会尽量保留非受控输入在重渲染后的内容。
+`value + onChange` 形成受控输入；只传 `onChange` 或不传 `value` 时，runtime 保留非受控输入在重渲染后的内容。
 
 ### `Scroll`
 
@@ -414,9 +413,60 @@ Animated(
 
 ## 动画
 
-动画由 Python runtime 监听 `GameRenderTickEvent` 驱动，不依赖废弃 grid 分支的旧动画实现。
+Pyreact 动画由 Python runtime 监听 `GameRenderTickEvent` 驱动。每帧由 `PyreactRuntimeClientSystem.GameRenderTickEvent` 调用各 app runtime 的 `tick_animations()`；有动画值变化时调用 `UpdateScreen()` 刷新界面。
+
+运行时维护 `_animation_states`，每个逻辑节点或 ghost 节点记录当前值、目标值、开始时间、持续时间、缓动函数和完成回调。`tick_animations()` 根据当前时间计算进度，经过 easing 后插值，并把结果提交到原生控件。
+
+### API 组成
+
+| API | 用途 |
+| --- | --- |
+| `Animated` | 把入场、出场、连续过渡配置挂到单个子节点根部 |
+| `Animation` | 描述一次从 `from_` 到 `to` 的动画，用于 `enter` / `exit` |
+| `Transition` | 描述状态变化后的目标值，用于 `animate` |
+| `Easing` | 缓动函数命名空间 |
+| `fadeIn` / `fadeOut` / `slideIn*` / `slideOut*` | 返回 `Animation` 的预设函数 |
+
+所有动画 API 都可从顶层导入：
+
+```python
+from pyreact import Animated, Animation, Transition, Easing, fadeIn, fadeOut, slideInUp
+```
+
+### `Animated`
+
+`Animated` 是声明式动画入口：
+
+```python
+Animated(
+    key='notice_anim',
+    enter=slideInUp(distance=20, duration=240),
+    exit=fadeOut(duration=180),
+    animate={'opacity': 1.0},
+    children=Panel(style=Style(width=220, height=80), children=[...]),
+)
+```
+
+参数：
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `children` | `ComponentNode` | 被动画控制的单个子节点 |
+| `enter` | `Animation` | 节点首次进入时播放 |
+| `exit` | `Animation` | 节点删除前播放 |
+| `animate` | `Transition / dict` | 目标值变化时播放连续过渡 |
+| `key` | `str / int` | 节点稳定身份；子节点没有 key 时写入子节点 |
+
+结构规则：
+
+- `Animated` 只能包裹一个 `ComponentNode`
+- 多个节点先用 `Panel` 聚合，再把 `Panel` 传给 `Animated`
+- `Animated` 不创建额外原生控件；它会 clone 直接子节点，并把内部 `__animation__` 配置写入子节点 props
+- `key` 写在 `Animated(...)` 或直接子节点上都可形成稳定身份
 
 ### `Animation`
+
+`Animation` 描述一次性动画，主要用于 `enter` 和 `exit`：
 
 ```python
 Animation(
@@ -429,49 +479,244 @@ Animation(
 )
 ```
 
+参数：
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `duration` | `300` | 持续时间，单位毫秒；负数归一化为 `0` |
+| `delay` | `0` | 延迟时间，单位毫秒；负数归一化为 `0` |
+| `easing` | `Easing.easeOutQuad` | 缓动函数 |
+| `from_` | `{}` | 起始值字典，只接收可动画字段 |
+| `to` | `{}` | 目标值字典，只接收可动画字段 |
+| `onComplete` | `None` | 动画完成回调 |
+
+`from_` 与 `to` 的字段值会转为 `float`；不支持的字段和非数字值会被忽略。`duration <= 0` 时，runtime 在下一次 tick 直接应用最终值。
+
+`Animation.clone(**overrides)` 返回一个新的 `Animation`，用于复用基础动画并覆盖个别字段：
+
+```python
+base_enter = slideInUp(distance=16, duration=240)
+slow_enter = base_enter.clone(duration=420, delay=80)
+```
+
 ### `Transition`
 
-连续过渡用于 `Animated(animate=...)`。
+`Transition` 描述连续过渡目标值，用于 `Animated(animate=...)`。当 `values` 生成的签名变化时，runtime 从当前动画值或布局基线过渡到新目标值。
 
 ```python
 Animated(
     animate=Transition(
         values={'opacity': 0.35 if disabled else 1.0},
         duration=220,
+        delay=0,
         easing=Easing.easeOutQuad,
     ),
     children=Panel(style=Style(width=120, height=40)),
 )
 ```
 
-也可以直接传 dict：`animate={'opacity': alpha}`，默认 `200ms / easeOut`。
+参数：
 
-### 可动画字段
-
-| 字段 | 生效方式 | 说明 |
+| 参数 | 默认值 | 说明 |
 | --- | --- | --- |
-| `opacity` | `SetAlpha` | 会递归传播到子树与按钮槽位 |
-| `translateX` / `translateY` | 基于 layout 位置的本地偏移 | 不影响兄弟布局 |
-| `width` / `height` | `SetSize` | `Label` 会跳过尺寸动画 |
+| `values` | `{}` | 目标值字典，只接收可动画字段 |
+| `duration` | `200` | 持续时间，单位毫秒 |
+| `delay` | `0` | 延迟时间，单位毫秒 |
+| `easing` | `Easing.easeOutQuad` | 缓动函数 |
 
-### 预设
+`animate` 可以直接传 dict：
 
 ```python
-from pyreact import (
-    fadeIn,
-    fadeOut,
-    slideInUp,
-    slideInDown,
-    slideInLeft,
-    slideInRight,
-    slideOutUp,
-    slideOutDown,
-    slideOutLeft,
-    slideOutRight,
+Animated(
+    animate={'opacity': alpha, 'translateX': offset},
+    children=Panel(style=Style(width=120, height=40)),
 )
 ```
 
-`Easing` 提供：`linear`、`easeIn`、`easeOut`、`easeInOut`、`easeInQuad`、`easeOutQuad`、`easeInOutQuad`、`easeInCubic`、`easeOutCubic`、`easeInOutCubic`、`easeOutBack`、`easeInBack`。
+dict 写法等价于 `Transition(values=dict_value, duration=200, delay=0, easing=Easing.easeOutQuad)`。
+
+### 可动画字段
+
+| 字段 | 原生提交 | 行为 |
+| --- | --- | --- |
+| `opacity` | `SetAlpha` | 值会限制在 `0.0 ~ 1.0`，并递归传播到子树和 Button 三态槽位 |
+| `translateX` | `SetPosition` | 基于布局结果的 X 方向本地偏移，不改变兄弟节点布局 |
+| `translateY` | `SetPosition` | 基于布局结果的 Y 方向本地偏移，不改变兄弟节点布局 |
+| `width` | `SetSize` | 改变当前控件宽度；`Label` 跳过尺寸动画 |
+| `height` | `SetSize` | 改变当前控件高度；`Label` 跳过尺寸动画 |
+
+字段基线：
+
+- `opacity` 缺省基线为节点当前 `style.opacity`，没有设置时为 `1.0`
+- `translateX` / `translateY` 缺省基线为 `0.0`
+- `width` / `height` 缺省基线为当前布局尺寸
+- `translateX` / `translateY` 是视觉偏移，不参与 Flex 剩余空间计算
+- `width` / `height` 动画只改原生控件尺寸，不重新计算兄弟布局
+
+### 生命周期行为
+
+#### 入场 `enter`
+
+- 节点首次创建并提交到 native 后播放 `enter`
+- 同一个逻辑节点完成入场后会记录 `entered=True`
+- keyed MOVE 不重放 `enter`
+- 节点被真正删除后再次创建，会重新播放 `enter`
+
+#### 出场 `exit`
+
+删除带 `exit` 的节点时，runtime 不直接移除原控件。实际流程：
+
+1. 收集删除子树中带 `exit` 的节点
+2. clone 原生子树到 `__pyreact_exit_*` ghost 路径
+3. 立即删除原路径，释放该路径给新布局使用
+4. 在 ghost 子树上播放各节点的 `exit`
+5. 所有 exit 动画完成后删除 ghost 子树和动画状态
+
+这个机制允许新列表布局立即占用原路径，同时旧节点独立播放出场动画。
+
+#### 连续过渡 `animate`
+
+- `animate` 首次出现且没有 active animation 时，runtime 直接应用目标值作为初始状态
+- `animate` 的目标值签名变化时，runtime 启动 `Transition`
+- 过渡起点来自当前动画值；没有当前值时使用字段基线
+- `Transition` 不包含 `onComplete`
+
+#### 布局移动动画
+
+keyed 列表发生 MOVE 时，runtime 会记录旧位置到新位置的差值，并启动内置 layout move 动画：
+
+- `duration=180`
+- `delay=0`
+- `easing=Easing.easeOutQuad`
+- 从旧位置偏移过渡到 `translateX=0` / `translateY=0`
+
+MOVE 动画只处理由 diff 识别出的 keyed 节点移动；没有稳定 key 的列表无法得到正确的移动关系。
+
+### 透明度传播
+
+部分 JsonUI 控件不继承父控件透明度，因此 `opacity` 动画会递归应用到子树。`Button` 的 `default` / `hover` / `pressed` 三态槽位单独处理：runtime 记录槽位基础透明度，动画时提交 `base_alpha * opacity`。
+
+`style.opacity` 与 `Color.alpha` 的最终透明度会相乘；动画 opacity 再作用于 runtime 提交的 alpha。
+
+### Easing
+
+`Easing` 中的函数都把输入进度限制到 `0.0 ~ 1.0`。
+
+| 名称 | 说明 |
+| --- | --- |
+| `linear` | 线性 |
+| `easeIn` | `easeInQuad` 别名 |
+| `easeOut` | `easeOutQuad` 别名 |
+| `easeInOut` | `easeInOutQuad` 别名 |
+| `easeInQuad` / `easeOutQuad` / `easeInOutQuad` | 二次曲线 |
+| `easeInCubic` / `easeOutCubic` / `easeInOutCubic` | 三次曲线 |
+| `easeOutBack` / `easeInBack` | 带回弹的曲线 |
+
+### 预设
+
+| 函数 | 默认参数 | `from_` | `to` |
+| --- | --- | --- | --- |
+| `fadeIn` | `duration=300, delay=0, easing=None` | `{'opacity': 0.0}` | `{'opacity': 1.0}` |
+| `fadeOut` | `duration=300, delay=0, easing=None` | `{'opacity': 1.0}` | `{'opacity': 0.0}` |
+| `slideInUp` | `distance=20, duration=300, delay=0, easing=None` | `{'translateY': distance, 'opacity': 0.0}` | `{'translateY': 0.0, 'opacity': 1.0}` |
+| `slideInDown` | `distance=20, duration=300, delay=0, easing=None` | `{'translateY': -distance, 'opacity': 0.0}` | `{'translateY': 0.0, 'opacity': 1.0}` |
+| `slideInLeft` | `distance=20, duration=300, delay=0, easing=None` | `{'translateX': -distance, 'opacity': 0.0}` | `{'translateX': 0.0, 'opacity': 1.0}` |
+| `slideInRight` | `distance=20, duration=300, delay=0, easing=None` | `{'translateX': distance, 'opacity': 0.0}` | `{'translateX': 0.0, 'opacity': 1.0}` |
+| `slideOutUp` | `distance=20, duration=300, delay=0, easing=None` | `{'translateY': 0.0, 'opacity': 1.0}` | `{'translateY': -distance, 'opacity': 0.0}` |
+| `slideOutDown` | `distance=20, duration=300, delay=0, easing=None` | `{'translateY': 0.0, 'opacity': 1.0}` | `{'translateY': distance, 'opacity': 0.0}` |
+| `slideOutLeft` | `distance=20, duration=300, delay=0, easing=None` | `{'translateX': 0.0, 'opacity': 1.0}` | `{'translateX': -distance, 'opacity': 0.0}` |
+| `slideOutRight` | `distance=20, duration=300, delay=0, easing=None` | `{'translateX': 0.0, 'opacity': 1.0}` | `{'translateX': distance, 'opacity': 0.0}` |
+
+`easing=None` 时由 `Animation` 使用 `Easing.easeOutQuad`。
+
+### 列表入场和出场
+
+```python
+@Component
+def NoticeList(items):
+    children = []
+    for item in items:
+        children.append(
+            Animated(
+                key=item['id'],
+                enter=slideInUp(distance=12, duration=200),
+                exit=fadeOut(duration=150),
+                children=Panel(
+                    style=Style(width=180, height=28, marginBottom=4),
+                    children=[Label(content=item['text'], shadow=True)]
+                )
+            )
+        )
+    return Panel(children=children)
+```
+
+列表动画的关键条件：
+
+- 每个列表项使用稳定业务 key
+- 增加项触发 `enter`
+- 删除项触发 `exit`
+- 重排项触发内置 layout move 动画
+
+### 状态连续过渡
+
+```python
+@Component
+def ToggleCard(disabled):
+    alpha = 0.35 if disabled else 1.0
+    offset = 8 if disabled else 0
+    return Animated(
+        animate=Transition(
+            values={'opacity': alpha, 'translateX': offset},
+            duration=220,
+            easing=Easing.easeOutQuad,
+        ),
+        children=Panel(
+            style=Style(width=160, height=48),
+            children=[Label(content='State Card')]
+        )
+    )
+```
+
+`disabled` 变化会改变 `values` 签名，runtime 从当前显示值过渡到新的 `opacity` 和 `translateX`。
+
+### 自定义动画
+
+```python
+def complete():
+    print('enter complete')
+
+custom_enter = Animation(
+    duration=400,
+    delay=80,
+    easing=Easing.easeOutBack,
+    from_={'opacity': 0.0, 'translateY': 24.0, 'height': 0.0},
+    to={'opacity': 1.0, 'translateY': 0.0, 'height': 60.0},
+    onComplete=complete,
+)
+
+Animated(
+    key='custom_panel',
+    enter=custom_enter,
+    exit=custom_enter.clone(
+        delay=0,
+        easing=Easing.easeInBack,
+        from_={'opacity': 1.0, 'translateY': 0.0},
+        to={'opacity': 0.0, 'translateY': 24.0},
+        onComplete=None,
+    ),
+    children=Panel(style=Style(width=220, height=60), children=[...]),
+)
+```
+
+### 动画边界
+
+- `Animated` 包裹多个子节点会抛出 `ValueError('Animated expects exactly one child')`
+- `Animated(children=None)` 返回 `None`
+- 非 `ComponentNode` 子节点会原样返回，不附加动画配置
+- 已经存在 `__animation__` 的节点不会被新的 `Animated` 覆盖内部配置
+- `Label` 不执行 `width` / `height` 动画
+- `translateX` / `translateY` 不改变布局占位
+- 没有稳定 key 的动态列表无法可靠触发 MOVE 和 exit 对齐
 
 ---
 
@@ -563,7 +808,7 @@ ref = useRef(None)
 
 ## JsonUI 配置
 
-你要挂载 Pyreact 的 root 原生控件 **一定**要继承 `PyreactBase.rootBase`：
+挂载 Pyreact 的 root 原生控件必须继承 `PyreactBase.rootBase`：
 
 ```json
 {
@@ -634,15 +879,15 @@ JsonUI/
 sync_to_test.cmd
 ```
 
-可修改脚本参数覆盖默认同步路径。
+脚本参数用于覆盖默认同步路径。
 
 ---
 
 ## 开发约束
 
 - Python 运行目标是 Python2；禁止 f-string、type hints 和 Python3-only 语法
-- 涉及网易 API / JsonUI / 系统通信时必须先查本地知识库，不要凭经验猜
-- 跨模组通信必须使用 `clientApi.GetSystem(...)` / `serverApi.GetSystem(...)`，不要直接 import 其他模组系统
+- 涉及网易 API / JsonUI / 系统通信时必须先查本地知识库
+- 跨模组通信必须使用 `clientApi.GetSystem(...)` / `serverApi.GetSystem(...)`，禁止直接 import 其他模组系统
 - 动态列表、筛选、排序和动画列表必须使用稳定 `key`
 - 组件专属属性写 props，布局显示属性写 `style`
 
@@ -650,14 +895,14 @@ sync_to_test.cmd
 
 本项目采用 [Apache License 2.0](LICENSE) 许可证。
 
-如果你在 Minecraft 基岩版 ModSDK 项目中使用 Pyreact，必须在服务器/存档加载界面和切换维度界面显示归属信息：
+Minecraft 基岩版 ModSDK 项目使用 Pyreact 时，必须在服务器/存档加载界面和切换维度界面显示归属信息：
 
 - 框架名称：Pyreact
 - 作者：EnderWolf006
 - GitHub 地址：https://github.com/EnderWolf006/pyreact
 
-详细信息请查看 [NOTICE](NOTICE) 文件。
+归属条款见 [NOTICE](NOTICE)。
 
 ## 现状
 
-项目处于开发中，API/目录结构可能调整。建议根据示例脚本逐步集成与扩展。
+项目处于开发中，API/目录结构会随实现调整。示例脚本展示当前集成路径。
