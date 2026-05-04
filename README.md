@@ -216,6 +216,21 @@ Animated(
 └── sync_to_test.cmd         # 本地同步脚本（可用参数覆盖默认路径）
 ```
 
+## 许可证与归属要求
+
+本项目采用 [Apache License 2.0](LICENSE) 许可证。
+
+**重要归属要求**：如果你在 Minecraft 基岩版 ModSDK 项目中使用本 UI 框架（Pyreact），必须在以下界面显示归属信息：
+- 服务器/存档加载界面
+- 切换维度界面
+
+归属信息必须包含：
+- 框架名称：Pyreact
+- 作者：EnderWolf006
+- GitHub 地址：https://github.com/EnderWolf006/pyreact
+
+详细信息请查看 [NOTICE](NOTICE) 文件。
+
 ## 现状
 
 项目处于开发中，API/目录结构可能调整。欢迎根据示例脚本逐步集成与扩展。
