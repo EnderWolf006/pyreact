@@ -440,7 +440,7 @@ class RuntimeAnimationMixin(object):
         safe_root_path = '%s' % self._animation_safe_text(root_path)
         if node is None or not safe_root_path:
             return False
-        self._cancel_pending_animation_removal(safe_root_path)
+        self._cancel_pending_animation_removal(safe_root_path, True)
         exits = []
         self._collect_exit_animation_nodes(node, safe_root_path, exits)
         if not exits:
@@ -469,6 +469,8 @@ class RuntimeAnimationMixin(object):
             'child_name': child_name,
             'node': node,
             'source_path': safe_root_path,
+            'ghost_path': ghost_path,
+            'state_keys': [],
         }
         self._animation_drop_native_common_style_cache(ghost_path)
 
@@ -482,8 +484,10 @@ class RuntimeAnimationMixin(object):
         for exit_node, exit_path, exit_animation in exits:
             ghost_exit_path = ghost_path + exit_path[len(safe_root_path):]
             node_id = self._animation_safe_text(getattr(exit_node, 'node_id', ''))
+            ghost_state_key = '__pyreact_exit_state_%s:%s' % (ghost_path, node_id or ghost_exit_path)
+            pending[ghost_path]['state_keys'].append(ghost_state_key)
             control = self._animation_get_base_ui_control(ghost_exit_path)
-            self._start_animation(node_id, ghost_exit_path, exit_node, control, exit_animation, 'exit', _done)
+            self._start_animation(ghost_state_key, ghost_exit_path, exit_node, control, exit_animation, 'exit', _done)
         return True
 
     def _create_exit_animation_ghost(self, source_path):
@@ -552,24 +556,36 @@ class RuntimeAnimationMixin(object):
             self._animation_remove_component_by_path(root_path)
         except Exception:
             pass
-        self._remove_animation_states_for_nodes([info.get('node')])
+        self._remove_animation_states_for_pending_info(info)
 
-    def _cancel_pending_animation_removal(self, root_path):
+    def _cancel_pending_animation_removal(self, root_path, include_source_path=False):
         pending = getattr(self, '_pending_animation_removals', None)
         if not isinstance(pending, dict):
             return False
         safe_root_path = '%s' % self._animation_safe_text(root_path)
-        info = pending.pop(safe_root_path, None)
-        if not isinstance(info, dict):
+        if not safe_root_path:
             return False
-        try:
-            self._animation_remove_component_by_path(safe_root_path)
-        except Exception:
-            pass
-        try:
-            self._remove_animation_states_for_nodes([info.get('node')])
-        except Exception:
-            pass
+
+        matched_paths = []
+        if safe_root_path in pending:
+            matched_paths.append(safe_root_path)
+        if include_source_path:
+            for ghost_path, info in list(pending.items()):
+                if not isinstance(info, dict):
+                    continue
+                if self._animation_safe_text(info.get('source_path')) == safe_root_path:
+                    if ghost_path not in matched_paths:
+                        matched_paths.append(ghost_path)
+        if not matched_paths:
+            return False
+
+        for ghost_path in matched_paths:
+            info = pending.pop(ghost_path, None)
+            try:
+                self._animation_remove_component_by_path(ghost_path)
+            except Exception:
+                pass
+            self._remove_animation_states_for_pending_info(info)
         return True
 
     def _is_exit_animation_ghost_child_name(self, child_name):
@@ -640,7 +656,20 @@ class RuntimeAnimationMixin(object):
         return removed
 
     def _get_pending_animation_child_names(self, parent_path):
-        return []
+        pending = getattr(self, '_pending_animation_removals', None)
+        if not isinstance(pending, dict) or not pending:
+            return []
+        safe_parent = '%s' % self._animation_safe_text(parent_path)
+        names = []
+        for ghost_path, info in pending.items():
+            if not isinstance(info, dict):
+                continue
+            if self._animation_safe_text(info.get('parent_path')) != safe_parent:
+                continue
+            child_name = self._animation_safe_text(info.get('child_name'))
+            if child_name:
+                names.append(child_name)
+        return names
 
     def _cleanup_exit_animation_ghosts(self):
         pending = getattr(self, '_pending_animation_removals', None)
@@ -655,11 +684,31 @@ class RuntimeAnimationMixin(object):
             except Exception:
                 pass
             if isinstance(info, dict):
-                try:
-                    self._remove_animation_states_for_nodes([info.get('node')])
-                except Exception:
-                    pass
+                self._remove_animation_states_for_pending_info(info)
             removed += 1
+        return removed
+
+    def _remove_animation_states_for_pending_info(self, info):
+        if not isinstance(info, dict):
+            return 0
+        removed = 0
+        states = getattr(self, '_animation_states', None)
+        state_keys = info.get('state_keys')
+        if isinstance(states, dict) and isinstance(state_keys, (list, tuple)):
+            for key in list(state_keys):
+                safe_key = self._animation_safe_text(key)
+                if safe_key in states:
+                    try:
+                        del states[safe_key]
+                        removed += 1
+                    except Exception:
+                        pass
+        try:
+            ghost_path = self._animation_safe_text(info.get('ghost_path'))
+            if ghost_path:
+                removed += self._remove_animation_state_for_path(ghost_path)
+        except Exception:
+            pass
         return removed
 
     def _normalize_runtime_transition(self, animate):

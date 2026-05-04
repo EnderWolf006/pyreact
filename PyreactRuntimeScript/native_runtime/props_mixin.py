@@ -1129,12 +1129,12 @@ class RuntimePropsMixin(object):
         remove_paths = []
         for name in names:
             safe_name = self._safe_text(name)
+            is_ghost = False
             try:
-                if self._is_exit_animation_ghost_child_name(safe_name):
-                    continue
+                is_ghost = self._is_exit_animation_ghost_child_name(safe_name)
             except Exception:
-                pass
-            if not safe_name.startswith(self._CONTROL_NAME_PREFIX):
+                is_ghost = False
+            if (not safe_name.startswith(self._CONTROL_NAME_PREFIX)) and (not is_ghost):
                 continue
             child_path = parent_path + "/" + safe_name
             remove_paths.append(child_path)
@@ -1170,12 +1170,12 @@ class RuntimePropsMixin(object):
         remove_paths = []
         for name in names:
             safe_name = self._safe_text(name)
+            is_ghost = False
             try:
-                if self._is_exit_animation_ghost_child_name(safe_name):
-                    continue
+                is_ghost = self._is_exit_animation_ghost_child_name(safe_name)
             except Exception:
-                pass
-            if not safe_name.startswith(self._CONTROL_NAME_PREFIX):
+                is_ghost = False
+            if (not safe_name.startswith(self._CONTROL_NAME_PREFIX)) and (not is_ghost):
                 continue
             if safe_name in expected:
                 continue

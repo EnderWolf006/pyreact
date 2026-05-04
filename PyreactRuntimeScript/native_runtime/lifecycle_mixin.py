@@ -783,7 +783,7 @@ class RuntimeLifecycleMixin(object):
                 try:
                     self._record_native_commit_perf('prune_calls')
                     # Ensure we remove stale prefixed children when the new tree has none.
-                    self._prune_prefixed_children(children_parent_path, [])
+                    self._prune_prefixed_children(children_parent_path, self._get_pending_animation_child_names(children_parent_path))
                 except Exception:
                     pass
             return
@@ -791,6 +791,11 @@ class RuntimeLifecycleMixin(object):
         index = 0
         should_prune_children = self._should_prune_prefixed_children(shadow_path, prune_parent_paths)
         expected_child_names = [] if should_prune_children else None
+        if expected_child_names is not None:
+            try:
+                expected_child_names.extend(self._get_pending_animation_child_names(children_parent_path))
+            except Exception:
+                pass
         precleared_remove_paths = {}
         preclear_cache_paths = []
         preclear_index = 0
@@ -1011,6 +1016,13 @@ class RuntimeLifecycleMixin(object):
             try:
                 self._record_native_commit_perf('prune_calls')
                 # Remove any orphaned prefixed children not present in the new tree.
+                try:
+                    pending_names = self._get_pending_animation_child_names(children_parent_path)
+                    for pending_name in pending_names:
+                        if pending_name not in expected_child_names:
+                            expected_child_names.append(pending_name)
+                except Exception:
+                    pass
                 self._prune_prefixed_children(children_parent_path, expected_child_names)
             except Exception:
                 pass
@@ -1386,9 +1398,15 @@ class RuntimeLifecycleMixin(object):
             names = []
 
         for name in names:
-            if not self._safe_text(name).startswith(self._CONTROL_NAME_PREFIX):
+            safe_name = self._safe_text(name)
+            is_ghost = False
+            try:
+                is_ghost = self._is_exit_animation_ghost_child_name(safe_name)
+            except Exception:
+                is_ghost = False
+            if (not safe_name.startswith(self._CONTROL_NAME_PREFIX)) and (not is_ghost):
                 continue
-            child_path = self._root_path + "/" + name
+            child_path = self._root_path + "/" + safe_name
             try:
                     self._remove_component_by_path(child_path, skip_cache_drop=True)
             except Exception:
