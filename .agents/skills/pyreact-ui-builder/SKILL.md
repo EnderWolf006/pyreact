@@ -10,96 +10,95 @@ metadata:
 
 ## 我能做什么
 
-- 指导 agent 用 `pyreact` 暴露的公开 API 编写业务 UI。
-- 约束 agent 区分 **用库开发 UI** 与 **开发/修改框架本身** 两类任务。
-- 提供组件、props、style、hooks、`key`、`ref`、挂载流程、NetEase 平台约束的实用规范。
-- 补充 Label 文本、字号、自动换行、格式化代码与分辨率适配的使用建议。
+- 指导 agent 使用 `pyreact` 公开 API 编写业务 UI。
+- 帮助判断组件能力应写在 props 还是 `style`。
+- 约束网易 Minecraft Bedrock ModSDK 的挂载流程、JsonUI 容器、Python2 语法和跨系统调用方式。
+- 提供 primitives、composites、hooks、动画、`key`、`ref`、布局和分辨率适配规范。
 
 ## 什么时候使用
 
 当任务满足以下任一条件时，加载本 skill：
 
 - 新建或修改基于 Pyreact 的页面、弹窗、HUD、列表、表单、详情面板。
-- 需要决定某个能力应该写在 `style` 还是组件 props 上。
-- 需要在业务 UI 中正确使用 `Label` / `Image` / `Button` / `Input` / `Scroll` / `Item` / `PaperDoll`。
-- 需要把 Pyreact 页面挂载到 NetEase `ScreenNode` 上。
+- 需要正确使用 `Panel` / `Image` / `Label` / `Item` / `PaperDoll` / `Button` / `Input` / `Scroll`。
+- 需要使用 `FilledButton` / `ImageButton` / `Animated`。
+- 需要决定 `style`、props、`key`、`ref` 或 hooks 的写法。
+- 需要把 Pyreact 页面挂载到 NetEase `ScreenNode`。
 
 不要在以下场景只依赖本 skill：
 
-- 你要修改框架内部实现（`pyreact/core`、`pyreact/layout`、`PyreactRuntimeScript`）。这属于“开发本库”，先看仓库根目录 `agents.md`。
+- 用户要求修改框架内部实现（`pyreact/core`、`pyreact/layout`、`PyreactRuntimeScript`、`JsonUI/PyreactBase.json`）。这属于开发本库，必须同时遵守仓库根目录 `AGENTS.md`。
+- 涉及网易 API / JsonUI 原生能力但文档未确认时。本 skill 只说明 Pyreact 公开用法，不能替代本地知识库查询。
 
-## 第一原则：这是“用库开发 UI”，不是“开发本库”
+## 第一原则：这是“用库开发 UI”
 
-你的默认目标是：
+默认目标是：
 
-1. 在业务脚本里通过 `from pyreact import ...` 使用公开 API。
+1. 在业务脚本中 `from pyreact import ...` 使用公开 API。
 2. 通过 `@Component` + primitives + hooks 描述页面。
-3. 通过 `render_app(...)` 把组件树挂到现有 `ScreenNode`。
-4. 尽量不修改框架内部文件。
+3. 通过 `render_app(...)` 挂载到已有 `ScreenNode` / JsonUI root。
+4. 优先修正业务组件写法，不默认下沉修改 renderer/runtime。
 
-只有当用户明确要求“扩展框架能力 / 修改 renderer / 新增 style 属性支持 / 改 runtime 映射”时，才进入框架开发路径。
+只有当用户明确要求“扩展框架能力 / 修改 renderer / 新增 style 属性 / 改 runtime 映射”时，才进入框架开发路径。
 
 ## 开始前必查
 
-### 1. 先确认当前任务在哪一层
+### 1. 判断任务层级
 
-- **业务 UI 层**：`class XXXScreen(ScreenNode):` 业务UI类入口中调用的render_app。
-- **JsonUI 容器层**：检查是否已有 screen JSON 和可挂载的 root 容器。
-- **框架层**：仅在用户明确要求时进入。
+- **业务 UI 层**：组件、页面、弹窗、列表、交互状态。
+- **JsonUI 容器层**：screen JSON 是否存在，是否有可挂载 root。
+- **框架层**：primitive、layout、runtime、native mapping、动画系统。
 
-### 2. 涉及网易 API / JsonUI 时先查文档
+### 2. 涉及网易 API / JsonUI 时查文档
 
-必须遵守仓库 `agents.md`：
+必须遵守仓库 `AGENTS.md`：
 
-- `GetSystem` / `BroadcastEvent` / `ListenForEvent`：先查文档再写。
-- 不允许直接 import 非公开网易模块（例如 `gui`）；只能使用暴露出来的 `clientApi` / `serverApi` 能力。
+- UI 控件操作、JsonUI、系统通信、PaperDoll 等网易 API 先查本地知识库。
+- 跨系统调用使用 `clientApi.GetSystem(...)` / `serverApi.GetSystem(...)`，不要直接 import 其他模组系统。
+- 不允许 import 非公开网易内部模块；只能使用暴露出来的 `clientApi` / `serverApi` 能力。
 
 ### 3. 保持 Python2 写法
 
-- 不用 f-string。
+- 不写 f-string。
 - 不写 type hints。
-- 注意兼容 Python2 字符串与语法风格。
+- 不依赖 Python3-only 语法或库。
 
-## 公开入口与最小心智模型
+## 公开入口与心智模型
 
-### 公开 API 入口
+优先看 `pyreact/__init__.py`。
 
-优先看：`pyreact/__init__.py`
-
-可直接使用的核心导出包括：
+可直接使用的核心导出：
 
 - 组件装饰器：`Component`
-- primitive 组件：`Panel`、`Image`、`Label`、`Item`、`PaperDoll`、`Button`、`Input`、`Scroll`
-- 复合组件：`FilledButton`、`ImageButton`、`Animated`
-- 动画描述：`Animation`、`Transition`、`Easing`、`fadeIn`、`slideInUp` 等预设
-- 样式与枚举：`Style`、`AlignItems`、`JustifyContent`、`FlexDirection`、`FontSize`、`Position`、`ButtonState`、`RenderType`
+- primitives：`Panel`、`Image`、`Label`、`Item`、`PaperDoll`、`Button`、`Input`、`Scroll`
+- composites：`FilledButton`、`ImageButton`、`Animated`
+- 动画：`Animation`、`Transition`、`Easing`、`fadeIn`、`fadeOut`、`slideInUp`、`slideInDown`、`slideInLeft`、`slideInRight`、`slideOutUp`、`slideOutDown`、`slideOutLeft`、`slideOutRight`
+- 样式与枚举：`Style`、`AlignItems`、`JustifyContent`、`FlexDirection`、`FlexWrap`、`FontSize`、`TextAlign`、`Position`、`ButtonState`、`RenderType`
 - 颜色：`Color`、`Colors`
 - hooks：`useState`、`useEffect`、`useMemo`、`useCallback`、`useRef`
-- 挂载入口：`render_app`
+- 工具：`clone_component`、`render_app`、`flat_button_builder_preset`
 
-### 运行链路（只需理解，不要默认去改）
+当前运行链路：
 
+```text
 业务组件函数
-→ VNode / 组件树
-→ Flex 布局
-→ Native Runtime
-→ NetEase ScreenNode 控件树
+  -> VNode 树
+  -> Shadow Tree + Flex 布局
+  -> Diff mutations
+  -> Native Runtime 增量提交
+  -> NetEase ScreenNode / JsonUI 控件
+```
 
-写业务 UI 时，通常只需要关心：
-
-- 组件返回什么树
-- `style` 怎么写
-- 某些属性应该写进 props 还是 `style`
-- 页面如何挂载/卸载
+当前分支不是废弃 grid 方案；不要把 old 分支的 grid/pool/typed-grid 经验套到当前 runtime。
 
 ## 标准挂载流程
 
 顺序必须是：
 
-1. 在 `UiInitFinished` 中 `RegisterUI(...)`
-2. 调用 `PushScreen(...)`
-3. 在 `ScreenNode.Create()` 内调用 `render_app(...)`
-4. 在 `ScreenNode.Destroy()` 中调用 `PyreactRuntimeClientSystem.UnmountApp(...)`
+1. 在 `UiInitFinished` 中 `RegisterUI(...)`。
+2. 调用 `PushScreen(...)` 显示界面。
+3. 在 `ScreenNode.Create()` 内调用 `render_app(...)`。
+4. 在 `ScreenNode.Destroy()` 内调用 runtime `UnmountApp(...)`。
 
 最小模板：
 
@@ -116,9 +115,7 @@ ScreenNode = clientApi.GetScreenNodeCls()
 def SimpleApp():
     return Panel(
         style=Style(width='100%', height='100%'),
-        children=[
-            Label(content='Hello Pyreact'),
-        ],
+        children=[Label(content='Hello Pyreact')],
     )
 
 
@@ -135,19 +132,20 @@ class MyScreen(ScreenNode):
         )
 
     def Destroy(self):
-        runtime_system = clientApi.GetSystem('PyreactRuntimeMod', 'PyreactRuntimeClientSystem')
-        if runtime_system is not None:
-            runtime_system.UnmountApp({'app_id': 'my_ui_app'})
+        runtime = clientApi.GetSystem('PyreactRuntimeMod', 'PyreactRuntimeClientSystem')
+        if runtime is not None:
+            runtime.UnmountApp({'app_id': 'my_ui_app'})
 ```
 
 ## `@Component` 规则
 
-所有自定义组件都必须加 `@Component`。
+所有自定义业务组件都必须加 `@Component`。
 
 原因：
 
-- `render_app(root=...)` 会强校验 root 是否带 `@Component`。
-- `@Component` 负责处理 `key` / `ref`，让你不用在函数签名里手动声明它们。
+- `render_app(root=...)` 会校验 root 是否带 `@Component`。
+- `@Component` 负责处理 `key` / `ref`，业务函数不用手动声明它们。
+- hooks 只能在组件渲染上下文中使用。
 
 正确：
 
@@ -157,23 +155,25 @@ def UserCard(name, level):
     return Panel(children=[Label(content='%s Lv.%s' % (name, level))])
 ```
 
-不要把“业务组件”直接写成普通函数后传给 `render_app`。
+不要把普通业务函数直接传给 `render_app`。
 
 ## 组件总览
 
-### 1. `Panel`
+### `Panel`
 
-用途：通用容器、布局节点。
+用途：通用容器、布局节点、动画子树根。
 
-常用参数：
+常用 props：
 
 - `style`
 - `children`
-- `onClick`
 
-适合：横纵布局、包裹子节点、绝对定位容器。
+要点：
 
-### 2. `Image`
+- 当前 runtime 会创建真实 `panelBase` 控件；不要按 old 分支把 `Panel` 理解为纯虚拟节点。
+- 适合横纵布局、包裹子节点、绝对定位容器、列表行根节点。
+
+### `Image`
 
 用途：贴图、纯色底板、按钮背景、图标。
 
@@ -188,16 +188,15 @@ def UserCard(name, level):
 - `imageAdaptionType`
 - `nineSlice` / `nineSliceType`
 - `rotation` / `rotatePivot`
-- `children`
 - `onClick`
 
 要点：
 
-- `Image` 的渲染相关属性是 **props，不是 style**。
-- `src` 为空时，runtime 会回退到 `textures/ui/white_bg`，因此经常可以把 `Image + color` 当纯色面板用。
-- 业务上常见写法是用 `Image(style=Style(width='100%', height='100%'), color=Color(...))` 作为背景层。
+- 图片相关能力是 props，不是 `style`。
+- `src` 为空时 runtime 回退到 `textures/ui/white_bg`，可用 `Image + color` 做纯色底。
+- resize 铺满背景优先写四边绝对定位：`Style(position=Position.absolute, top=0, right=0, bottom=0, left=0)`。
 
-### 3. `Label`
+### `Label`
 
 用途：文本展示。
 
@@ -213,13 +212,12 @@ def UserCard(name, level):
 
 要点：
 
-- 文字相关能力走 **props**，不是 `style`。
-- 位置、尺寸、margin 等走 `style`。
-- 支持手动换行 `\n`。
-- 当设置 `width` / `minWidth` 等约束后，可触发自动换行。
-- 行距能力在本库公开 API 中对应 `linePadding`；如果外部资料写 `lineSpacing`，落到本库实现时应优先使用当前公开 prop 名。
+- 文本相关能力走 props，不走 `style`。
+- 支持 `\n` 和 Minecraft `§` 格式码。
+- 设置 `style.width` / `minWidth` 等宽度约束后可触发自动换行。
+- 多行或多颜色文本优先考虑单个 `Label` + `\n` / 空格 / `§` 格式码，减少控件数。
 
-### 4. `Item`
+### `Item`
 
 用途：渲染物品图标。
 
@@ -233,10 +231,10 @@ def UserCard(name, level):
 
 要点：
 
-- 可直接传扁平 props。
-- 也可传 `itemDict`，runtime 会自动兼容 `newItemName` / `itemName`、`newAuxValue` / `auxValue` 等字段。
+- 可传扁平 props，也可传 `itemDict`。
+- runtime 会兼容常见物品字典字段，如 `newItemName` / `itemName`、`newAuxValue` / `auxValue`。
 
-### 5. `PaperDoll`
+### `PaperDoll`
 
 用途：渲染网易纸娃娃控件，例如实体、骨骼模型或方块几何模型预览。
 
@@ -258,13 +256,14 @@ def UserCard(name, level):
 
 要点：
 
-- 位置、尺寸、透明度、层级仍走 `style`。
-- 纸娃娃渲染参数全部走 props，不要写进 `style`。
-- 使用前确认项目资源与模型/实体标识存在；本库只负责把参数映射到网易 paper doll renderer。
+- 位置、尺寸、透明度、层级写 `style`。
+- 纸娃娃渲染参数写 props，不要写进 `style`。
+- 当前模板使用普通 layer，不额外加 1000；需要层级时用 `style.zIndex`。
+- PaperDoll 原生映射已按本地文档确认：`RenderEntity` / `RenderSkeletonModel` / `RenderBlockGeometryModel`。
 
-### 6. `Button`
+### `Button`
 
-用途：可点击容器。
+用途：可点击容器，支持 `default / hover / pressed` 三态。
 
 常用 props：
 
@@ -275,31 +274,28 @@ def UserCard(name, level):
 
 要点：
 
-- 按钮本质上也是容器，通常内部塞 `Label` / `Image` / `Panel`。
-- 若不传 `buttonBuilder`，runtime 会为 `default/hover/pressed` 三态渲染默认贴图。
-- 若传 `buttonBuilder`，一般写成 `lambda state: Image(...)` 或函数 `def builder(state): ...`。当三态都返回无子节点、`width='100%'` 且 `height='100%'` 的 `Image` 时，runtime 会直接复用按钮 JSONUI 三态 Image 槽位，避免额外 clone 子 Image；更复杂的三态内容会自动走通用子树挂载。
-- `buttonBuilder` 可根据 `ButtonState.default/hover/pressed` 返回不同背景。
-- 常用纯色三态按钮可直接用 `FilledButton(default, hover=None, pressed=None, **button_props)`。
-- 常用图片三态按钮可直接用 `ImageButton(default, hover=None, pressed=None, imageBuilder=..., **button_props)`，`imageBuilder` 必须返回 `Image`。
+- 通常内部放 `Label` / `Image` / `Panel`。
+- 不传 `buttonBuilder` 时使用默认三态。
+- 传 `buttonBuilder` 时一般写 `def builder(state): return Image(...)`。
+- 当三态都返回无子节点、`width='100%'`、`height='100%'` 的 `Image` 时，runtime 会直接复用 JSONUI 三态槽位；复杂三态内容会走通用子树挂载。
+- 纯色三态优先用 `FilledButton`，图片三态优先用 `ImageButton`。
 
-### 7. `Input`
+### `Input`
 
 用途：文本输入。
 
 常用 props：
 
-- `style`
 - `value`
 - `onChange`
 - `placeholder`
 
 要点：
 
-- `value + onChange` 是受控写法。
-- 只传 `onChange` 或不传 `value` 时，runtime 会尽量保持非受控输入在整树重渲染后的内容。
-- 搜索框、昵称编辑框等都优先走受控写法，便于和 `useState` 保持一致。
+- 优先使用 `value + onChange` 受控写法。
+- 搜索框、昵称编辑等业务状态建议放在 `useState`。
 
-### 8. `Scroll`
+### `Scroll`
 
 用途：滚动列表容器。
 
@@ -312,117 +308,133 @@ def UserCard(name, level):
 
 要点：
 
-- 常和长列表搭配使用。
-- 若需要滚动到顶部/底部，给 `Scroll(ref=...)`，再通过 `ref.current.asScrollView()` 调原生滚动接口。
+- 长列表优先用 `Scroll`。
+- 需要操作滚动位置时，使用 `ref.current.asScrollView()` 访问原生 ScrollView。
+
+## 复合组件
+
+### `FilledButton`
+
+纯色三态按钮封装。
+
+```python
+FilledButton(
+    default=Colors.black.withOpacity(0.45),
+    hover=Colors.black.withOpacity(0.60),
+    pressed=Colors.black.withOpacity(0.75),
+    style=Style(width=120, height=32),
+    children=[Label(content='OK', color=Colors.white)],
+)
+```
+
+回退规则：只传 `default` 时三态都用 `default`；缺 `hover` 时回退到 `pressed`；缺 `pressed` 时回退到 `hover`。
+
+### `ImageButton`
+
+图片三态按钮封装。
+
+```python
+def build_image(src, state):
+    return Image(src=src, nineSlice=(4, 4, 4, 4))
+
+ImageButton(
+    default='textures/ui/button_default',
+    hover='textures/ui/button_hover',
+    pressed='textures/ui/button_pressed',
+    imageBuilder=build_image,
+    style=Style(width=120, height=32),
+    children=[Label(content='Buy', color=Colors.white)],
+)
+```
+
+`imageBuilder` 支持 `imageBuilder(src)` 或 `imageBuilder(src, state)`，必须返回 `Image(...)`。
+
+### `Animated`
+
+声明式入场、出场和连续过渡包装器。
+
+```python
+Animated(
+    key='row_42_anim',
+    enter=slideInUp(distance=12, duration=180),
+    exit=fadeOut(duration=140),
+    children=Panel(style=Style(width='100%', height=36), children=[...]),
+)
+```
+
+要点：
+
+- 只能包一个 `ComponentNode`；多个节点先用 `Panel` 聚合。
+- transform / size 动画只挂在直接子树根节点上，子内容由引擎随父节点移动。
+- `opacity` 会在 runtime 中递归传播到子树和 Button 三态槽位。
+- `enter` 只在真正新建逻辑节点时播放； keyed MOVE 不重放 enter，而走布局移动动画。
+- 删除时 runtime 克隆独立 `__pyreact_exit_*` ghost 播放 exit，并立即释放原路径给新布局。
+- 动态列表必须给 `Animated` 或根节点稳定业务 `key`，不要用随机值或易变文案。
+
+## 动画 API
+
+动画由 Python runtime 监听 `GameRenderTickEvent` 驱动。
+
+### `Animation`
+
+```python
+Animation(
+    duration=300,
+    delay=0,
+    easing=Easing.easeOutQuad,
+    from_={'opacity': 0.0, 'translateY': 20.0},
+    to={'opacity': 1.0, 'translateY': 0.0},
+)
+```
+
+### `Transition`
+
+```python
+Animated(
+    animate=Transition(values={'opacity': alpha}, duration=220),
+    children=Panel(style=Style(width=120, height=40)),
+)
+```
+
+### 可动画字段
+
+- `opacity`：递归传播到子树与按钮槽位
+- `translateX` / `translateY`：基于 layout 本地位置的视觉偏移，不影响兄弟布局
+- `width` / `height`：通过原生 size 更新；`Label` 会跳过尺寸动画
+
+预设包括 `fadeIn`、`fadeOut`、`slideInUp`、`slideInDown`、`slideInLeft`、`slideInRight`、`slideOutUp`、`slideOutDown`、`slideOutLeft`、`slideOutRight`。
 
 ## `props` 与 `style` 的分工
 
-这是最重要的使用规则之一。
-
-### `style` 只放布局/定位/显示层通用属性
-
-当前公开支持（见 `pyreact/components/style.py`）：
+`style` 只放布局、定位和通用显示属性：
 
 - 尺寸：`width`、`height`、`minWidth`、`maxWidth`、`minHeight`、`maxHeight`、`minSize`、`maxSize`
 - 间距：`padding`、`paddingTop`、`paddingRight`、`paddingBottom`、`paddingLeft`、`margin`、`marginTop`、`marginRight`、`marginBottom`、`marginLeft`
 - Flex：`flex`、`flexDirection`、`justifyContent`、`alignItems`、`alignSelf`、`flexWrap`
-- 定位：`position`、`top`、`left`、`right`、`bottom`
-- 其他：`opacity`、`display`、`zIndex`
+- 定位：`position`、`top`、`right`、`bottom`、`left`
+- 显示：`opacity`、`display`、`zIndex`
 
-### 以下必须写到组件 props，不要误写进 `style`
+以下必须写 props：
 
-#### Image props
+- `Image`：`src`、`color`、`grayscale`、`clipRatio`、`uv`、`uvSize`、`resizeMode`、`imageAdaptionType`、`nineSlice`、`nineSliceType`、`rotation`、`rotatePivot`
+- `Label`：`content`、`color`、`fontSize`、`font`、`textAlign`、`linePadding`、`shadow`
+- `Button`：`onClick`、`buttonBuilder`
+- `Input`：`value`、`onChange`、`placeholder`
+- `Item`：`identifier`、`aux`、`enchant`、`userData`、`itemDict`
+- `PaperDoll`：`renderType`、`entityId`、`entityIdentifier`、`skeletonModelName`、`animation`、`animationLooped`、`blockGeometryModelName`、`scale`、`renderDepth`、`initRotX/Y/Z`、`molangDict`、`rotationAxis`、`lightDirection`
+- `Animated`：`enter`、`animate`、`exit`
 
-- `src`
-- `color`
-- `grayscale`
-- `clipRatio`
-- `uv`
-- `uvSize`
-- `resizeMode`
-- `imageAdaptionType`
-- `nineSlice`
-- `nineSliceType`
-- `rotation`
-- `rotatePivot`
+判断不清时，先查：
 
-#### Label props
+1. `pyreact/components/primitives.py`
+2. `pyreact/components/style.py`
+3. `PyreactRuntimeScript/native_runtime/props_mixin.py`
 
-- `content`
-- `color`
-- `fontSize`
-- `font`
-- `textAlign`
-- `linePadding`
-- `shadow`
+不要凭 Web/React/Unity/其他 Minecraft 平台经验猜。
 
-#### Button props
-
-- `onClick`
-- `buttonBuilder`
-
-#### Input props
-
-- `value`
-- `onChange`
-- `placeholder`
-
-#### Item props
-
-- `identifier`
-- `aux`
-- `enchant`
-- `userData`
-- `itemDict`
-
-#### PaperDoll props
-
-- `renderType`
-- `entityId`
-- `entityIdentifier`
-- `skeletonModelName`
-- `animation`
-- `animationLooped`
-- `blockGeometryModelName`
-- `scale`
-- `renderDepth`
-- `initRotX` / `initRotY` / `initRotZ`
-- `molangDict`
-- `rotationAxis`
-- `lightDirection`
-
-#### Animated props
-
-- `enter`
-- `animate`
-- `exit`
-
-`Animated` 的动画描述可以使用 `Animation`、`Transition` 或预设函数。当前运行时支持 `opacity`、`translateX`、`translateY`、`width`、`height`，不要把动画字段写进 `style`。
-
-### 判断不清时怎么做
-
-先查两处：
-
-1. `pyreact/components/primitives.py` —— 看 primitive 的公开参数。
-2. `PyreactRuntimeScript/native_runtime/props_mixin.py` —— 看 runtime 对哪些 props 做了原生映射。
-
-不要凭 Web/React/其他平台经验猜。
-
-## `Style(...)` 的常见写法
-
-### 百分比与固定像素
-
-本库支持混合写法，例如：
-
-```python
-Style(width='100%', height=40)
-```
-
-在网易 UI 中，固定像素会参与系统缩放；百分比则基于父容器尺寸。
+## `Style(...)` 常见写法
 
 ### Flex 布局
-
-横向工具栏：
 
 ```python
 Panel(
@@ -435,82 +447,58 @@ Panel(
 )
 ```
 
-纵向表单/侧栏：
+### 相对定位
 
-```python
-Panel(
-    style=Style(
-        flexDirection=FlexDirection.column,
-        padding=12,
-    ),
-    children=[...],
-)
-```
-
-### 绝对定位
-
-未设置 `position` 时等同于 `Position.relative`。相对定位节点仍保留原本的 Flex 流占位，只把最终显示位置按 `top/right/bottom/left` 偏移；同一轴冲突时，`left` 优先于 `right`，`top` 优先于 `bottom`。适合做轻微视觉偏移，不适合用来影响兄弟节点排布。
+未设置 `position` 时等同于 `Position.relative`。相对定位节点保留原本 Flex 流占位，只按 `top/right/bottom/left` 做视觉偏移；同轴冲突时 `left` 优先于 `right`，`top` 优先于 `bottom`。
 
 ```python
 Image(style=Style(width=40, height=20, left=6, top=3))
 ```
 
-`Position.absolute` 会让节点脱离 Flex 流，按父节点内容区定位，不占据兄弟节点空间。左右同时设置且未设置 `width` 时会计算剩余宽度；上下同时设置且未设置 `height` 时会计算剩余高度。
+### 绝对定位
 
-浮动按钮常用：
+`Position.absolute` 会让节点脱离 Flex 流，按父节点内容区定位，不占据兄弟节点空间。左右同时设置且未设置 `width` 时会撑满剩余宽度；上下同时设置且未设置 `height` 时会撑满剩余高度。
 
 ```python
-Button(
+Image(
     style=Style(
         position=Position.absolute,
-        right=20,
-        bottom=20,
-        width=26,
-        height=26,
-        zIndex=100,
+        top=0,
+        right=0,
+        bottom=0,
+        left=0,
     ),
-    ...
+    color=Colors.black.withOpacity(0.4),
 )
 ```
 
 ### `display` / `opacity` / `zIndex`
 
-- `display='none'` 可直接隐藏控件。
-- `opacity` 范围建议按 `0.0 ~ 1.0` 使用。
-- `zIndex` 会映射到原生 layer，适合浮层和悬浮按钮。
+- `display='none'` 隐藏控件。
+- `opacity` 建议使用 `0.0 ~ 1.0`。
+- `zIndex` 映射到原生 layer，适合浮层微调。
 
-## `key` 的使用规则
+## `key` 规则
 
-### 什么场景必须加 `key`
+动态列表、筛选结果、排序、tab 内容切换、动画列表必须使用稳定 `key`。
 
-动态列表、筛选结果、可重排节点，一律加稳定 `key`。
+正确：
 
-- tab 按钮：`key='tab_%s' % tab_id`
-- 好友列表：`key=f['id']`
+```python
+Animated(
+    key='item_%s_anim' % item['id'],
+    enter=slideInUp(),
+    exit=fadeOut(),
+    children=Panel(key='item_%s' % item['id'], children=[...]),
+)
+```
 
-### 为什么要加
+不要使用随机数、当前时间、易变文案作为 key。没有稳定 key 时，列表项状态、动画状态、输入框、滚动引用都可能错位。
 
-primitive 在内部会把 `key` 提升到节点属性，布局与渲染层据此构建稳定 node_id。没有稳定 key 时：
+## `ref` 规则
 
-- 列表项状态可能错位
-- 输入框/滚动引用可能漂移
-- 节点复用与更新结果会不稳定
+需要拿到底层控件实例时使用 `useRef`：
 
-### `key` 的要求
-
-- 用业务唯一 ID，不要用瞬时随机值。
-- 不要依赖会频繁变化的展示文案。
-- 若列表稳定不可重排，索引可临时使用；只要会筛选、插入、排序，就换成业务 ID。
-
-## `ref` 的使用规则
-
-### 适用场景
-
-- 需要拿到底层控件实例时
-
-### 标准写法
-
-例如需要控制滚动时
 ```python
 scroll_ref = useRef(None)
 
@@ -521,162 +509,43 @@ Scroll(
 )
 ```
 
-然后：
-
-```python
-def scroll_to_top():
-    scroll_ref.current.asScrollView().SetScrollViewPercentValue(0)
-```
-
-### 注意
-
-- `ref` 不需要写进组件函数签名，`@Component` 会处理。
-- `ref.current` 可能在首次挂载前为空，调用前要考虑生命周期。
+调用前要判断 `ref.current` 是否已存在。
 
 ## Hooks 使用建议
 
-### `useState`
+- `useState`：选中项、输入框内容、弹窗显隐、筛选条件。
+- `useEffect`：订阅/解绑、一次性副作用、依赖变化后同步外部系统；可返回 cleanup。
+- `useMemo`：大列表过滤、昂贵映射、依赖确定的派生数据。
+- `useCallback`：稳定事件回调或传给子组件的函数。
+- `useRef`：原生控件引用或不触发重渲染的可变对象。
 
-适合：选中项、输入框内容、弹窗显隐、筛选条件。
+## Color / Colors
 
-```python
-selected_tab, set_selected_tab = useState('all')
-```
-
-建议：
-
-- 页面交互状态优先放在 `useState`。
-- `Input` 最适合配 `value=state` + `onChange=set_state`。
-
-### `useEffect`
-
-适合：订阅/解绑、一次性副作用、依赖变化后同步外部系统。
-
-注意：effect 可以返回 cleanup。
-
-### `useMemo`
-
-适合：
-
-- 大列表过滤结果
-- 昂贵映射表
-- 依赖确定的派生数据
-
-### `useCallback`
-
-适合：需要稳定引用的事件回调或传给子组件的函数。
-
-### `useRef`
-
-适合：
-
-- 存底层原生控件引用
-- 存不触发重渲染的可变对象
-
-## Color / Colors 类开发规范
-该模块提供了一个仿 Flutter 风格的不可变颜色对象。为保证颜色处理的一致性与准确性，请遵循以下开发规范。
-
-### 1. 颜色的创建与实例化 (Initialization)
-
-你可以通过多种方式来创建一个 `Color` 对象：
+当前 `Color` API：
 
 ```python
-# 1. 直接传入 32-bit ARGB 整数 (0xAARRGGBB)
-color1 = Color(0xFFFF0000)  # 不透明的红色
-
-# 2. 使用 fromARGB (Alpha, Red, Green, Blue) - 取值范围 0~255
-color2 = Color.fromARGB(255, 255, 0, 0)
-
-# 3. 使用 fromRGBO (Red, Green, Blue, Opacity) - RGB 取值 0~255，Opacity 取值 0.0~1.0
-color3 = Color.fromRGBO(255, 0, 0, 1.0)
-
-# 4. 使用 fromHex (支持解析 Hex 字符串)
-# 支持格式: #RGB, #ARGB, #RRGGBB, #AARRGGBB (也可以用 0x 或 0X 开头，或者不带前缀)
-color_hex1 = Color.fromHex("#FF0000")    # 默认 Alpha 为 FF (即完全不透明)
-color_hex2 = Color.fromHex("0xFFFF0000") # 包含 Alpha 通道
-color_hex3 = Color.fromHex("#F00")       # 简写形式，等同于 #FF0000
+Color(0xFFFF0000)
+Color.fromRGB(255, 0, 0)
+Color.fromRGBA(255, 0, 0, 0.5)
+Color.fromHex('#80FF0000')
+Colors.white
+Colors.black.withOpacity(0.3)
 ```
 
-### 2. 获取颜色属性 (Properties)
+可用属性和方法：
 
-创建对象后，可以轻松读取颜色的各个通道值：
+- `value`
+- `alpha8` / `red` / `green` / `blue`
+- `opacity` / `alpha`
+- `withOpacity()` / `withAlpha()` / `withAlpha8()`
+- `withRed()` / `withGreen()` / `withBlue()`
+- `toRGBUnitTuple()` / `toRGBAUnitTuple()`
 
-```python
-my_color = Color.fromARGB(128, 50, 100, 150)
+注意：当前实现没有 `fromARGB` / `fromRGBO` / `toCSSRGBA`。
 
-# 获取 32-bit 整数值
-print(my_color.value)  # 返回对应的 int 值
+## Label / 文本规范
 
-# 获取 0~255 范围的单通道整数值
-print(my_color.alpha8)  # 128
-print(my_color.red)  # 50
-print(my_color.green)  # 100
-print(my_color.blue)  # 150
-
-# 获取 0.0~1.0 范围的不透明度
-print(my_color.opacity)  # 128 / 255.0 ≈ 0.5019
-```
-
-### 3. 颜色的修改与派生 (Modifiers)
-
-由于 `Color` 是不可变对象，修改颜色属性会返回一个**全新**的 `Color` 实例：
-
-```python
-base_color = Color(0xFF00FF00) # 绿色
-
-# 替换某个通道的值 (0~255)，其他通道保持不变
-new_alpha = base_color.withAlpha(128)
-new_red   = base_color.withRed(255)
-new_green = base_color.withGreen(0)
-new_blue  = base_color.withBlue(128)
-
-# 替换不透明度 (0.0~1.0)
-half_transparent = base_color.withOpacity(0.5) 
-```
-
-### 4. 数据导出与转换 (Export / Conversion)
-
-如果需要将颜色传递给其他图形库或前端系统，可以使用以下导出方法：
-
-```python
-ui_color = Color.fromRGBO(255, 128, 0, 0.8)
-
-# 1. 导出为 0.0 ~ 1.0 范围的浮点数元组 (常用于 OpenGL 等图形 API)
-rgb_tuple = ui_color.toRGBUnitTuple()   # (1.0, 0.5019..., 0.0)
-rgba_tuple = ui_color.toRGBAUnitTuple() # (1.0, 0.5019..., 0.0, 0.8)
-
-# 2. 导出为 CSS 兼容的 rgba 字符串 (常用于 Web 前端)
-css_str = ui_color.toCSSRGBA() # "rgba(255,128,0,0.800000)"
-```
-
-### 5. 使用预设颜色常量 (`Colors` 类)
-
-`Colors` 类提供了一组静态的常用颜色常量，可以直接调用，无需重新实例化：
-
-```python
-# 直接使用预定义的 Color 对象
-bg_color = Colors.white
-text_color = Colors.black
-border_color = Colors.lightGrey
-
-# 可以搭配 Modifier 使用
-shadow_color = Colors.black.withOpacity(0.2)
-```
-
-## Label / 文本开发规范
-
-### `fontSize` 的预设值
-
-公开枚举位于 `pyreact/components/enums.py`：
-
-- `FontSize.small = 5`
-- `FontSize.normal = 10`
-- `FontSize.large = 20`
-- `FontSize.extraLarge = 40`
-
-Runtime 的映射基线是：`10px -> scale 1.0`。
-
-因此常用映射可理解为：
+`FontSize` 预设：
 
 | fontSize | 数值 | 原生 scale |
 | --- | ---: | ---: |
@@ -687,122 +556,95 @@ Runtime 的映射基线是：`10px -> scale 1.0`。
 
 建议：
 
-- extraLarge 4.0的缩放会导致字体非常大，除非极其特殊的情况，**禁止使用**
-- 优先使用预设值，尤其在 Minecraft 字体下，整倍缩放通常更清晰。
-- 若必须自定义数值，先确认视觉效果能接受，再推广。
-
-### 文本尺寸认知
-
-在 `scale=1.0`、行距为 0 的常见情况下：
-
-- 实际高度大约是 10px（会继续受 UI 适配缩放影响）
-- 英文常见宽度约 5px
-- 中文常见宽度约 10px
-- 符号常见宽度约 3px
-- 字符间距约 2px
-
-这意味着：
-
-- 中英文混排宽度差异很大
-- 做按钮或标签宽度预估时，要按“文字内容 + 字体缩放 + 平台缩放”综合估算
-
-### 换行与行距
-**注：如遇多行文本/同行文本中需间隔/不同颜色文本组合，一定要优先考虑使用一个Label控件用`\n` / `中间加空格` / `§格式代码` 以优化性能**
-**注：如遇多行文本/同行文本中需间隔/不同颜色文本组合，一定要优先考虑使用一个Label控件用`\n` / `中间加空格` / `§格式代码` 以优化性能**
-**注：如遇多行文本/同行文本中需间隔/不同颜色文本组合，一定要优先考虑使用一个Label控件用`\n` / `中间加空格` / `§格式代码` 以优化性能**
-- 手动换行：在 `content` 里写 `\n`
-- 自动换行：给 `Label` 设置 `style.width` 或 `style.minWidth` 等宽度约束
-- 行距：优先使用公开 prop `linePadding`
-
-### 文本格式化代码
-
-Minecraft 基岩版原生支持 `§` 格式代码，可直接写进 `Label(content=...)` 中。
-
-例如：
+- `extraLarge` 很大，除非特殊场景不要用。
+- 中文常见宽度约 10px，英文约 5px，符号约 3px；按钮宽度要预留中英文差异。
+- 多行文本用 `\n`；格式化文本用 Minecraft `§` 代码。
 
 ```python
 Label(content='§a成功§r：任务完成')
 ```
 
-规则：
-
-- `§` + 特定字符为格式控制码
-- `\n` 不会中断样式，除非后续遇到新的格式码或 `§r`
-- `§r` 会重置为控件默认颜色/格式
-
-
 ## 《我的世界》UI 适配认知
 
-写业务 UI 时，要记住网易 UI 不是物理像素直出。
+- 画布尺寸通常等同于游戏内 UI 屏幕尺寸，不是物理像素直出。
+- 固定像素会按平台 UI 适配比例缩放；百分比基于父容器尺寸。
+- 手机版建议按 `320 x 210` 左右设计；PC 基岩版常见参考约 `376 x 250`。
+- 顶层业务面板固定尺寸尽量控制在 `320 x 210` 内，避免手机越界。
+- 高清清晰度优先交给贴图素材，不要单纯放大布局像素。
 
-### 核心概念
+## JsonUI 容器要求
 
-- 画布尺寸通常等同于屏幕大小
-- 实际分辨率是游戏内像素计算基准
-- 系统会计算适配比例 `a`
-- 固定像素会按 `a` 被统一缩放
+挂载 root 建议继承 `PyreactBase.rootBase`：
 
-控件显示尺寸可理解为：
+```json
+{
+  "main": {
+    "type": "screen",
+    "controls": [
+      {
+        "root@PyreactBase.rootBase": {}
+      }
+    ]
+  },
+  "namespace": "YourNamespace"
+}
+```
 
-`实际显示尺寸 = (父控件尺寸 × 百分比) + (设定固定像素 × a)`
-
-### 设计基准建议
-
-- 手机版基准适配区域：`320 × 210`
-- PC 基岩版基准适配区域：`376 × 250`
-- 多端兼容优先按手机基准 `320 × 210` 设计
-
-### 布局建议
-
-- **顶层业务面板的固定尺寸，尽量控制在 `320 × 210` 以内，避免越界**。
-- **顶层业务面板的固定尺寸，尽量控制在 `320 × 210` 以内，避免越界**。
-- **顶层业务面板的固定尺寸，尽量控制在 `320 × 210` 以内，避免越界**。
-- 高清清晰度优先交给贴图素材，不要简单无限放大布局像素值。
-- 纯像素值不是物理分辨率概念，要按游戏 UI 实际分辨率预估。
+`PyreactBase.json` 当前提供：`panelBase` / `imageBase` / `textBase` / `itemBase` / `paperDollBase` / `buttonBase` / `inputBase` / `scrollBase`。
 
 ## 常见决策指南
 
 ### 什么时候用 `Panel`，什么时候用 `Image`
 
-- 纯布局容器：优先 `Panel`
-- 需要贴图或纯色底板：优先 `Image`
+- 纯布局容器：优先 `Panel`。
+- 需要贴图、纯色底板、九宫格背景：优先 `Image`。
 
-### 什么时候用 `Button` 包一层，而不是 `Panel(onClick=...)`
+### 什么时候用 `Button` 而不是 `Panel(onClick=...)`
 
-- 需要明确按钮态、点击反馈、背景切换：用 `Button`
-- 只做简单容器点击：可考虑 `Panel(onClick=...)`，但复杂可交互元素仍优先 `Button`
+- 需要按钮态、点击反馈、背景切换：用 `Button`。
+- 只做简单容器点击：可用 `Panel(onClick=...)`，但复杂可交互元素仍优先 `Button`。
 
-### 文本颜色写哪里
+### 动画列表怎么写
 
-- 写在 `Label(color=...)`
-- 不要放到 `style`
+- 每个业务项必须有稳定 key。
+- transform 动画包在列表项根节点，不要给按钮、文字、图标分别做位移动画。
+- 删除用 `exit`，新增用 `enter`；排序/删除导致的 MOVE 由 runtime 处理。
 
-### 图片颜色蒙版写哪里
+### 背景怎么写才能 resize 铺满
 
-- 写在 `Image(color=...)`
-- 不要放到 `style`
+用四边绝对定位：
+
+```python
+Image(
+    style=Style(position=Position.absolute, top=0, right=0, bottom=0, left=0),
+    color=Colors.black,
+)
+```
 
 ## 遇到问题时先查哪里
 
-1. **某个属性是不是公开支持**：`pyreact/__init__.py`、`pyreact/components/primitives.py`、`pyreact/components/style.py`
-2. **某个 props 最终如何映射到原生**：`PyreactRuntimeScript/native_runtime/props_mixin.py`
+1. 公开 API：`pyreact/__init__.py`
+2. primitive 参数：`pyreact/components/primitives.py`
+3. style 字段：`pyreact/components/style.py`
+4. props 到原生映射：`PyreactRuntimeScript/native_runtime/props_mixin.py`
+5. 布局行为：`pyreact/layout/flexbox.py`
 
 ## 禁止事项
 
-- 不要默认修改 `pyreact/core`、`pyreact/layout`、`PyreactRuntimeScript` 来“实现页面需求”。
-- 不要把 Image/Label 专属 props 错写进 `style`。
+- 不要默认修改 `pyreact/core`、`pyreact/layout`、`PyreactRuntimeScript` 来实现普通页面需求。
+- 不要把 Image / Label / Item / PaperDoll 专属 props 写进 `style`。
 - 不要省略 `@Component`。
 - 不要在动态列表里省略稳定 `key`。
-- 遇到列表/标签页切换性能问题时，业务侧优先检查动态列表 `key` 是否跨标签稳定，避免同一业务项因为展示模式前缀不同而触发整项删除/重建；可打开 `log_perf=True` 查看 CREATE / UPDATE / DELETE / MOVE、三轮布局耗时与文本测量缓存命中。
 - 不要直接 import 非公开网易模块。
 - 不要使用 Python3 语法。
-- 文档没覆盖的网易 API，不要猜。
+- 文档未覆盖的网易 API，不要猜。
 
 ## 交付前自检清单
 
 - 页面是否通过 `@Component` + primitives + hooks 编写？
 - 组件 props 和 `style` 是否分工正确？
-- 动态列表是否有稳定 `key`？
+- 动态列表、动画列表、tab 内容是否有稳定 `key`？
+- 背景是否需要四边绝对定位以适配 resize？
 - 需要原生实例操作的地方是否用了 `ref`？
 - 是否按 `RegisterUI -> PushScreen -> render_app -> UnmountApp` 顺序接入？
 - 涉及网易 API 的部分是否查过知识库？
@@ -812,7 +654,9 @@ Label(content='§a成功§r：任务完成')
 
 接到 Pyreact UI 任务时，按这个顺序执行：
 
-1. 找业务 screen 脚本和对应 JSON UI 容器。
+1. 找业务 screen 脚本和对应 JsonUI 容器。
 2. 看现有页面是否已用 `render_app(...)` 挂载。
-3. 从 `pyreact/__init__.py` 确认可用组件与 hooks。
-4. 再写业务组件，而不是一开始就下沉到 runtime。
+3. 从 `pyreact/__init__.py` 确认可用组件、hooks、composites 和动画 API。
+4. 按 props/style 分工写业务组件。
+5. 动态列表和动画节点先补稳定 key。
+6. 最后再考虑是否需要下沉到框架实现。
