@@ -3,7 +3,7 @@
 from .easing import Easing
 
 
-_SUPPORTED_FIELDS = ("opacity", "translateX", "translateY", "width", "height")
+_SUPPORTED_FIELDS = ("opacity", "alpha", "translateX", "translateY", "width", "height")
 
 
 def _normalize_number_map(value):

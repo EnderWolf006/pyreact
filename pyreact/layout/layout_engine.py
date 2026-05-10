@@ -90,29 +90,54 @@ class LayoutEngine(object):
                 result[k] = v
         return result
 
-    def _build_shadow_tree(self, vnode, path=None, stats=None):
+    def _clamp_opacity(self, value, fallback=1.0):
+        try:
+            opacity = float(value)
+        except Exception:
+            opacity = float(fallback)
+        if opacity < 0.0:
+            return 0.0
+        if opacity > 1.0:
+            return 1.0
+        return opacity
+
+    def _resolve_local_opacity(self, style):
+        if not isinstance(style, dict):
+            return 1.0
+        if style.get("opacity") is None:
+            return 1.0
+        return self._clamp_opacity(style.get("opacity"), 1.0)
+
+    def _build_shadow_tree(self, vnode, path=None, stats=None, inherited_opacity=1.0):
         if path is None:
             path = []
         if isinstance(stats, dict):
             stats['shadow_nodes'] = stats.get('shadow_nodes', 0) + 1
 
+        style = self._extract_style(vnode)
+        local_opacity = self._resolve_local_opacity(style)
+        parent_opacity = self._clamp_opacity(inherited_opacity, 1.0)
+        effective_opacity = parent_opacity * local_opacity
+
         shadow_node = ShadowNode(
             node_id=self._extract_node_id(vnode, path),
             node_type=self._extract_node_type(vnode),
-            style=self._extract_style(vnode),
+            style=style,
             props=self._extract_props(vnode),
             children=[],
+            local_opacity=local_opacity,
+            effective_opacity=effective_opacity,
         )
 
         index = 0
         for child in self._extract_children(vnode):
             child_path = list(path)
             child_path.append(index)
-            shadow_node.add_child(self._build_shadow_tree(child, child_path, stats))
+            shadow_node.add_child(self._build_shadow_tree(child, child_path, stats, effective_opacity))
             index += 1
         return shadow_node
 
-    def calculate(self, vnode_tree, screen_width, screen_height):
+    def calculate(self, vnode_tree, screen_width, screen_height, inherited_opacity=1.0):
         stats = {
             'shadow_nodes': 0,
             'build_shadow_ms': 0.0,
@@ -122,7 +147,7 @@ class LayoutEngine(object):
         }
 
         start_time = self._perf_clock()
-        root = self._build_shadow_tree(vnode_tree, stats=stats)
+        root = self._build_shadow_tree(vnode_tree, stats=stats, inherited_opacity=inherited_opacity)
         stats['build_shadow_ms'] = (self._perf_clock() - start_time) * 1000.0
 
         start_time = self._perf_clock()

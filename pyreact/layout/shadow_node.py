@@ -51,13 +51,15 @@ class LayoutResult(object):
 
 
 class ShadowNode(object):
-    def __init__(self, node_id, node_type, style=None, children=None, props=None):
+    def __init__(self, node_id, node_type, style=None, children=None, props=None, local_opacity=1.0, effective_opacity=1.0):
         self.node_id = node_id
         self.node_type = node_type
         self.style = style or {}
         self.props = props or {}
         self.children = children or []
         self.layout = None
+        self.local_opacity = float(local_opacity)
+        self.effective_opacity = float(effective_opacity)
         self._measured_shrunk = False
 
     def add_child(self, child):

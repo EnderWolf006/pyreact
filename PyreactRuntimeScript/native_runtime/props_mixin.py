@@ -28,7 +28,7 @@ class RuntimePropsMixin(object):
             pass
 
         style = self._extract_node_style(node, props)
-        self._apply_common_style_props(node_path, style, props, node_control)
+        self._apply_common_style_props(node_path, style, props, node_control, node)
 
         if node_type == "Image":
             image_props = self._extract_image_props(props)
@@ -446,6 +446,8 @@ class RuntimePropsMixin(object):
         if button_width <= 0.0 or button_height <= 0.0:
             return
 
+        button_opacity = self._get_node_effective_opacity(button_node, 1.0)
+
         state_elements = {}
         all_full_image = True
         for state in self._BUTTON_STATES:
@@ -467,14 +469,14 @@ class RuntimePropsMixin(object):
                 self._make_button_slot_image_transparent(slot_path, slot_control)
                 continue
 
-            slot_signature = self._make_button_slot_signature(state_element, button_width, button_height, all_full_image)
+            slot_signature = self._make_button_slot_signature(state_element, button_width, button_height, all_full_image, button_opacity)
             slot_cache = getattr(self, '_button_slot_cache', None)
             if not isinstance(slot_cache, dict):
                 slot_cache = {}
                 self._button_slot_cache = slot_cache
             if slot_cache.get(slot_path) == slot_signature:
                 if all_full_image:
-                    self._restore_button_slot_image_alpha(state_element, slot_path, slot_control)
+                    self._restore_button_slot_image_alpha(state_element, slot_path, slot_control, button_opacity)
                 continue
 
             self._safe_set_position(slot_path, 0, 0, slot_control)
@@ -483,7 +485,7 @@ class RuntimePropsMixin(object):
                 self._clear_prefixed_children(slot_path)
 
             if all_full_image:
-                self._apply_full_size_image_to_button_slot(state_element, slot_path, slot_control)
+                self._apply_full_size_image_to_button_slot(state_element, slot_path, slot_control, button_opacity)
                 slot_cache[slot_path] = slot_signature
                 self._record_button_slot_perf('direct_image')
                 continue
@@ -496,15 +498,17 @@ class RuntimePropsMixin(object):
                 slot_width=button_width,
                 slot_height=button_height,
                 cache_already_cleared=cache_already_cleared,
+                inherited_opacity=button_opacity,
             )
             slot_cache[slot_path] = slot_signature
             self._record_button_slot_perf('subtree')
 
-    def _make_button_slot_signature(self, state_element, slot_width, slot_height, direct_image=False):
+    def _make_button_slot_signature(self, state_element, slot_width, slot_height, direct_image=False, inherited_opacity=1.0):
         return (
             'direct_image' if direct_image else 'subtree',
             int(round(slot_width)),
             int(round(slot_height)),
+            int(round(self._clamp_alpha(inherited_opacity) * 1000.0)),
             self._make_element_signature(state_element),
         )
 
@@ -531,7 +535,7 @@ class RuntimePropsMixin(object):
         text = self._safe_text(value).replace(' ', '').lower()
         return text == '100%'
 
-    def _apply_full_size_image_to_button_slot(self, state_element, slot_path, slot_control):
+    def _apply_full_size_image_to_button_slot(self, state_element, slot_path, slot_control, inherited_opacity=1.0):
         props = getattr(state_element, 'props', None) or {}
         if not isinstance(props, dict):
             props = {}
@@ -541,12 +545,12 @@ class RuntimePropsMixin(object):
         if not isinstance(style, dict):
             style = {}
 
-        self._apply_common_style_props(slot_path, style, props, slot_control)
-        self._cache_button_slot_base_alpha(slot_path, self._resolve_common_alpha(style, props))
+        self._apply_common_style_props(slot_path, style, props, slot_control, None, inherited_opacity)
+        self._cache_button_slot_base_alpha(slot_path, self._resolve_common_alpha(style, props, None, inherited_opacity))
         image_props = self._extract_image_props(props)
         self._apply_image_style_props(slot_path, image_props, slot_control)
 
-    def _restore_button_slot_image_alpha(self, state_element, slot_path, slot_control):
+    def _restore_button_slot_image_alpha(self, state_element, slot_path, slot_control, inherited_opacity=1.0):
         props = getattr(state_element, 'props', None) or {}
         if not isinstance(props, dict):
             props = {}
@@ -555,8 +559,8 @@ class RuntimePropsMixin(object):
             style = getattr(state_element, 'style', None)
         if not isinstance(style, dict):
             style = {}
-        self._apply_common_style_props(slot_path, style, props, slot_control)
-        self._cache_button_slot_base_alpha(slot_path, self._resolve_common_alpha(style, props))
+        self._apply_common_style_props(slot_path, style, props, slot_control, None, inherited_opacity)
+        self._cache_button_slot_base_alpha(slot_path, self._resolve_common_alpha(style, props, None, inherited_opacity))
 
     def _make_button_slot_image_transparent(self, slot_path, slot_control):
         try:
@@ -586,24 +590,43 @@ class RuntimePropsMixin(object):
             self._button_slot_base_alpha_cache = cache
         cache[slot_path] = alpha
 
-    def _resolve_common_alpha(self, style, props):
+    def _clamp_alpha(self, alpha):
+        value = self._to_float(alpha, 1.0)
+        if value < 0.0:
+            return 0.0
+        if value > 1.0:
+            return 1.0
+        return value
+
+    def _get_node_effective_opacity(self, node, fallback=1.0):
+        if node is None:
+            return self._clamp_alpha(fallback)
+        try:
+            return self._clamp_alpha(getattr(node, 'effective_opacity', fallback))
+        except Exception:
+            return self._clamp_alpha(fallback)
+
+    def _resolve_common_alpha(self, style, props, node=None, inherited_opacity=None):
         if not isinstance(style, dict):
             style = {}
         if not isinstance(props, dict):
             props = {}
         opacity = style.get('opacity')
         color = props.get('color')
-        base_opacity = self._to_float(opacity, 1.0) if opacity is not None else 1.0
+        if node is not None:
+            base_opacity = self._get_node_effective_opacity(node, 1.0)
+        elif inherited_opacity is not None:
+            base_opacity = self._clamp_alpha(inherited_opacity)
+            if opacity is not None:
+                base_opacity = base_opacity * self._clamp_alpha(opacity)
+        else:
+            base_opacity = self._clamp_alpha(opacity) if opacity is not None else 1.0
         try:
             color_alpha = color.alpha if color is not None else 1.0
         except Exception:
             color_alpha = 1.0
         final_alpha = base_opacity * color_alpha
-        if final_alpha < 0.0:
-            final_alpha = 0.0
-        elif final_alpha > 1.0:
-            final_alpha = 1.0
-        return final_alpha
+        return self._clamp_alpha(final_alpha)
 
     def _record_button_slot_perf(self, mode):
         if not getattr(self, '_log_perf', False):
@@ -680,7 +703,7 @@ class RuntimePropsMixin(object):
             src=texture,
         )
 
-    def _render_state_element_into_slot(self, state_element, slot_path, slot_width, slot_height, cache_already_cleared=False):
+    def _render_state_element_into_slot(self, state_element, slot_path, slot_width, slot_height, cache_already_cleared=False, inherited_opacity=1.0):
         from pyreact.components.primitives import Panel
 
         state_children = self._normalize_children_for_builder(state_element)
@@ -694,7 +717,7 @@ class RuntimePropsMixin(object):
             },
             children=state_children,
         )
-        shadow_root = self._layout_engine.calculate(state_root, slot_width, slot_height)
+        shadow_root = self._layout_engine.calculate(state_root, slot_width, slot_height, inherited_opacity=inherited_opacity)
         try:
             slot_control = self._get_base_ui_control(slot_path)
         except Exception:
@@ -928,9 +951,11 @@ class RuntimePropsMixin(object):
             params[native_key] = value
         return params
 
-    def _apply_common_style_props(self, node_path, style, props, node_control):
+    def _apply_common_style_props(self, node_path, style, props, node_control, node=None, inherited_opacity=None):
         if not isinstance(style, dict):
-            return
+            style = {}
+        if not isinstance(props, dict):
+            props = {}
 
         cache = self._get_native_common_style_cache()
         cached_style = cache.get(node_path, {})
@@ -951,14 +976,8 @@ class RuntimePropsMixin(object):
         opacity = style.get("opacity")
         color = props.get("color")  # type: Color
 
-        if opacity is not None or color is not None:
-            base_opacity = self._to_float(opacity, 1.0) if opacity is not None else 1.0
-            color_alpha = color.alpha if color is not None else 1.0
-            final_alpha = base_opacity * color_alpha
-            if final_alpha < 0.0:
-                final_alpha = 0.0
-            elif final_alpha > 1.0:
-                final_alpha = 1.0
+        if opacity is not None or color is not None or node is not None or inherited_opacity is not None:
+            final_alpha = self._resolve_common_alpha(style, props, node, inherited_opacity)
             next_cached_style['opacity'] = final_alpha
             if cached_style.get('opacity') != final_alpha:
                 self._safe_set_alpha(node_path, final_alpha, node_control)

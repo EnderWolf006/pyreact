@@ -297,14 +297,45 @@ class RuntimeAnimationMixin(object):
             self._animation_safe_set_position(node_path, x, y, node_control)
         if (values.get('width') is not None or values.get('height') is not None) and self._animation_safe_text(getattr(node, 'node_type', '')) != 'Label':
             self._animation_safe_set_size(node_path, width, height, node_control)
-        if values.get('opacity') is not None:
-            opacity = float(self._animation_to_float(values.get('opacity'), 1.0))
-            if opacity < 0.0:
-                opacity = 0.0
-            elif opacity > 1.0:
-                opacity = 1.0
-            self._animation_safe_set_alpha(node_path, opacity, node_control)
-            self._apply_subtree_animation_alpha(node_path, node, opacity)
+        has_opacity = values.get('opacity') is not None
+        has_alpha = values.get('alpha') is not None
+        if has_opacity or has_alpha:
+            opacity = 1.0
+            if has_opacity:
+                opacity = self._animation_clamp_alpha(values.get('opacity'))
+            alpha = 1.0
+            if has_alpha:
+                alpha = self._animation_clamp_alpha(values.get('alpha'))
+            self._animation_safe_set_alpha(node_path, self._animation_resolve_node_base_alpha(node) * opacity * alpha, node_control)
+            if has_opacity:
+                self._apply_subtree_animation_alpha(node_path, node, opacity)
+            if has_alpha:
+                self._apply_direct_child_animation_alpha(node_path, node, alpha, opacity)
+
+    def _animation_clamp_alpha(self, alpha):
+        value = float(self._animation_to_float(alpha, 1.0))
+        if value < 0.0:
+            return 0.0
+        if value > 1.0:
+            return 1.0
+        return value
+
+    def _animation_resolve_node_base_alpha(self, node):
+        props = getattr(node, 'props', None) or {}
+        if not isinstance(props, dict):
+            props = {}
+        style = props.get('style')
+        if not isinstance(style, dict):
+            style = getattr(node, 'style', None)
+        if not isinstance(style, dict):
+            style = {}
+        try:
+            resolve_alpha = getattr(self, '_resolve_common_alpha', None)
+            if callable(resolve_alpha):
+                return self._animation_clamp_alpha(resolve_alpha(style, props, node))
+        except Exception:
+            pass
+        return 1.0
 
     def _reset_stale_animation_values(self, node_path, node, node_control, state, from_values, to_values):
         previous = state.get('values') if isinstance(state, dict) else None
@@ -327,6 +358,8 @@ class RuntimeAnimationMixin(object):
             style = props.get('style') if isinstance(props, dict) else {}
             if isinstance(style, dict):
                 return self._animation_to_float(style.get('opacity'), 1.0)
+            return 1.0
+        if key == 'alpha':
             return 1.0
         if key in ('translateX', 'translateY'):
             return 0.0
@@ -358,10 +391,36 @@ class RuntimeAnimationMixin(object):
             child_name = '%s%s_%s' % (self._animation_control_prefix(), child_id, index)
             child_path = ('%s/%s' % (children_parent_path, child_name))
             child_type = self._animation_safe_text(getattr(child, 'node_type', '') or '')
-            self._animation_safe_set_alpha(child_path, opacity, None)
+            self._animation_safe_set_alpha(child_path, self._animation_resolve_node_base_alpha(child) * opacity, None)
             if child_type == 'Button':
                 self._apply_button_slot_animation_alpha(child_path, opacity)
             self._apply_subtree_animation_alpha(child_path, child, opacity)
+            index += 1
+
+    def _apply_direct_child_animation_alpha(self, node_path, node, alpha, inherited_opacity=1.0):
+        node_type = self._animation_safe_text(getattr(node, 'node_type', '') or '')
+        if node_type == 'Button':
+            self._apply_button_slot_animation_alpha(node_path, alpha * inherited_opacity)
+
+        children_parent_path = node_path
+        if node_type == 'Scroll':
+            children_parent_path = self._animation_get_scroll_content_path(node_path)
+        try:
+            children = self._animation_get_render_children(node, node_type)
+        except Exception:
+            children = []
+        if not isinstance(children, (list, tuple)):
+            return
+        index = 0
+        multiplier = alpha * inherited_opacity
+        for child in children:
+            child_id = self._animation_safe_text(getattr(child, 'node_id', 'node'))
+            child_name = '%s%s_%s' % (self._animation_control_prefix(), child_id, index)
+            child_path = ('%s/%s' % (children_parent_path, child_name))
+            child_type = self._animation_safe_text(getattr(child, 'node_type', '') or '')
+            self._animation_safe_set_alpha(child_path, self._animation_resolve_node_base_alpha(child) * multiplier, None)
+            if child_type == 'Button':
+                self._apply_button_slot_animation_alpha(child_path, multiplier)
             index += 1
 
     def _apply_button_slot_animation_alpha(self, node_path, opacity):
@@ -393,6 +452,8 @@ class RuntimeAnimationMixin(object):
             if key not in current:
                 if key == 'opacity':
                     current[key] = self._animation_to_float(style.get('opacity'), 1.0)
+                elif key == 'alpha':
+                    current[key] = 1.0
                 elif key in ('translateX', 'translateY'):
                     current[key] = 0.0
                 elif key == 'width':

@@ -319,9 +319,9 @@ def UserCard(name, level):
 
 ```python
 FilledButton(
-    default=Colors.black.withOpacity(0.45),
-    hover=Colors.black.withOpacity(0.60),
-    pressed=Colors.black.withOpacity(0.75),
+    default=Colors.black.withAlpha(0.45),
+    hover=Colors.black.withAlpha(0.60),
+    pressed=Colors.black.withAlpha(0.75),
     style=Style(width=120, height=32),
     children=[Label(content='OK', color=Colors.white)],
 )
@@ -366,7 +366,9 @@ Animated(
 
 - 只能包一个 `ComponentNode`；多个节点先用 `Panel` 聚合。
 - transform / size 动画只挂在直接子树根节点上，子内容由引擎随父节点移动。
-- `opacity` 会在 runtime 中递归传播到子树和 Button 三态槽位。
+- `opacity` 会在 runtime 中递归传播到完整子树和 Button 三态槽位。
+- `alpha` 只作用到动画根和直接子组件，不会传播到更深后代。
+- 传播时保留每个后代自己的 `Color.alpha`；不要用父节点颜色 alpha 当作整棵子树透明度。
 - `enter` 只在真正新建逻辑节点时播放； keyed MOVE 不重放 enter，而走布局移动动画。
 - 删除时 runtime 克隆独立 `__pyreact_exit_*` ghost 播放 exit，并立即释放原路径给新布局。
 - 动态列表必须给 `Animated` 或根节点稳定业务 `key`，不要用随机值或易变文案。
@@ -391,14 +393,15 @@ Animation(
 
 ```python
 Animated(
-    animate=Transition(values={'opacity': alpha}, duration=220),
+    animate=Transition(values={'opacity': opacity}, duration=220),
     children=Panel(style=Style(width=120, height=40)),
 )
 ```
 
 ### 可动画字段
 
-- `opacity`：递归传播到子树与按钮槽位
+- `opacity`：递归传播到完整子树与按钮槽位，并保留每个节点自己的 `Color.alpha`
+- `alpha`：只作用到动画根和直接子组件，不会传播到更深后代
 - `translateX` / `translateY`：基于 layout 本地位置的视觉偏移，不影响兄弟布局
 - `width` / `height`：通过原生 size 更新；`Label` 会跳过尺寸动画
 
@@ -413,6 +416,14 @@ Animated(
 - Flex：`flex`、`flexDirection`、`justifyContent`、`alignItems`、`alignSelf`、`flexWrap`
 - 定位：`position`、`top`、`right`、`bottom`、`left`
 - 显示：`opacity`、`display`、`zIndex`
+
+透明度规则：
+
+- `style.opacity` 会继承，子节点最终透明度会乘上所有祖先的 `style.opacity`。
+- `Color.fromRGBA(..., alpha)`、`withAlpha()` 的 alpha 只作用于当前节点颜色，不继承到子节点。
+- 普通渲染最终 alpha 为“继承后的 `style.opacity` * 当前节点 `Color.alpha`”。
+- 动画 `opacity` 会递归作用到完整子树和按钮槽位，但不能覆盖后代自己的 rgba alpha。
+- 动画 `alpha` 的语义与 `Color.alpha` 一致，只影响该动画根和直接子组件，不会传播到孙级及更深组件。
 
 以下必须写 props：
 
@@ -472,7 +483,7 @@ Image(
         bottom=0,
         left=0,
     ),
-    color=Colors.black.withOpacity(0.4),
+    color=Colors.black.withAlpha(0.4),
 )
 ```
 
@@ -533,19 +544,21 @@ Color.fromRGB(255, 0, 0)
 Color.fromRGBA(255, 0, 0, 0.5)
 Color.fromHex('#80FF0000')
 Colors.white
-Colors.black.withOpacity(0.3)
+Colors.black.withAlpha(0.3)
 ```
 
 可用属性和方法：
 
 - `value`
 - `alpha8` / `red` / `green` / `blue`
-- `opacity` / `alpha`
-- `withOpacity()` / `withAlpha()` / `withAlpha8()`
+- `alpha`
+- `withAlpha()` / `withAlpha8()`
 - `withRed()` / `withGreen()` / `withBlue()`
 - `toRGBUnitTuple()` / `toRGBAUnitTuple()`
 
 注意：当前实现没有 `fromARGB` / `fromRGBO` / `toCSSRGBA`。
+
+`Color` 中的 alpha 是当前节点颜色透明度，不是继承属性。需要让整组 UI 一起半透明时，给共同父节点写 `Style(opacity=...)`；只需要某张图或某段文字半透明时，才使用 `Color.fromRGBA(...)` / `withAlpha(...)`。
 
 ## Label / 文本规范
 

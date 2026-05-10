@@ -202,7 +202,7 @@ def TagChip(chip_key, text, accent):
             alignItems=AlignItems.center,
             justifyContent=JustifyContent.center,
         ),
-        color=accent.withOpacity(0.35),
+        color=accent.withAlpha(0.35),
         children=[
             Label(
                 color=Colors.white,
@@ -253,9 +253,11 @@ def SkinShopApp():
     if can_afford:
         afford_text = '库存充足，可直接购买'
         afford_color = Color(0xFF4ADE80)
-        buy_default = current_goods['accent']
-        buy_hover = current_goods['accent'].withOpacity(0.85)
-        buy_pressed = current_goods['accent'].withOpacity(0.7)
+        accent = current_goods['accent']
+        assert isinstance(accent, Color)
+        buy_default = accent
+        buy_hover = accent.withAlpha(0.85)
+        buy_pressed = accent.withAlpha(0.7)
     else:
         afford_text = '余额不足，先去赚一点吧'
         afford_color = Color(0xFFF87171)

@@ -110,10 +110,6 @@ class Color(object):
         return self._value & 0xFF
 
     @property
-    def opacity(self):
-        return self.alpha8 / 255.0
-
-    @property
     def alpha(self):
         return self.alpha8 / 255.0
 
@@ -131,9 +127,6 @@ class Color(object):
 
     def withBlue(self, b):
         return Color._fromARGB8888(self.alpha8, self.red, self.green, b)
-
-    def withOpacity(self, opacity):
-        return Color.fromRGBA(self.red, self.green, self.blue, opacity)
 
     def toRGBUnitTuple(self):
         return (

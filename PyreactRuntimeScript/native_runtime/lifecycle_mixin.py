@@ -1159,6 +1159,7 @@ class RuntimeLifecycleMixin(object):
             self._safe_text(getattr(node, 'node_id', '')),
             self._safe_text(getattr(node, 'node_type', '')),
             layout_sig,
+            int(round(self._to_float(getattr(node, 'effective_opacity', 1.0), 1.0) * 1000.0)),
             self._make_commit_signature(style),
             self._make_commit_signature(props),
         )

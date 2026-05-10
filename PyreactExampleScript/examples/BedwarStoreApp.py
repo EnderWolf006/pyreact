@@ -228,12 +228,11 @@ def VerticalItemCard(goods_data, onClick):
                 style=Style(
                     width="100%",
                     height=16,
-                    opacity=0.5,
                     justifyContent=JustifyContent.center,
                     alignItems=AlignItems.center,
                     flexDirection=FlexDirection.row,
                 ),
-                color=Colors.black,
+                color=Colors.black.withAlpha(0.5),
                 children=[
                     Item(
                         style=Style(height=14, width=14, marginRight=4),

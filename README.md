@@ -219,7 +219,7 @@ Flex 相关：
 | --- | --- | --- |
 | `position` | `str` | 默认按 `Position.relative`；也可写 `Position.absolute` |
 | `top` / `right` / `bottom` / `left` | `int / float` | 定位偏移 |
-| `opacity` | `float` | 透明度，取值范围 `0.0 ~ 1.0` |
+| `opacity` | `float` | 透明度，取值范围 `0.0 ~ 1.0`，会继承并与祖先透明度相乘 |
 | `display` | `str` | 显示状态，例如 `'none'` |
 | `zIndex` | `int` | 原生 layer 微调 |
 
@@ -228,6 +228,13 @@ Flex 相关：
 - 未传 `position` 时等同于 `Position.relative`
 - `Position.relative`：节点保留原本 Flex 流占位，再按 `top/right/bottom/left` 做视觉偏移；同轴冲突时 `left` 优先于 `right`，`top` 优先于 `bottom`
 - `Position.absolute`：节点脱离 Flex 流，按父节点内容区解析 `top/right/bottom/left`；左右同时设置且未设置 `width` 时会撑满剩余宽度，上下同时设置且未设置 `height` 时会撑满剩余高度
+
+透明度语义：
+
+- `style.opacity` 会沿组件树继承，子节点最终透明度会乘上所有祖先的 `style.opacity`
+- `Color.fromRGBA(..., alpha)`、`Color.withAlpha()` 里的 alpha 只作用于当前节点颜色，不会被子节点继承
+- 普通渲染最终 alpha 为“继承后的 `style.opacity` * 当前节点 `Color.alpha`”
+- 动画字段 `opacity` 会递归作用到完整子树与 Button 三态槽位；动画字段 `alpha` 只作用到动画根和直接子组件，不会传播到更深后代
 
 ---
 
@@ -353,9 +360,9 @@ Flex 相关：
 
 ```python
 FilledButton(
-    default=Colors.black.withOpacity(0.45),
-    hover=Colors.black.withOpacity(0.60),
-    pressed=Colors.black.withOpacity(0.75),
+    default=Colors.black.withAlpha(0.45),
+    hover=Colors.black.withAlpha(0.60),
+    pressed=Colors.black.withAlpha(0.75),
     style=Style(width=120, height=32),
     children=[Label(content='OK', color=Colors.white)],
 )
@@ -404,7 +411,8 @@ Animated(
 
 - `Animated` 必须包裹单个 `ComponentNode`；多个节点先用 `Panel` 聚合
 - transform / size 动画只挂在直接子树根节点上，子内容由引擎随父节点一起移动，避免列表项、关闭按钮和文字不同步
-- `opacity` 会在 runtime 中递归传播到子树和 Button 三态槽位，因为部分 JsonUI 控件不继承父透明度
+- `opacity` 会在 runtime 中递归传播到完整子树和 Button 三态槽位，因为部分 JsonUI 控件不继承父透明度
+- `alpha` 只作用到动画根和直接子组件，不会传播到更深后代，语义与 `Color.alpha` 一致
 - `enter` 只在真正新建逻辑节点时播放； keyed MOVE 不会重放 enter
 - 删除期间 runtime 会克隆出独立 `__pyreact_exit_*` ghost 播放 exit，立即释放原路径给新布局使用；快速切换/全量清空会先清理 ghost
 - 列表增删必须给 `Animated` 或其根节点稳定 `key`
@@ -528,7 +536,7 @@ Animated(
 
 ```python
 Animated(
-    animate={'opacity': alpha, 'translateX': offset},
+    animate={'opacity': group_opacity, 'translateX': offset},
     children=Panel(style=Style(width=120, height=40)),
 )
 ```
@@ -539,7 +547,8 @@ dict 写法等价于 `Transition(values=dict_value, duration=200, delay=0, easin
 
 | 字段 | 原生提交 | 行为 |
 | --- | --- | --- |
-| `opacity` | `SetAlpha` | 值会限制在 `0.0 ~ 1.0`，并递归传播到子树和 Button 三态槽位 |
+| `opacity` | `SetAlpha` | 值会限制在 `0.0 ~ 1.0`，并递归传播到完整子树和 Button 三态槽位；传播时保留每个节点自己的 `Color.alpha` |
+| `alpha` | `SetAlpha` | 值会限制在 `0.0 ~ 1.0`，只作用到动画根和直接子组件，不会传播到更深后代 |
 | `translateX` | `SetPosition` | 基于布局结果的 X 方向本地偏移，不改变兄弟节点布局 |
 | `translateY` | `SetPosition` | 基于布局结果的 Y 方向本地偏移，不改变兄弟节点布局 |
 | `width` | `SetSize` | 改变当前控件宽度；`Label` 跳过尺寸动画 |
@@ -548,6 +557,7 @@ dict 写法等价于 `Transition(values=dict_value, duration=200, delay=0, easin
 字段基线：
 
 - `opacity` 缺省基线为节点当前 `style.opacity`，没有设置时为 `1.0`
+- `alpha` 缺省基线为 `1.0`
 - `translateX` / `translateY` 缺省基线为 `0.0`
 - `width` / `height` 缺省基线为当前布局尺寸
 - `translateX` / `translateY` 是视觉偏移，不参与 Flex 剩余空间计算
@@ -594,9 +604,9 @@ MOVE 动画只处理由 diff 识别出的 keyed 节点移动；没有稳定 key 
 
 ### 透明度传播
 
-部分 JsonUI 控件不继承父控件透明度，因此 `opacity` 动画会递归应用到子树。`Button` 的 `default` / `hover` / `pressed` 三态槽位单独处理：runtime 记录槽位基础透明度，动画时提交 `base_alpha * opacity`。
+部分 JsonUI 控件不继承父控件透明度，因此普通 `style.opacity` 和动画 `opacity` 都由 runtime 显式递归应用到完整子树。`Button` 的 `default` / `hover` / `pressed` 三态槽位单独处理：runtime 记录槽位基础透明度，动画时提交 `base_alpha * opacity`。
 
-`style.opacity` 与 `Color.alpha` 的最终透明度会相乘；动画 opacity 再作用于 runtime 提交的 alpha。
+`style.opacity` 是继承属性，会和祖先透明度连乘；`Color.alpha` 只属于当前节点颜色，不继承。最终普通 alpha 为继承后的 `style.opacity * Color.alpha`；动画 `opacity` 再作用于 runtime 提交的完整子树基础 alpha，并保留后代自己的 `Color.alpha`。动画 `alpha` 语义与 `Color.alpha` 一致，只影响该动画根和直接子组件，不会传播到孙级及更深组件。
 
 ### Easing
 
@@ -662,11 +672,11 @@ def NoticeList(items):
 ```python
 @Component
 def ToggleCard(disabled):
-    alpha = 0.35 if disabled else 1.0
+    group_opacity = 0.35 if disabled else 1.0
     offset = 8 if disabled else 0
     return Animated(
         animate=Transition(
-            values={'opacity': alpha, 'translateX': offset},
+            values={'opacity': group_opacity, 'translateX': offset},
             duration=220,
             easing=Easing.easeOutQuad,
         ),
@@ -747,20 +757,20 @@ Color.fromRGB(255, 0, 0)
 Color.fromRGBA(255, 0, 0, 0.5)
 Color.fromHex('#80FF0000')
 Colors.white
-Colors.black.withOpacity(0.3)
+Colors.black.withAlpha(0.3)
 ```
 
 常用属性和方法：
 
 - `value`：原始 32-bit ARGB 整数
 - `alpha8` / `red` / `green` / `blue`：`0~255` 通道
-- `opacity` / `alpha`：`0.0~1.0` 透明度
-- `withOpacity(opacity)` / `withAlpha(opacity)`：按 `0.0~1.0` 修改透明度
+- `alpha`：`0.0~1.0` 透明度
+- `withAlpha(alpha)`：按 `0.0~1.0` 修改透明度
 - `withAlpha8(alpha8)`：按 `0~255` 修改透明度
 - `withRed()` / `withGreen()` / `withBlue()`：修改颜色通道
 - `toRGBUnitTuple()` / `toRGBAUnitTuple()`：导出归一化浮点 tuple
 
-注意：当前实现没有 `fromARGB` / `fromRGBO` / `toCSSRGBA`。最终原生透明度会把 `style.opacity` 和 `color.alpha` 相乘。
+注意：当前实现没有 `fromARGB` / `fromRGBO` / `toCSSRGBA`，也没有 `opacity` / `withOpacity()` 别名。最终原生透明度会把 `style.opacity` 和 `color.alpha` 相乘。
 
 ---
 
