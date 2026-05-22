@@ -372,6 +372,10 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
     content_y = y + padding_top
     content_width = max(0.0, width - padding_left - padding_right)
     content_height = max(0.0, height - padding_top - padding_bottom)
+    absolute_x = x
+    absolute_y = y
+    absolute_width = width
+    absolute_height = height
 
     if flex_direction == "row":
         main_size = content_width
@@ -393,14 +397,17 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
     absolute_items = []
     for child in node.children:
         child_style = _get_node_style(child)
-        c_min_w, c_max_w, c_min_h, c_max_h = _resolve_min_max(child_style, content_width, content_height)
+        is_child_absolute = _is_absolute_position(child_style)
+        child_parent_width = absolute_width if is_child_absolute else content_width
+        child_parent_height = absolute_height if is_child_absolute else content_height
+        c_min_w, c_max_w, c_min_h, c_max_h = _resolve_min_max(child_style, child_parent_width, child_parent_height)
 
         c_margin_top, c_margin_right, c_margin_bottom, c_margin_left = parse_box(
-            child_style, "margin", content_width, content_height
+            child_style, "margin", child_parent_width, child_parent_height
         )
 
-        c_width = parse_length(child_style.get("width"), content_width)
-        c_height = parse_length(child_style.get("height"), content_height)
+        c_width = parse_length(child_style.get("width"), child_parent_width)
+        c_height = parse_length(child_style.get("height"), child_parent_height)
 
         if child.node_type == "Label" and (not measure_pass) and (c_width is None or c_height is None):
             c_width, c_height = _reuse_label_layout_size(child, c_width, c_height)
@@ -515,7 +522,7 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             "main_pos": 0.0,
             "cross_pos": 0.0,
             "cross_specified": explicit_cross is not None,
-            "is_absolute": _is_absolute_position(child_style),
+            "is_absolute": is_child_absolute,
             "min_width": c_min_w,
             "max_width": c_max_w,
             "min_height": c_min_h,
@@ -746,18 +753,18 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
     for item in absolute_items:
         child_style = item["style"]
 
-        left = parse_length(child_style.get("left"), content_width)
-        right = parse_length(child_style.get("right"), content_width)
-        top = parse_length(child_style.get("top"), content_height)
-        bottom = parse_length(child_style.get("bottom"), content_height)
+        left = parse_length(child_style.get("left"), absolute_width)
+        right = parse_length(child_style.get("right"), absolute_width)
+        top = parse_length(child_style.get("top"), absolute_height)
+        bottom = parse_length(child_style.get("bottom"), absolute_height)
 
         child_width = item["explicit_width"]
         child_height = item["explicit_height"]
 
         if child_width is None and left is not None and right is not None:
-            child_width = content_width - left - right - item["margin_left"] - item["margin_right"]
+            child_width = absolute_width - left - right - item["margin_left"] - item["margin_right"]
         if child_height is None and top is not None and bottom is not None:
-            child_height = content_height - top - bottom - item["margin_top"] - item["margin_bottom"]
+            child_height = absolute_height - top - bottom - item["margin_top"] - item["margin_bottom"]
 
         force_child_width = child_width is not None
         force_child_height = child_height is not None
@@ -768,26 +775,26 @@ def compute_layout(node, x, y, available_width, available_height, forced_width=N
             child_height = _clamp_axis(child_height, item["min_height"], item["max_height"])
 
         if child_width is None:
-            available_w = content_width
+            available_w = absolute_width
         else:
             available_w = child_width
 
         if child_height is None:
-            available_h = content_height
+            available_h = absolute_height
         else:
             available_h = child_height
 
-        child_x = content_x + item["margin_left"]
-        child_y = content_y + item["margin_top"]
+        child_x = absolute_x + item["margin_left"]
+        child_y = absolute_y + item["margin_top"]
         if left is not None:
-            child_x = content_x + left + item["margin_left"]
+            child_x = absolute_x + left + item["margin_left"]
         elif right is not None and child_width is not None:
-            child_x = content_x + content_width - right - child_width - item["margin_right"]
+            child_x = absolute_x + absolute_width - right - child_width - item["margin_right"]
 
         if top is not None:
-            child_y = content_y + top + item["margin_top"]
+            child_y = absolute_y + top + item["margin_top"]
         elif bottom is not None and child_height is not None:
-            child_y = content_y + content_height - bottom - child_height - item["margin_bottom"]
+            child_y = absolute_y + absolute_height - bottom - child_height - item["margin_bottom"]
 
         compute_layout(
             item["child"],
