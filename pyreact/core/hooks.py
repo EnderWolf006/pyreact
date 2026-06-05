@@ -175,7 +175,7 @@ def useCallback(callback_fn, deps):
     return useMemo(lambda: callback_fn, deps)
 
 
-def useRef(initial_value):
+def useRef(initial_value=None):
     fiber = _require_fiber()
     slot_index = fiber.consume_hook("ref")
 

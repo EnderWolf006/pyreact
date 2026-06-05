@@ -110,7 +110,7 @@ GOODS_DATA = {
 
 @Component
 def HorizontalItemCard(goods_data, onClick):
-    return Button(
+    return FilledButton(
         style=Style(
             width=160,
             height=42,
@@ -119,14 +119,9 @@ def HorizontalItemCard(goods_data, onClick):
             flexDirection=FlexDirection.row
         ),
         onClick=onClick,
-        buttonBuilder=lambda state: Image(
-            style=Style(
-                height="100%",
-                width="100%",
-                opacity=0.3 if state == ButtonState.default else 0.6,
-            ),
-            color=Color.fromRGB(39, 18, 19)
-        ),
+        default=Color.fromRGB(39, 18, 19).withAlpha(0.3),
+        hover=Color.fromRGB(39, 18, 19).withAlpha(0.6),
+        pressed=Color.fromRGB(39, 18, 19).withAlpha(0.6),
         children=[
             Item(
                 style=Style(
@@ -183,21 +178,16 @@ def HorizontalItemCard(goods_data, onClick):
 
 @Component
 def VerticalItemCard(goods_data, onClick):
-    return Button(
+    return FilledButton(
         style=Style(
             height=60,
             width=50,
             alignItems=AlignItems.center
         ),
         onClick=onClick,
-        buttonBuilder=lambda state: Image(
-            style=Style(
-                height="100%",
-                width="100%",
-                opacity=0.3 if state == ButtonState.default else 0.6,
-            ),
-            color=Color.fromRGB(39, 18, 19)
-        ),
+        default=Color.fromRGB(39, 18, 19).withAlpha(0.3),
+        hover=Color.fromRGB(39, 18, 19).withAlpha(0.6),
+        pressed=Color.fromRGB(39, 18, 19).withAlpha(0.6),
         children=[
             Panel(
                 style=Style(
@@ -283,22 +273,18 @@ def BedwarStoreApp():
     category_list_ui = []
     for i, category in enumerate(CATEGORIES):
         key = category.keys()[0]
+        selected = CATEGORIES[selected_category_index].keys()[0] == key
         category_list_ui.append(
-            Button(
+            FilledButton(
                 style=Style(
                     marginBottom=6,
                     height=28,
                     alignItems=AlignItems.center,
                     justifyContent=JustifyContent.center,
                 ),
-                buttonBuilder=lambda state, selected=CATEGORIES[selected_category_index].keys()[0] == key: Image(
-                    style=Style(
-                        height="100%",
-                        width="100%",
-                        opacity=0.3 if state == ButtonState.default else 0.6,
-                    ),
-                    color=Color.fromRGB(152, 86, 86) if selected else Colors.black,
-                ),
+                default=(Color.fromRGB(152, 86, 86) if selected else Colors.black).withAlpha(0.3),
+                hover=(Color.fromRGB(152, 86, 86) if selected else Colors.black).withAlpha(0.6),
+                pressed=(Color.fromRGB(152, 86, 86) if selected else Colors.black).withAlpha(0.6),
                 onClick=lambda index=i: set_selected_category_index(index),
                 children=[
                     Label(content=key),
@@ -383,11 +369,11 @@ def BedwarStoreApp():
                                 ]
                             ),
                             # UI设置按钮
-                            Button(
+                            FilledButton(
                                 style=Style(
                                     marginLeft=20,
                                 ),
-                                buttonBuilder=lambda state: Panel(),
+                                default=Colors.transparent,
                                 children=[
                                     Label(
                                         content="UI设置 >"
@@ -408,17 +394,16 @@ def BedwarStoreApp():
                             alignItems=AlignItems.center,
                         ),
                         children=inv_currency_ui + [
-                            Button(
+                            FilledButton(
                                 style=Style(
                                     width=22,
                                     height=22,
                                     alignItems=AlignItems.center,
                                     justifyContent=JustifyContent.center
                                 ),
-                                buttonBuilder=flat_button_builder_preset(
-                                    default=Colors.black.withAlpha(0.2),
-                                    pressed=Colors.black.withAlpha(0.1),
-                                ),
+                                default=Colors.black.withAlpha(0.2),
+                                hover=Colors.black.withAlpha(0.1),
+                                pressed=Colors.black.withAlpha(0.1),
                                 children=[
                                     Label(
                                         content="x"

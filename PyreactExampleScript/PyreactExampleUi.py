@@ -38,8 +38,8 @@ class PyreactExampleScreen(ScreenNode):
         # render_app(root=BedwarStoreApp, bind=bind, log_perf=True)
         # render_app(root=BattlePassApp, bind=bind, log_perf=True)
         # render_app(root=SkinShopApp, bind=bind, log_perf=True)
-        render_app(root=AnimationDemo, bind=bind, log_perf=True)
-        # render_app(root=CounterDemo, bind=bind, log_perf=True)
+        # render_app(root=AnimationDemo, bind=bind, log_perf=True)
+        render_app(root=CounterDemo, bind=bind, log_perf=True)
 
     def Destroy(self):
         runtime_system = clientApi.GetSystem('PyreactRuntimeMod', 'PyreactRuntimeClientSystem')
