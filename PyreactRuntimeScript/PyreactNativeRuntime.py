@@ -52,6 +52,9 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
         self._needs_render = False
         self._render_scheduled = False
         self._button_callbacks = {}
+        self._button_touch_callbacks = {}
+        self._active_touch_nodes = {}
+        self._actor_motion_comp = None
         self._input_callbacks = {}
         self._input_paths = {}
         self._input_last_values = {}

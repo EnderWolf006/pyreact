@@ -8,6 +8,7 @@ from examples.BattlePassApp import BattlePassApp
 from examples.SkinShopApp import SkinShopApp
 from examples.AnimationDemo import AnimationDemo
 from examples.CounterDemo import CounterDemo
+from examples.OverviewDemo import OverviewDemo
 
 from pyreact import *
 
@@ -23,7 +24,7 @@ class PyreactExampleScreen(ScreenNode):
 
     def Create(self):
         print('=====> PyreactExampleUi Created <=====')
-        self.app_id = 'pyreact_example_counter'
+        self.app_id = 'pyreact_example'
         self._mount_pyreact_app()
 
     def _mount_pyreact_app(self):
@@ -39,7 +40,8 @@ class PyreactExampleScreen(ScreenNode):
         # render_app(root=BattlePassApp, bind=bind, log_perf=True)
         # render_app(root=SkinShopApp, bind=bind, log_perf=True)
         # render_app(root=AnimationDemo, bind=bind, log_perf=True)
-        render_app(root=CounterDemo, bind=bind, log_perf=True)
+        # render_app(root=CounterDemo, bind=bind, log_perf=True)
+        render_app(root=OverviewDemo, bind=bind, log_perf=True)
 
     def Destroy(self):
         runtime_system = clientApi.GetSystem('PyreactRuntimeMod', 'PyreactRuntimeClientSystem')

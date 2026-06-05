@@ -244,8 +244,8 @@ def PaperDoll(
 
 
 @Component
-def Button(style=None, children=None, onClick=None, buttonBuilder=None):
-    # type: (object, object, object, object) -> ComponentNode
+def Button(style=None, children=None, onClick=None, buttonBuilder=None, onTouch=None):
+    # type: (object, object, object, object, object) -> ComponentNode
     """Create a Button node."""
     return _build_node(
         "Button",
@@ -253,6 +253,7 @@ def Button(style=None, children=None, onClick=None, buttonBuilder=None):
             "style": style,
             "children": children,
             "onClick": onClick,
+            "onTouch": onTouch,
             "buttonBuilder": buttonBuilder,
         },
     )

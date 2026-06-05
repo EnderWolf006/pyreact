@@ -53,10 +53,15 @@ class PyreactRuntimeClientSystem(ClientSystem):
         changed = False
         for app_id in app_ids:
             runtime = self._apps.get(app_id)
-            if runtime is None or not hasattr(runtime, 'tick_animations'):
+            if runtime is None:
                 continue
             try:
-                if runtime.tick_animations():
+                if hasattr(runtime, 'tick_active_touches') and runtime.tick_active_touches():
+                    changed = True
+            except Exception:
+                pass
+            try:
+                if hasattr(runtime, 'tick_animations') and runtime.tick_animations():
                     changed = True
             except Exception:
                 pass

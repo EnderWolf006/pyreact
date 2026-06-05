@@ -28,6 +28,7 @@ from .composites import (
     FilledButton,
     ImageButton,
     Animated,
+    Slider,
 )
 
 from .animation import (
@@ -133,6 +134,7 @@ __all__ = [
     "FilledButton",
     "ImageButton",
     "Animated",
+    "Slider",
     "Animation",
     "Easing",
     "Transition",

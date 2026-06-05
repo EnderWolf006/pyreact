@@ -4,6 +4,9 @@ import mod.client.extraClientApi as clientApi
 from pyreact.components.color import Color
 
 
+CF = clientApi.GetEngineCompFactory()
+
+
 class RuntimePropsMixin(object):
     def _dbg(self, tag, msg):
         try:
@@ -59,6 +62,10 @@ class RuntimePropsMixin(object):
             onclick = props.get("onClick")
             if callable(onclick):
                 self._button_callbacks[node_id] = onclick
+            ontouch = props.get("onTouch")
+            if callable(ontouch):
+                self._button_touch_callbacks[node_id] = ontouch
+            if callable(onclick) or callable(ontouch):
                 self._queue_button_bind(node_path, node_id)
 
             self._render_button_state_slots(node, node_path, cache_already_cleared)
@@ -238,6 +245,11 @@ class RuntimePropsMixin(object):
                 control_obj = None
         try:
             self._node_refs[node_id] = ref_obj
+        except Exception:
+            pass
+        try:
+            setattr(ref_obj, 'nativePath', node_path)
+            setattr(ref_obj, 'screen', self._screen)
         except Exception:
             pass
         self._set_ref_value(ref_obj, control_obj)
@@ -1080,14 +1092,22 @@ class RuntimePropsMixin(object):
 
     def _queue_button_bind(self, button_path, node_id):
         safe_button_path = self._safe_text(button_path)
+        bind_sig = self._button_bind_signature(node_id)
         bind_cache = getattr(self, '_button_bind_cache', None)
-        if isinstance(bind_cache, dict) and bind_cache.get(safe_button_path):
+        if isinstance(bind_cache, dict) and bind_cache.get(safe_button_path) == bind_sig:
             return
         pending = getattr(self, '_pending_button_binds', None)
         if not isinstance(pending, dict):
             pending = {}
             self._pending_button_binds = pending
         pending[safe_button_path] = node_id
+
+    def _button_bind_signature(self, node_id):
+        return (
+            self._safe_text(node_id),
+            node_id in getattr(self, '_button_callbacks', {}),
+            node_id in getattr(self, '_button_touch_callbacks', {}),
+        )
 
     def _flush_pending_button_binds(self):
         pending = getattr(self, '_pending_button_binds', None)
@@ -1105,7 +1125,8 @@ class RuntimePropsMixin(object):
             bind_cache = {}
             self._button_bind_cache = bind_cache
         safe_button_path = self._safe_text(button_path)
-        if bind_cache.get(safe_button_path):
+        bind_sig = self._button_bind_signature(node_id)
+        if bind_cache.get(safe_button_path) == bind_sig:
             self._record_native_commit_perf('button_bind_skip')
             return
 
@@ -1122,11 +1143,27 @@ class RuntimePropsMixin(object):
             except Exception:
                 pass
 
-            def _callback(args=None):
+            def _down_callback(args=None):
+                self._dispatch_button_touch(node_id, args)
+                self._update_active_touch_node(node_id, args)
+
+            def _cancel_callback(args=None):
+                self._dispatch_button_touch(node_id, args)
+                self._update_active_touch_node(node_id, args)
+
+            def _up_callback(args=None):
+                self._dispatch_button_touch(node_id, args)
+                self._update_active_touch_node(node_id, args)
                 self._dispatch_click(node_id)
 
-            self._native_api_call('SetButtonTouchUpCallback', button_control.SetButtonTouchUpCallback, _callback)
-            bind_cache[safe_button_path] = True
+            if bind_sig[2]:
+                self._native_api_call('SetButtonTouchDownCallback', button_control.SetButtonTouchDownCallback, _down_callback)
+                if hasattr(button_control, 'SetButtonTouchCancelCallback'):
+                    self._native_api_call('SetButtonTouchCancelCallback', button_control.SetButtonTouchCancelCallback, _cancel_callback)
+                if hasattr(button_control, 'SetButtonTouchScreenExitCallback'):
+                    self._native_api_call('SetButtonTouchScreenExitCallback', button_control.SetButtonTouchScreenExitCallback, _cancel_callback)
+            self._native_api_call('SetButtonTouchUpCallback', button_control.SetButtonTouchUpCallback, _up_callback)
+            bind_cache[safe_button_path] = bind_sig
             bind_ms = (self._perf_clock() - bind_start_time) * 1000.0
             self._record_native_commit_perf('button_bind_count')
             self._record_native_commit_perf('button_bind_ms', bind_ms)
@@ -1138,6 +1175,65 @@ class RuntimePropsMixin(object):
         callback = self._button_callbacks.get(node_id)
         if callback:
             callback()
+
+    def _dispatch_button_touch(self, node_id, args):
+        table = getattr(self, '_button_touch_callbacks', None)
+        if not isinstance(table, dict):
+            return
+        callback = table.get(node_id)
+        if callback:
+            callback(args or {})
+
+    def _update_active_touch_node(self, node_id, args):
+        if args is None:
+            args = {}
+        event_type = args.get('TouchEvent')
+        if not isinstance(getattr(self, '_active_touch_nodes', None), dict):
+            self._active_touch_nodes = {}
+        if event_type == 1:
+            data = dict(args)
+            data['TouchEvent'] = 4
+            self._active_touch_nodes[node_id] = data
+        elif event_type == 0 or event_type == 3 or event_type == 7:
+            if node_id in self._active_touch_nodes:
+                try:
+                    del self._active_touch_nodes[node_id]
+                except Exception:
+                    pass
+
+    def _get_mouse_position_for_touch_tick(self):
+        try:
+            comp = getattr(self, '_actor_motion_comp', None)
+            if comp is None:
+                player_id = clientApi.GetLocalPlayerId()
+                comp = CF.CreateActorMotion(player_id)
+                self._actor_motion_comp = comp
+            if comp and hasattr(comp, 'GetMousePosition'):
+                pos = comp.GetMousePosition()
+                if pos and len(pos) >= 2:
+                    return (float(pos[0]), float(pos[1]))
+        except Exception:
+            pass
+        return None
+
+    def tick_active_touches(self):
+        active = getattr(self, '_active_touch_nodes', None)
+        if not isinstance(active, dict) or not active:
+            return False
+        pos = self._get_mouse_position_for_touch_tick()
+        if pos is None:
+            return False
+        for node_id in list(active.keys()):
+            args = active.get(node_id)
+            if not isinstance(args, dict):
+                continue
+            move_args = dict(args)
+            move_args['TouchEvent'] = 4
+            move_args['TouchPosX'] = pos[0]
+            move_args['TouchPosY'] = pos[1]
+            active[node_id] = move_args
+            self._dispatch_button_touch(node_id, move_args)
+        return True
 
     def _clear_prefixed_children(self, parent_path):
         try:

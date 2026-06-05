@@ -174,6 +174,8 @@ class RuntimeLifecycleMixin(object):
     def unmount(self):
         self._mounted = False
         self._button_callbacks = {}
+        self._button_touch_callbacks = {}
+        self._active_touch_nodes = {}
         self._input_callbacks = {}
         self._input_paths = {}
         self._input_last_values = {}
@@ -240,6 +242,8 @@ class RuntimeLifecycleMixin(object):
                 self._input_callbacks = {}
                 self._input_paths = {}
                 self._input_last_values = {}
+                self._button_touch_callbacks = {}
+                self._active_touch_nodes = {}
                 self._node_refs = {}
                 try:
                     self._cleanup_exit_animation_ghosts()
@@ -336,6 +340,8 @@ class RuntimeLifecycleMixin(object):
                 self._apply_incremental_updates(shadow_root, mutations)
             else:
                 self._button_callbacks = {}
+                self._button_touch_callbacks = {}
+                self._active_touch_nodes = {}
                 self._input_callbacks = {}
                 self._input_paths = {}
                 self._node_refs = {}
@@ -1191,10 +1197,12 @@ class RuntimeLifecycleMixin(object):
 
     def _refresh_button_callbacks_from_vtree(self, vnode):
         callbacks = {}
-        self._refresh_button_callbacks_from_vtree_walk(vnode, callbacks, [])
+        touch_callbacks = {}
+        self._refresh_button_callbacks_from_vtree_walk(vnode, callbacks, touch_callbacks, [])
         self._button_callbacks = callbacks
+        self._button_touch_callbacks = touch_callbacks
 
-    def _refresh_button_callbacks_from_vtree_walk(self, vnode, callbacks, path):
+    def _refresh_button_callbacks_from_vtree_walk(self, vnode, callbacks, touch_callbacks, path):
         if vnode is None:
             return
         try:
@@ -1207,10 +1215,13 @@ class RuntimeLifecycleMixin(object):
             props = {}
         if node_type == 'Button' and isinstance(props, dict):
             onclick = props.get('onClick')
-            if callable(onclick):
+            ontouch = props.get('onTouch')
+            if callable(onclick) or callable(ontouch):
                 node_id = self._vnode_node_id(vnode, path)
-                if node_id:
+                if node_id and callable(onclick):
                     callbacks[node_id] = onclick
+                if node_id and callable(ontouch):
+                    touch_callbacks[node_id] = ontouch
         try:
             children = getattr(vnode, 'children', None) or []
         except Exception:
@@ -1219,7 +1230,7 @@ class RuntimeLifecycleMixin(object):
         for child in children:
             child_path = list(path)
             child_path.append(index)
-            self._refresh_button_callbacks_from_vtree_walk(child, callbacks, child_path)
+            self._refresh_button_callbacks_from_vtree_walk(child, callbacks, touch_callbacks, child_path)
             index += 1
 
     def _vnode_node_id(self, vnode, path):
@@ -1256,6 +1267,7 @@ class RuntimeLifecycleMixin(object):
         button_callbacks = {}
         input_callbacks = {}
         input_paths = {}
+        self._button_touch_callbacks = {}
         self._refresh_event_callback_tables_walk([shadow_root], self._root_path, button_callbacks, input_callbacks, input_paths)
         self._button_callbacks = button_callbacks
         self._input_callbacks = input_callbacks
@@ -1286,8 +1298,14 @@ class RuntimeLifecycleMixin(object):
             if isinstance(props, dict):
                 if node_type == 'Button':
                     onclick = props.get('onClick')
+                    ontouch = props.get('onTouch')
                     if callable(onclick):
                         button_callbacks[child_id] = onclick
+                    if callable(ontouch):
+                        try:
+                            self._button_touch_callbacks[child_id] = ontouch
+                        except Exception:
+                            pass
                 elif node_type == 'Input':
                     input_paths[child_id] = control_path
                     onchange = props.get('onChange')
@@ -1329,7 +1347,7 @@ class RuntimeLifecycleMixin(object):
                 if child is not None:
                     stack.append(child)
 
-        for table_name in ('_button_callbacks', '_input_callbacks', '_input_paths'):
+        for table_name in ('_button_callbacks', '_button_touch_callbacks', '_active_touch_nodes', '_input_callbacks', '_input_paths'):
             table = getattr(self, table_name, None)
             if not isinstance(table, dict):
                 continue
@@ -1385,10 +1403,14 @@ class RuntimeLifecycleMixin(object):
         if not isinstance(props, dict):
             return
         onclick = props.get("onClick")
-        if not callable(onclick):
+        ontouch = props.get("onTouch")
+        if not callable(onclick) and not callable(ontouch):
             return
         node_id = self._safe_text(getattr(button_node, 'node_id', 'node'))
-        self._button_callbacks[node_id] = onclick
+        if callable(onclick):
+            self._button_callbacks[node_id] = onclick
+        if callable(ontouch):
+            self._button_touch_callbacks[node_id] = ontouch
         self._bind_button_click(button_path, node_id)
 
     def _clear_root_children(self):
