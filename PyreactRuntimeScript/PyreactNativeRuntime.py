@@ -92,3 +92,99 @@ class PyreactNativeRuntime(RuntimeLifecycleMixin, RuntimePropsMixin, RuntimeNati
 
         self._init_pyreact_runtime()
         self._init_animation_runtime_state()
+
+    # ------------------------------------------------------------------
+    # Debug / inspection API
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _sanitize(v):
+        """Recursively convert non-JSON-serializable values to plain Python types."""
+        if v is None or isinstance(v, (bool, int, float, str)):
+            return v
+        # Python 2 unicode / long
+        try:
+            if isinstance(v, unicode):
+                return v
+        except NameError:
+            pass
+        try:
+            if isinstance(v, long):
+                return int(v)
+        except NameError:
+            pass
+        # Color object: serialize as "#AARRGGBB"
+        if hasattr(v, '_value') and hasattr(v, 'alpha8') and hasattr(v, 'red'):
+            return '#%08x' % v._value
+        if isinstance(v, dict):
+            return {k: PyreactNativeRuntime._sanitize(val) for k, val in v.items()}
+        if isinstance(v, (list, tuple)):
+            return [PyreactNativeRuntime._sanitize(i) for i in v]
+        # Fallback: repr
+        return repr(v)
+
+    def _serialize_shadow_node(self, node, depth=0):
+        if node is None:
+            return None
+        layout = node.layout
+        s = PyreactNativeRuntime._sanitize
+        result = {
+            'id': node.node_id,
+            'type': node.node_type,
+            'props': s(node.props),
+            'style': s(node.style),
+            'opacity': node.effective_opacity,
+            'layout': {
+                'x': layout.x, 'y': layout.y,
+                'width': layout.width, 'height': layout.height,
+            } if layout else None,
+            'children': [self._serialize_shadow_node(c, depth + 1) for c in (node.children or [])],
+        }
+        return result
+
+    def debug_get_ui_tree(self):
+        """Return the full UI tree as a serializable dict."""
+        return {
+            'app_id': self.app_id,
+            'root_path': self._root_path,
+            'tree': self._serialize_shadow_node(self._prev_shadow_root),
+        }
+
+    def debug_get_subtree(self, node_id):
+        """Return the subtree rooted at the first node matching node_id."""
+        def _find(node):
+            if node is None:
+                return None
+            if node.node_id == node_id:
+                return self._serialize_shadow_node(node)
+            for child in (node.children or []):
+                found = _find(child)
+                if found is not None:
+                    return found
+            return None
+        return _find(self._prev_shadow_root)
+
+    def debug_get_node_props(self, node_id):
+        """Return props+style+layout for a single node by node_id."""
+        def _find(node):
+            if node is None:
+                return None
+            if node.node_id == node_id:
+                layout = node.layout
+                return {
+                    'id': node.node_id,
+                    'type': node.node_type,
+                    'props': node.props,
+                    'style': node.style,
+                    'opacity': node.effective_opacity,
+                    'layout': {
+                        'x': layout.x, 'y': layout.y,
+                        'width': layout.width, 'height': layout.height,
+                    } if layout else None,
+                }
+            for child in (node.children or []):
+                found = _find(child)
+                if found is not None:
+                    return found
+            return None
+        return _find(self._prev_shadow_root)

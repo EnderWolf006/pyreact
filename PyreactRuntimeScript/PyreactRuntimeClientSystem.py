@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import json
 import mod.client.extraClientApi as clientApi
 from PyreactRuntimeScript.PyreactNativeRuntime import PyreactNativeRuntime
 
@@ -46,7 +47,31 @@ class PyreactRuntimeClientSystem(ClientSystem):
             except Exception as e:
                 print('=====> PyreactRuntime resize rerender failed: %s, %s <=====' % (app_id, e))
 
+    def _poll_debug_clipboard(self):
+        """Check clipboard for a debug trigger JSON and dispatch it."""
+        try:
+            comp = clientApi.GetEngineCompFactory().CreateGame(self.mLevelId)
+            content = comp.GetClipboardContent()
+            if not content or '"pyreact_debug"' not in content:
+                return
+            trigger = json.loads(content)
+            cmd = trigger.get('pyreact_debug')
+            if not cmd:
+                return
+            # Clear immediately to avoid re-triggering
+            comp.SetClipboardContent('')
+            params = trigger.get('params') or {}
+            if cmd == 'dump_tree':
+                self.DebugDumpUiTree(params)
+            elif cmd == 'dump_subtree':
+                self.DebugDumpSubtree(params)
+            elif cmd == 'dump_node':
+                self.DebugDumpNodeProps(params)
+        except Exception as e:
+            print('=====> PyreactRuntime _poll_debug_clipboard failed: %s <=====' % e)
+
     def GameRenderTickEvent(self, args):
+        self._poll_debug_clipboard()
         app_ids = list(self._apps.keys())
         if not app_ids:
             return
@@ -115,6 +140,56 @@ class PyreactRuntimeClientSystem(ClientSystem):
         runtime.request_render()
         return True
         
+    def DebugDumpUiTree(self, params):
+        """Write full UI tree JSON to clipboard. Called by external debug tools via studio command."""
+        params = params or {}
+        app_id = params.get('app_id')
+        runtime = self._apps.get(app_id) if app_id else (list(self._apps.values())[0] if self._apps else None)
+        if runtime is None:
+            return False
+        try:
+            data = runtime.debug_get_ui_tree()
+            content = json.dumps(data, ensure_ascii=False)
+            comp = clientApi.GetEngineCompFactory().CreateGame(self.mLevelId)
+            return comp.SetClipboardContent(content)
+        except Exception as e:
+            print('=====> PyreactRuntime DebugDumpUiTree failed: %s <=====' % e)
+            return False
+
+    def DebugDumpSubtree(self, params):
+        """Write subtree JSON for a given node_id to clipboard."""
+        params = params or {}
+        app_id = params.get('app_id')
+        node_id = params.get('node_id', '')
+        runtime = self._apps.get(app_id) if app_id else (list(self._apps.values())[0] if self._apps else None)
+        if runtime is None or not node_id:
+            return False
+        try:
+            data = runtime.debug_get_subtree(node_id)
+            content = json.dumps(data, ensure_ascii=False)
+            comp = clientApi.GetEngineCompFactory().CreateGame(self.mLevelId)
+            return comp.SetClipboardContent(content)
+        except Exception as e:
+            print('=====> PyreactRuntime DebugDumpSubtree failed: %s <=====' % e)
+            return False
+
+    def DebugDumpNodeProps(self, params):
+        """Write single node props JSON for a given node_id to clipboard."""
+        params = params or {}
+        app_id = params.get('app_id')
+        node_id = params.get('node_id', '')
+        runtime = self._apps.get(app_id) if app_id else (list(self._apps.values())[0] if self._apps else None)
+        if runtime is None or not node_id:
+            return False
+        try:
+            data = runtime.debug_get_node_props(node_id)
+            content = json.dumps(data, ensure_ascii=False)
+            comp = clientApi.GetEngineCompFactory().CreateGame(self.mLevelId)
+            return comp.SetClipboardContent(content)
+        except Exception as e:
+            print('=====> PyreactRuntime DebugDumpNodeProps failed: %s <=====' % e)
+            return False
+
     def Destroy(self):
         app_ids = list(self._apps.keys())
         for app_id in app_ids:
