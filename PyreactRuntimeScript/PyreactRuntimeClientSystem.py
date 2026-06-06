@@ -48,7 +48,9 @@ class PyreactRuntimeClientSystem(ClientSystem):
                 print('=====> PyreactRuntime resize rerender failed: %s, %s <=====' % (app_id, e))
 
     def _poll_debug_clipboard(self):
-        """Check clipboard for a debug trigger JSON and dispatch it."""
+        """Check clipboard for a debug trigger JSON and dispatch it. Only active when debug_mode=True."""
+        if not any(getattr(r, '_debug_mode', False) for r in self._apps.values()):
+            return
         try:
             comp = clientApi.GetEngineCompFactory().CreateGame(self.mLevelId)
             content = comp.GetClipboardContent()
@@ -58,8 +60,8 @@ class PyreactRuntimeClientSystem(ClientSystem):
             cmd = trigger.get('pyreact_debug')
             if not cmd:
                 return
-            # Clear immediately to avoid re-triggering
-            comp.SetClipboardContent('')
+            # Clear immediately to avoid re-triggering; use a sentinel so SetClipboardContent('') empty-string no-op is bypassed
+            comp.SetClipboardContent('__pyreact_ack__')
             params = trigger.get('params') or {}
             if cmd == 'dump_tree':
                 self.DebugDumpUiTree(params)
@@ -67,6 +69,10 @@ class PyreactRuntimeClientSystem(ClientSystem):
                 self.DebugDumpSubtree(params)
             elif cmd == 'dump_node':
                 self.DebugDumpNodeProps(params)
+            elif cmd == 'click':
+                self.DebugClickButton(params)
+            elif cmd == 'set_input':
+                self.DebugSetInput(params)
         except Exception as e:
             print('=====> PyreactRuntime _poll_debug_clipboard failed: %s <=====' % e)
 
@@ -108,6 +114,7 @@ class PyreactRuntimeClientSystem(ClientSystem):
         app_fn = params.get('app_fn') or params.get('appFn')
         base_namespace = params.get('base_namespace') or params.get('baseNamespace') or 'PyreactBase'
         log_perf = bool(params.get('log_perf'))
+        debug_mode = bool(params.get('debug_mode'))
 
         if not app_id or screen is None or not callable(app_fn):
             print('=====> PyreactRuntime MountApp failed: invalid params <=====')
@@ -115,7 +122,7 @@ class PyreactRuntimeClientSystem(ClientSystem):
 
         self.UnmountApp({'app_id': app_id})
 
-        runtime = PyreactNativeRuntime(app_id, screen, root_path, app_fn, base_namespace, log_perf=log_perf)
+        runtime = PyreactNativeRuntime(app_id, screen, root_path, app_fn, base_namespace, log_perf=log_perf, debug_mode=debug_mode)
         runtime.mount()
         self._apps[app_id] = runtime
         print('=====> PyreactRuntime MountApp success: %s <=====' % app_id)
@@ -188,6 +195,43 @@ class PyreactRuntimeClientSystem(ClientSystem):
             return comp.SetClipboardContent(content)
         except Exception as e:
             print('=====> PyreactRuntime DebugDumpNodeProps failed: %s <=====' % e)
+            return False
+
+    def DebugClickButton(self, params):
+        """Simulate a button click by node_id."""
+        params = params or {}
+        app_id = params.get('app_id')
+        node_id = params.get('node_id', '')
+        runtime = self._apps.get(app_id) if app_id else (list(self._apps.values())[0] if self._apps else None)
+        if runtime is None or not node_id:
+            return False
+        try:
+            runtime._dispatch_click(node_id)
+            return True
+        except Exception as e:
+            print('=====> PyreactRuntime DebugClickButton failed: %s <=====' % e)
+            return False
+
+    def DebugSetInput(self, params):
+        """Set input text by node_id, then fire onChange diff."""
+        params = params or {}
+        app_id = params.get('app_id')
+        node_id = params.get('node_id', '')
+        text = params.get('text', '')
+        runtime = self._apps.get(app_id) if app_id else (list(self._apps.values())[0] if self._apps else None)
+        if runtime is None or not node_id:
+            return False
+        try:
+            node_path = (getattr(runtime, '_input_paths', None) or {}).get(node_id)
+            if not node_path:
+                print('=====> PyreactRuntime DebugSetInput: node_id not found: %s <=====' % node_id)
+                return False
+            runtime._safe_set_edit_text(node_path, text)
+            runtime._input_last_values[node_id] = None  # force diff
+            runtime._on_any_input_edit_event()
+            return True
+        except Exception as e:
+            print('=====> PyreactRuntime DebugSetInput failed: %s <=====' % e)
             return False
 
     def Destroy(self):

@@ -1,109 +1,272 @@
-# pyreact-debug
+---
+name: pyreact-debug
+description: 调试运行在网易我的世界基岩版 ModSDK 中的 Pyreact UI 框架。提供游戏启动、日志流、热重载、UI 树检查、性能 profile 工作流，可以使 AI Agent 更高效地测试，定位，和修复 UI 相关问题。
+compatibility: opencode
+metadata:
+  audience: agents
+  domain: pyreact-debug
+  platform: netease-minecraft-bedrock-modsdk
+---
 
-调试运行在网易我的世界基岩版 ModSDK 中的 Pyreact UI 框架的技能。
+## 我能做什么
 
-## 概述
+- 启动携带日志服务的游戏实例（自动生成 `.cppconfig`，无需依赖 mcpywrap）
+- 实时流式接收游戏日志，log server 跟随游戏进程生命周期自动退出
+- 热重载行为包脚本、重启世界
+- 通过剪切板触发协议检查 Pyreact UI 树 / 子树 / 节点 props
+- 模拟按钮点击、输入框输入
+- 启停 engine / 脚本 / 内存性能 profile
 
-通信架构：**剪切板作为双向通道**
-- 外部工具写触发 JSON → 游戏每帧轮询剪切板 → 执行调试命令 → 写结果 JSON 回剪切板
+## 什么时候使用
 
-日志流：游戏启动时携带 `loggingIP=localhost loggingPort=N`，外部 TCP server 接收日志。  
-Studio 命令（reload_pack 等）：通过 TCP 反向通道发送 null-terminated 字符串。  
-UI 检查命令：只能通过剪切板触发（TCP 反向通道是引擎层，ModSDK 脚本层无法监听）。
+- 需要启动游戏进行 Pyreact UI 调试
+- 检查运行时 UI 树结构（节点类型、props、layout）
+- 做 engine 或脚本性能分析
+- 热重载脚本或重启世界
+- 模拟 UI 交互（点击、输入）
+- 定位 Pyreact 渲染 bug（节点未渲染、布局异常、props 未生效）
 
-## 文件结构
+## 通信架构
 
 ```
-.agents/skills/pyreact-debug/scripts/
-  _mcs.py          Windows 注册表：查找 MC Studio / Minecraft.Windows.exe 路径；setup_runtime() 自动生成 .cppconfig
-  launch_game.py   启动游戏 + 启动 log server
-  kill_game.py     杀掉 Minecraft.Windows.exe 进程
-  log_server.py    TCP log server（接收游戏日志 + 发送 studio 命令）
-  send_command.py  向游戏发送 null-terminated studio 命令
-  perf.py          性能 profile 命令快捷方式
-  get_ui_tree.py   写触发 JSON 到剪切板 → 等待游戏写回结果 → 打印/保存
+外部脚本 ──剪切板触发 JSON──▶ 游戏 GameRenderTickEvent 轮询
+                              │  执行 DebugDump* / DebugClick / DebugSetInput
+外部脚本 ◀──结果 JSON ────────┘  SetClipboardContent(result 或 __pyreact_ack__)
+
+外部脚本 ──TCP null-terminated──▶ log server ──▶ 游戏（studio 命令）
+游戏日志  ──TCP stream──────────▶ log server ──▶ 写入日志文件
 ```
 
-框架侧变更（`PyreactRuntimeScript/`）：
-- `PyreactNativeRuntime.py`：`_serialize_shadow_node`, `debug_get_ui_tree`, `debug_get_subtree`, `debug_get_node_props`
-- `PyreactRuntimeClientSystem.py`：`_poll_debug_clipboard`（在 `GameRenderTickEvent` 首行调用）、`DebugDumpUiTree/Subtree/NodeProps`
+- UI 检查/交互命令走剪切板通道
+- `reload_pack` 等 studio 命令走 TCP 反向通道
+- log server 持有 `--game-pid`，游戏退出后自动停止
 
-## 常用工作流
+## 框架侧变更
 
-### 1. 启动游戏并流日志
+`PyreactRuntimeScript/` 已有以下调试支持（框架修改，非外部脚本）：
+- `PyreactNativeRuntime.py`：`_sanitize`、`_serialize_shadow_node`、`debug_get_ui_tree/subtree/node_props`
+- `PyreactRuntimeClientSystem.py`：`_poll_debug_clipboard`（每帧调用）、`DebugDumpUiTree/Subtree/NodeProps`、`DebugClickButton`、`DebugSetInput`
+- `native_runtime/lifecycle_mixin.py`：首次渲染完成后打印 `=====> PyreactRuntime AppReady: <app_id> <=====`
+
+## 启用调试功能
+
+调试功能默认关闭（每帧不做任何操作）。必须在挂载时传入 `debug_mode=True`：
+
+```python
+render_app(root=MyApp, bind=bind, debug_mode=True)
+```
+
+---
+
+## 脚本参考
+
+### launch_game.py
+
+启动 Minecraft 游戏并附带 detached log server，等待 AppReady 信号后退出。
+
+```
+python launch_game.py [--project DIR] [--config FILE] [--port PORT] [--log-output FILE]
+```
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--project DIR` | 自动检测 | addon 项目根目录，须含 `studio.json` |
+| `--config FILE` | 自动发现 | 直接指定 `.cppconfig` 路径，跳过自动生成 |
+| `--port PORT` | 随机 | log server 监听端口 |
+| `--log-output FILE` | `%TEMP%/pyreact_game_<port>.log` | 日志持久化路径 |
+
+`--project` 省略时的自动检测顺序：
+1. 当前目录有 `studio.json` → 直接使用
+2. 当前目录是 pyreact 框架根（有 `sync_to_test.cmd`）→ 解析 `TARGET_ROOT`，打印 addon 路径后退出提示
+3. 否则报错退出
+
+`--config` 省略时：扫描 `<project>/.runtime/*.cppconfig` 取最新文件；找不到则调用 `setup_runtime()` 自动生成（读 `studio.json` + 注册表）。
+
+脚本输出端口和日志路径，后续命令需要这两个值：
+```
+[launch_game] log server port: 8765
+[launch_game] log file: C:\Users\...\AppData\Local\Temp\pyreact_game_8765.log
+```
+
+---
+
+### kill_game.py
+
+杀掉所有 `Minecraft.Windows.exe` 进程。log server 检测到游戏 PID 消失后自动退出。
+
+```
+python kill_game.py [--wait]
+```
+
+| 参数 | 说明 |
+|------|------|
+| `--wait` | 等待进程完全消失后再返回（轮询最多 15 秒） |
+
+---
+
+### get_logs.py
+
+读取 log server 写入的游戏日志文件，支持行号定位和正则过滤。输出每行带行号，方便用 `--since` 续读。
+
+```
+python get_logs.py [--port PORT] [--file FILE]
+                   [--tail N | --head N | --lines START[-END] | --since LINENUM]
+                   [--grep PATTERN] [--ignore-case]
+```
+
+| 参数 | 说明 |
+|------|------|
+| `--port PORT` | 从 `%TEMP%/pyreact_game_<port>.log` 读取 |
+| `--file FILE` | 直接指定日志文件路径 |
+| `--tail N` | 最后 N 行 |
+| `--head N` | 前 N 行 |
+| `--lines START[-END]` | 行号区间，1-based（如 `100-200` 或单行 `300`） |
+| `--since LINENUM` | 从第 LINENUM 行起往后，1-based |
+| `--grep PATTERN` | 正则过滤，只返回匹配行 |
+| `--ignore-case` | 与 `--grep` 配合，大小写不敏感 |
+
+`--port` 和 `--file` 均省略时，自动取 `%TEMP%` 下最新的 `pyreact_game_*.log`。
+
 ```bash
-cd .agents/skills/pyreact-debug/scripts
-
-# 自动发现/生成 .cppconfig（推荐）
-python launch_game.py --project "D:/path/to/addon_project" --port 8765
-
-# 或手动指定已有 .cppconfig
-python launch_game.py --config "D:/path/to/project.cppconfig" --port 8765
+python get_logs.py --tail 50
+python get_logs.py --lines 100-200
+python get_logs.py --since 500
+python get_logs.py --grep "PyreactRuntime" --port 8765
+python get_logs.py --tail 200 --grep "ERROR" --ignore-case
+python get_logs.py --file "C:/path/to/game.log" --head 30
 ```
 
-`--project` 指向含 `studio.json` 的 addon 项目根目录。若未指定，按以下顺序自动检测：
-1. **当前目录有 `studio.json`** → 直接使用
-2. **当前目录是 pyreact 框架根**（有 `sync_to_test.cmd`）→ 解析其中的 `TARGET_ROOT`，打印 addon 项目路径并退出，提示在那里重新运行
-3. 否则回退到 pyreact 框架根目录
+---
 
-若目标目录下没有 `.runtime/*.cppconfig`，会自动调用 `setup_runtime()` 生成一个（自动发现 behavior_pack / resource_pack、创建 AppData symlink、写入 engine 版本等）。
+### send_command.py
 
-### 2. 热重载脚本
+通过 TCP 反向通道向游戏发送 null-terminated studio 命令。
+
+```
+python send_command.py --port PORT [--host HOST] <command> [args...]
+```
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--port PORT` | 必填 | log server 端口（`launch_game.py` 输出的端口） |
+| `--host HOST` | `localhost` | log server 地址 |
+| `command` | 必填 | 命令字符串，多个词会 join 成一条命令 |
+
 ```bash
 python send_command.py --port 8765 reload_pack
+python send_command.py --port 8765 restart_local_game
+python send_command.py --port 8765 release_mouse
 ```
 
-### 3. 获取 UI 树
+---
+
+### perf.py
+
+性能 profile 快捷方式，内部调用 `send_command.py`。
+
+```
+python perf.py --port PORT <action>
+```
+
+| action | 发送的命令组合 | 说明 |
+|--------|--------------|------|
+| `start` | `begin_performance_profile` + `start_profile` | 同时开始 engine + 脚本 profile |
+| `stop` | `end_performance_profile` + `stop_profile` + `log_performance_profile_data` | 停止并打印结果 |
+| `script-start` | `start_profile` | 仅脚本 profile |
+| `script-stop` | `stop_profile` | 仅停止脚本 profile |
+| `mem-start` | `start_mem_profile` | 内存 profile |
+| `mem-stop` | `stop_mem_profile` | 停止内存 profile |
+| `dump` | `log_performance_profile_data` | 打印当前数据到游戏日志 |
+
 ```bash
-# 第一个已挂载 app 的完整树
-python get_ui_tree.py --output tree.json
-
-# 指定 app
-python get_ui_tree.py --app-id my_app --output tree.json
-
-# 单个节点 props
-python get_ui_tree.py --node-id panel_0 --output node.json
-
-# 子树
-python get_ui_tree.py --node-id panel_0 --subtree --output subtree.json
+python perf.py --port 8765 start
+# ... 在游戏中操作 ...
+python perf.py --port 8765 stop
+python get_logs.py --tail 100 --grep "profile"
 ```
 
-### 4. 性能 profile
+---
+
+### get_ui_tree.py
+
+通过剪切板触发游戏内 UI 树转储，等待结果写回后打印并保存。
+
+```
+python get_ui_tree.py [--app-id APP_ID] [--node-id NODE_ID] [--subtree]
+                      [--output FILE] [--timeout SECONDS]
+```
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--app-id APP_ID` | 第一个已挂载的 app | 目标 app |
+| `--node-id NODE_ID` | 无（dump 整棵树） | 检查单个节点的 props |
+| `--subtree` | false | 与 `--node-id` 配合，dump 子树而非仅 props |
+| `--output FILE` | `%TEMP%/pyreact_ui_tree.json` | 结果 JSON 保存路径（同时打印到 stdout） |
+| `--timeout SECONDS` | `5` | 等待游戏响应的超时秒数 |
+
 ```bash
-python perf.py --port 8765 start   # 开始 profile
-# ... 操作游戏 ...
-python perf.py --port 8765 stop    # 停止并打印结果到游戏日志
+python get_ui_tree.py                                          # 整棵树
+python get_ui_tree.py --app-id my_app --output tree.json      # 指定 app，保存
+python get_ui_tree.py --node-id panel_0                       # 单节点 props
+python get_ui_tree.py --node-id panel_0 --subtree             # 子树
 ```
 
-### 5. 关掉游戏
-```bash
-python kill_game.py
-```
-
-## 剪切板触发协议
-
-外部写入：
-```json
-{"pyreact_debug": "dump_tree", "params": {"app_id": "my_app"}}
-{"pyreact_debug": "dump_subtree", "params": {"app_id": "my_app", "node_id": "panel_0"}}
-{"pyreact_debug": "dump_node", "params": {"node_id": "panel_0"}}
-```
-
-游戏在下一个 `GameRenderTickEvent` 中检测到 `pyreact_debug` 字段后执行，清空触发内容，将结果 JSON 写回剪切板。
-
-## UI 树节点结构
-
+节点结构：
 ```json
 {
   "id": "panel_0",
   "type": "Panel",
   "props": {},
-  "style": {},
+  "style": {"width": 100},
   "opacity": 1.0,
   "layout": {"x": 0, "y": 0, "width": 100, "height": 50},
   "children": [...]
 }
 ```
+
+---
+
+### simulate.py
+
+通过剪切板触发游戏内按钮点击或输入框文本设置，等待游戏写回 `__pyreact_ack__` 确认。
+
+```
+python simulate.py <action> --node-id NODE_ID [--app-id APP_ID] [--text TEXT] [--timeout SECONDS]
+```
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `action` | 必填 | `click`（触发 `onClick`）或 `input`（设置文本并触发 `onChange`） |
+| `--node-id NODE_ID` | 必填 | 目标节点 id，从 `get_ui_tree.py` 获取 |
+| `--app-id APP_ID` | 第一个已挂载的 app | 目标 app |
+| `--text TEXT` | `""` | 输入内容（`input` 专用） |
+| `--timeout SECONDS` | `5` | 等待 `__pyreact_ack__` 的超时秒数 |
+
+```bash
+python simulate.py click --node-id submit_btn
+python simulate.py input --node-id search_input --text "hello world"
+python simulate.py click --node-id ok_btn --app-id my_app --timeout 10
+```
+
+---
+
+## 剪切板触发协议
+
+外部写入的触发 JSON 格式：
+
+```json
+{"pyreact_debug": "dump_tree",    "params": {"app_id": "my_app"}}
+{"pyreact_debug": "dump_subtree", "params": {"app_id": "my_app", "node_id": "panel_0"}}
+{"pyreact_debug": "dump_node",    "params": {"node_id": "panel_0"}}
+{"pyreact_debug": "click",        "params": {"node_id": "submit_btn"}}
+{"pyreact_debug": "set_input",    "params": {"node_id": "search_input", "text": "hello"}}
+```
+
+游戏在下一个 `GameRenderTickEvent` 检测到 `pyreact_debug` 字段后：
+- dump 命令：执行 → 写结果 JSON 回剪切板
+- click / set_input：执行 → 写 `__pyreact_ack__` 回剪切板
+
+非 `pyreact_debug` 内容直接跳过，不影响正常剪切板使用。
 
 ## Studio 命令参考
 
@@ -120,10 +283,13 @@ python kill_game.py
 | `start_mem_profile` | 开始内存 profile |
 | `stop_mem_profile` | 停止内存 profile |
 | `release_mouse` | 释放鼠标捕获 |
+| `create_world` | 创建新世界 |
 
 ## 重要约束
 
-- 框架代码用 **Python 2** 语法（无 f-string，无类型注解）
-- UI 检查命令只能通过剪切板触发，**不能**走 TCP 反向通道（引擎层内部）
-- Studio 命令（reload_pack 等）只能走 TCP 反向通道，**不需要**剪切板
-- `_poll_debug_clipboard` 检测到非 pyreact_debug 内容时直接返回，不影响正常剪切板使用
+- 框架代码用 **Python 2** 语法（无 f-string，无类型注解，`print` 为语句）
+- UI 检查/交互命令只能通过剪切板触发，不能走 TCP 反向通道
+- Studio 命令（`reload_pack` 等）只能走 TCP 反向通道
+- `setup_runtime()` 依赖 Windows 注册表（`HKCU\Software\Netease\MCStudio`），仅支持 Windows
+- `debug_mode=True` 必须在挂载时传入，运行时无法动态开启
+- log server 的 `--game-pid` 由 `launch_game.py` 自动传入，无需手动指定

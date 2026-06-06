@@ -20,8 +20,10 @@ Options:
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+import tempfile
 import time
 
 
@@ -69,7 +71,7 @@ def main():
     parser.add_argument("--app-id", default=None)
     parser.add_argument("--node-id", default=None, help="Inspect a specific node")
     parser.add_argument("--subtree", action="store_true", help="With --node-id: dump subtree")
-    parser.add_argument("--output", default=None, help="Save result JSON to file")
+    parser.add_argument("--output", default=None, help="Save result JSON to file (default: %%TEMP%%/pyreact_ui_tree.json)")
     parser.add_argument("--timeout", type=float, default=5.0)
     args = parser.parse_args()
 
@@ -99,10 +101,10 @@ def main():
     formatted = json.dumps(data, ensure_ascii=False, indent=2)
     print(formatted)
 
-    if args.output:
-        with open(args.output, 'w', encoding='utf-8') as f:
-            f.write(formatted)
-        print("\n[get_ui_tree] saved to %s" % args.output)
+    out_path = args.output or os.path.join(tempfile.gettempdir(), 'pyreact_ui_tree.json')
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.write(formatted)
+    print("\n[get_ui_tree] saved to %s" % out_path)
 
 
 if __name__ == "__main__":

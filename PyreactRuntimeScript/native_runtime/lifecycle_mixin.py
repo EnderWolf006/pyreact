@@ -406,6 +406,9 @@ class RuntimeLifecycleMixin(object):
             self._prev_shadow_root = shadow_root
             self._last_root_size = root_size
             self._force_layout_next_render = False
+            if getattr(self, '_debug_mode', False) and not getattr(self, '_debug_first_render_done', False):
+                self._debug_first_render_done = True
+                print('=====> PyreactRuntime AppReady: %s <=====' % self.app_id)
             try:
                 self._cleanup_input_state()
             except Exception:

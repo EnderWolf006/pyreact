@@ -21,7 +21,7 @@ class PyreactExampleClientSystem(ClientSystem):
 
         f()
         # comp = clientApi.GetEngineCompFactory().CreateGame(clientApi.GetLevelId())
-        # comp.AddTimer(2.0,f)
+        # comp.AddTimer(5.0,f)
     def Destroy(self):
         pass
         

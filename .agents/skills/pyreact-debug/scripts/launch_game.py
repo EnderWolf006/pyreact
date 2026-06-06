@@ -1,20 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Launch Minecraft.Windows.exe and start a log server.
+Launch Minecraft.Windows.exe and start a detached log server.
 
 Usage:
-    python launch_game.py [--config <cppconfig_path>] [--port PORT] [--log-output FILE]
+    python launch_game.py [--config <cppconfig_path>] [--project DIR] [--port PORT] [--log-output FILE]
 
---config is optional: if omitted, the newest .cppconfig under <project root>/.runtime is used
-(same convention as mcpywrap).
+--config is optional: if omitted, the newest .cppconfig under <project root>/.runtime is used.
+--project: addon project root containing studio.json (auto-detected if omitted).
 
-The script:
-1. Finds Minecraft.Windows.exe via Windows registry
-2. Starts the TCP log server in a background thread
-3. Launches the game with loggingIP=localhost loggingPort=<PORT>
-4. Streams game logs to stdout (and optionally a file)
-
-Press Ctrl+C to stop the log server (the game keeps running).
+The log server runs as a detached background process (survives this script exiting).
+This script exits immediately after launching the game so AI agents are not blocked.
 """
 
 import argparse
@@ -24,10 +19,7 @@ import socket
 import sys
 
 from _mcs import get_minecraft_exe, find_latest_cppconfig, setup_runtime
-import log_server
 
-# Project root = 4 levels up from this script:
-# scripts/ -> pyreact-debug/ -> skills/ -> .agents/ -> project root
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.normpath(os.path.join(_SCRIPT_DIR, "..", "..", "..", ".."))
 
@@ -41,16 +33,16 @@ def _find_free_port():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Launch Minecraft game + log server")
-    parser.add_argument("--config", default=None, help="Path to .cppconfig (auto-detected from .runtime if omitted)")
-    parser.add_argument("--project", default=None, help="Addon project root containing studio.json (used when generating a new config)")
-    parser.add_argument("--port", type=int, default=0, help="Log server port (0 = auto)")
-    parser.add_argument("--log-output", default=None, help="Optional log file path")
+    parser = argparse.ArgumentParser(description="Launch Minecraft game + detached log server")
+    parser.add_argument("--config", default=None)
+    parser.add_argument("--project", default=None)
+    parser.add_argument("--port", type=int, default=0)
+    parser.add_argument("--log-output", default=None)
     args = parser.parse_args()
 
     exe = get_minecraft_exe()
     if not exe:
-        print("[launch_game] ERROR: Minecraft.Windows.exe not found. Is MC Studio installed?")
+        print("[launch_game] ERROR: Minecraft.Windows.exe not found.")
         sys.exit(1)
 
     if args.config:
@@ -61,7 +53,6 @@ def main():
         elif os.path.isfile(os.path.join(os.getcwd(), "studio.json")):
             project_root = os.getcwd()
         else:
-            # Check if we're in the pyreact framework dir - parse TARGET_ROOT from sync_to_test.cmd
             sync_cmd = os.path.join(_PROJECT_ROOT, "sync_to_test.cmd")
             if os.path.isfile(sync_cmd):
                 target_root = None
@@ -69,9 +60,8 @@ def main():
                     for line in f:
                         line = line.strip()
                         if line.startswith("set") and "TARGET_ROOT=" in line and "TARGET_UI_ROOT" not in line:
-                            # set "TARGET_ROOT=D:\path\..."
                             val = line.split("TARGET_ROOT=", 1)[1].strip().strip('"')
-                            target_root = os.path.dirname(val)  # behavior_pack dir -> addon root
+                            target_root = os.path.dirname(val)
                             break
                 if target_root and os.path.isfile(os.path.join(target_root, "studio.json")):
                     print("[launch_game] detected pyreact framework dir.")
@@ -87,40 +77,70 @@ def main():
 
     port = args.port if args.port else _find_free_port()
 
-    log_file = None
-    if args.log_output:
-        log_file = open(args.log_output, 'a', encoding='utf-8')
+    import time
+    import tempfile
 
-    import threading
-    server_ready = threading.Event()
+    if not args.log_output:
+        args.log_output = os.path.join(tempfile.gettempdir(), "pyreact_game_%d.log" % port)
 
-    def _start_server():
-        server_ready.set()
-        log_server.run(port, log_file=log_file)
-
-    t = threading.Thread(target=_start_server)
-    t.daemon = True
-    t.start()
-    server_ready.wait()
-
-    cmd = (
-        'cmd /c start "MC Studio Game Console" '
-        '"{exe}" config="{config}" loggingIP=localhost loggingPort={port}'
-    ).format(exe=exe, config=config_path, port=port)
-
-    print("[launch_game] starting game: %s" % exe)
-    print("[launch_game] log server port: %d" % port)
-    print("[launch_game] will detach in 30s (game keeps running)")
-    subprocess.Popen(cmd, shell=True)
-
+    ready_file = os.path.join(tempfile.gettempdir(), "pyreact_ready_%d.tmp" % port)
+    # clean up any stale file
     try:
-        t.join(timeout=30)
-    except KeyboardInterrupt:
+        os.remove(ready_file)
+    except OSError:
         pass
-    finally:
-        if log_file:
-            log_file.close()
-    print("[launch_game] detached. Game continues running on port %d." % port)
+
+    CREATE_NO_WINDOW = 0x08000000
+    CREATE_NEW_PROCESS_GROUP = 0x00000200
+    CREATE_NEW_CONSOLE = 0x00000010
+
+    # --- Launch game first to get its PID ---
+    game_proc = subprocess.Popen(
+        [exe,
+         "config=%s" % config_path,
+         "loggingIP=localhost",
+         "loggingPort=%d" % port],
+        creationflags=CREATE_NEW_CONSOLE | CREATE_NEW_PROCESS_GROUP,
+        close_fds=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    # --- Start log server with game PID (game takes a few seconds to connect) ---
+    server_cmd = [sys.executable, os.path.join(_SCRIPT_DIR, "log_server.py"),
+                  "--port", str(port),
+                  "--ready-file", ready_file,
+                  "--game-pid", str(game_proc.pid)]
+    if args.log_output:
+        server_cmd += ["--output", args.log_output]
+
+    subprocess.Popen(
+        server_cmd,
+        creationflags=CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP,
+        close_fds=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    print("[launch_game] game launched.")
+    print("[launch_game] log server port: %d" % port)
+    print("[launch_game] log file: %s" % args.log_output)
+    print("[launch_game] waiting for AppReady signal (max 60s)...")
+
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        if os.path.isfile(ready_file):
+            try:
+                os.remove(ready_file)
+            except OSError:
+                pass
+            print("[launch_game] AppReady received, done.")
+            sys.exit(0)
+        time.sleep(0.5)
+
+    print("[launch_game] timeout, done. Game continues running on port %d." % port)
 
 
 if __name__ == "__main__":

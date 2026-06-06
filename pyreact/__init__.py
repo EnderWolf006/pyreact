@@ -64,6 +64,7 @@ def render_app(
     root,
     bind=None,
     log_perf=False,
+    debug_mode=False,
 ):
     if bind is None:
         raise ValueError("native mode requires bind dict")
@@ -104,6 +105,7 @@ def render_app(
         "app_fn": root,
         "base_namespace": base_namespace,
         "log_perf": bool(log_perf),
+        "debug_mode": bool(debug_mode or bind.get("debug_mode")),
     })
 
 
