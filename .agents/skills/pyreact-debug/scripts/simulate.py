@@ -25,10 +25,10 @@ def _write_clipboard(text):
 
 def _read_clipboard():
     result = subprocess.run(
-        ['powershell', '-Command', 'Get-Clipboard'],
-        capture_output=True, text=True, timeout=5
+        ['powershell', '-Command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Clipboard'],
+        capture_output=True, timeout=5
     )
-    return result.stdout.rstrip('\r\n')
+    return result.stdout.decode('utf-8', errors='replace').rstrip('\r\n')
 
 
 def _wait_ack(timeout):

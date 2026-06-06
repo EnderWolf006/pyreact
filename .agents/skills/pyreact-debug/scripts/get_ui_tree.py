@@ -19,9 +19,13 @@ Options:
 """
 
 import argparse
+import io
 import json
 import os
 import subprocess
+import sys
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 import sys
 import tempfile
 import time
@@ -43,10 +47,10 @@ def _write_clipboard(text):
 def _read_clipboard():
     try:
         result = subprocess.run(
-            ['powershell', '-Command', 'Get-Clipboard'],
-            capture_output=True, text=True, timeout=5
+            ['powershell', '-Command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Clipboard'],
+            capture_output=True, timeout=5
         )
-        return result.stdout.rstrip('\r\n')
+        return result.stdout.decode('utf-8', errors='replace').rstrip('\r\n')
     except Exception as e:
         print("[get_ui_tree] clipboard read error: %s" % e)
         return None

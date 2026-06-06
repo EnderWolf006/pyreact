@@ -21,6 +21,14 @@ import sys
 _clients = []
 _clients_lock = threading.Lock()
 
+
+def _decode(data):
+    """Decode bytes: try UTF-8 first, fallback to GBK (game engine uses GBK on Windows)."""
+    try:
+        return data.decode('utf-8')
+    except UnicodeDecodeError:
+        return data.decode('gbk', errors='replace')
+
 _READY_SIGNAL = '=====> PyreactRuntime AppReady:'
 
 
@@ -39,19 +47,19 @@ def _handle_client(sock, addr, log_file, stop_event=None, ready_file=None):
                     end = buf.find(b'\xff', 1)
                     if end == -1:
                         break
-                    msg = buf[1:end].decode('utf-8', errors='replace')
+                    msg = _decode(buf[1:end])
                     buf = buf[end + 1:]
                     line = "[cmd-msg] " + msg + "\n"
                 else:
                     nl = buf.find(b'\n')
                     if nl == -1:
                         if len(buf) > 8192:
-                            line = buf.decode('utf-8', errors='replace')
+                            line = _decode(buf)
                             buf = b""
                         else:
                             break
                     else:
-                        line = buf[:nl + 1].decode('utf-8', errors='replace')
+                        line = _decode(buf[:nl + 1])
                         buf = buf[nl + 1:]
                 sys.stdout.write(line)
                 try:
@@ -107,12 +115,17 @@ def _watch_pid(pid, stop_event):
                 break
             time.sleep(2)
     except Exception:
-        # Fallback: poll via os.kill(pid, 0)
+        # Fallback: tasklist (safe on Windows, os.kill(pid,0) sends SIGTERM)
         import time
         while not stop_event.is_set():
             try:
-                os.kill(pid, 0)
-            except OSError:
+                out = subprocess.check_output(
+                    ['tasklist', '/FI', 'PID eq %d' % pid, '/NH'],
+                    stderr=subprocess.DEVNULL
+                )
+                if str(pid) not in out.decode('utf-8', errors='replace'):
+                    break
+            except Exception:
                 break
             time.sleep(2)
     stop_event.set()
