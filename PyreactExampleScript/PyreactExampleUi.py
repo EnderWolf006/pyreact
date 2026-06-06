@@ -9,6 +9,7 @@ from examples.SkinShopApp import SkinShopApp
 from examples.AnimationDemo import AnimationDemo
 from examples.CounterDemo import CounterDemo
 from examples.OverviewDemo import OverviewDemo
+from examples.TeamApp import TeamApp
 
 from pyreact import *
 
@@ -41,7 +42,8 @@ class PyreactExampleScreen(ScreenNode):
         # render_app(root=SkinShopApp, bind=bind, log_perf=True)
         # render_app(root=AnimationDemo, bind=bind, log_perf=True)
         # render_app(root=CounterDemo, bind=bind, log_perf=True)
-        render_app(root=OverviewDemo, bind=bind, log_perf=True)
+        # render_app(root=OverviewDemo, bind=bind, log_perf=True)
+        render_app(root=TeamApp, bind=bind, log_perf=True)
 
     def Destroy(self):
         runtime_system = clientApi.GetSystem('PyreactRuntimeMod', 'PyreactRuntimeClientSystem')
