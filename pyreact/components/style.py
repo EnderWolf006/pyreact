@@ -94,6 +94,39 @@ class Style(object):
                 data[key] = value
         return data
 
+    @classmethod
+    def from_value(cls, value):
+        if value is None:
+            return cls()
+        if isinstance(value, Style):
+            return value.copy()
+        if isinstance(value, dict):
+            style = cls()
+            for key, item in value.items():
+                setattr(style, key, item)
+            return style
+        raise TypeError("style must be Style or dict")
+
+    @classmethod
+    def merged(cls, *styles):
+        result = cls()
+        for style in styles:
+            result.merge(style)
+        return result
+
+    def copy(self):
+        return Style.from_value(self.to_dict())
+
+    def merge(self, style=None, **kwargs):
+        if style is not None:
+            data = Style.from_value(style).to_dict()
+            for key, value in data.items():
+                setattr(self, key, value)
+        for key, value in kwargs.items():
+            if value is not None:
+                setattr(self, key, value)
+        return self
+
     def __getitem__(self, key):
         return self.to_dict()[key]
 

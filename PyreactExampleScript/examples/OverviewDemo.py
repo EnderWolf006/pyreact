@@ -143,12 +143,8 @@ def SliderDemo(value=36, onChange=None):
                 value=value,
                 min=0,
                 max=100,
-                step=1,
+                step=10,
                 onChange=onChange,
-                trackColor=Color(0xFF334155),
-                fillColor=C_ACCENT,
-                thumbColor=Colors.white,
-                showValue=True,
             ),
         ],
     )

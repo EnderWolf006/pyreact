@@ -147,20 +147,20 @@
         "enabled": true,
         "clip_direction": "left",
         "clip_ratio": 0.0,
-        "fill": false,
+        // "fill": false,
         "grayscale": false,
-        "is_new_nine_slice": true,
+        // "is_new_nine_slice": true,
         "keep_ratio": false,
-        "nine_slice_buttom": 0,
-        "nine_slice_left": 0,
-        "nine_slice_right": 0,
-        "nine_slice_top": 0,
-        "nineslice_size": [
-            0,
-            0,
-            0,
-            0
-        ],
+        // "nine_slice_buttom": 0,
+        // "nine_slice_left": 0,
+        // "nine_slice_right": 0,
+        // "nine_slice_top": 0,
+        // "nineslice_size": [
+        //     0,
+        //     0,
+        //     0,
+        //     0
+        // ],
         "texture": "",
         "uv": [
             0,
