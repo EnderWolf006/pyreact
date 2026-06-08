@@ -32,11 +32,15 @@ def _default_output():
 
 
 def _wait_for_json_response(timeout):
+    # Read trigger that was just written; wait until clipboard changes to something different
+    trigger = read_clipboard()
     deadline = time.time() + timeout
     while time.time() < deadline:
-        time.sleep(0.3)
+        time.sleep(0.2)
         content = read_clipboard()
-        if content and '"pyreact_debug"' not in content and content.strip() != '__pyreact_ack__':
+        if content == trigger:
+            continue  # game hasn't consumed trigger yet
+        if content and content.strip() != '__pyreact_ack__':
             try:
                 return json.loads(content)
             except (ValueError, TypeError):

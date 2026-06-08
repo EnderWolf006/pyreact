@@ -156,7 +156,7 @@ class PyreactRuntimeClientSystem(ClientSystem):
             return False
         try:
             data = runtime.debug_get_ui_tree()
-            content = json.dumps(data, ensure_ascii=False)
+            content = json.dumps(data, ensure_ascii=True)
             comp = clientApi.GetEngineCompFactory().CreateGame(self.mLevelId)
             return comp.SetClipboardContent(content)
         except Exception as e:
@@ -173,7 +173,7 @@ class PyreactRuntimeClientSystem(ClientSystem):
             return False
         try:
             data = runtime.debug_get_subtree(node_id)
-            content = json.dumps(data, ensure_ascii=False)
+            content = json.dumps(data, ensure_ascii=True)
             comp = clientApi.GetEngineCompFactory().CreateGame(self.mLevelId)
             return comp.SetClipboardContent(content)
         except Exception as e:
@@ -190,7 +190,7 @@ class PyreactRuntimeClientSystem(ClientSystem):
             return False
         try:
             data = runtime.debug_get_node_props(node_id)
-            content = json.dumps(data, ensure_ascii=False)
+            content = json.dumps(data, ensure_ascii=True)
             comp = clientApi.GetEngineCompFactory().CreateGame(self.mLevelId)
             return comp.SetClipboardContent(content)
         except Exception as e:

@@ -65,7 +65,7 @@ render_app(root=MyApp, bind=bind, debug_mode=True)
 
 ### launch_game.py
 
-启动 Minecraft 游戏并附带 detached log server，等待 AppReady 信号后退出。
+启动 Minecraft 游戏并附带后台常驻 log server，等待 AppReady 信号后退出。**启动前自动杀掉残留的游戏进程和 log_server 进程。**
 
 ```
 python launch_game.py [--project DIR] [--config FILE] [--port PORT] [--log-output FILE]
@@ -88,7 +88,8 @@ python launch_game.py [--project DIR] [--config FILE] [--port PORT] [--log-outpu
 脚本输出端口和日志路径，后续命令需要这两个值：
 ```
 [launch_game] log server port: 8765
-[launch_game] log file: C:\Users\...\AppData\Local\Temp\pyreact_game_8765.log
+[launch_game] log file: C:\Users\...\AppData\Local\Temp\pyreact-debug\pyreact_game_8765.log
+[launch_game] AppReady received, done.
 ```
 
 ---
@@ -109,12 +110,13 @@ python kill_game.py [--wait]
 
 ### get_logs.py
 
-通过 HTTP API 从 log server 内存获取游戏日志，支持行号定位和正则过滤。输出每行带行号，方便用 `--since` 续读。
+通过 HTTP API 从 log server 内存获取游戏日志，支持行号定位、正则过滤和实时跟踪。输出每行带行号，方便用 `--since` 续读。
 
 ```
 python get_logs.py --port PORT
                    [--tail N | --head N | --lines START[-END] | --since LINENUM]
                    [--grep PATTERN] [--ignore-case]
+                   [--follow]
 ```
 
 | 参数 | 说明 |
@@ -126,13 +128,16 @@ python get_logs.py --port PORT
 | `--since LINENUM` | 从第 LINENUM 行起往后，1-based |
 | `--grep PATTERN` | 正则过滤，只返回匹配行 |
 | `--ignore-case` | 与 `--grep` 配合，大小写不敏感 |
+| `--follow` | 实时跟踪新日志，每 0.5s 轮询一次（Ctrl+C 停止）；可与 `--tail N` 组合先打印最后 N 行再开始跟踪 |
 
 ```bash
 python get_logs.py --port 8765 --tail 50
-python get_logs.py --port 8765 --lines 100-200
 python get_logs.py --port 8765 --since 500
-python get_logs.py --port 8765 --grep "PyreactRuntime"
-python get_logs.py --port 8765 --tail 200 --grep "ERROR" --ignore-case
+python get_logs.py --port 8765 --grep "ERROR|WARNING" --ignore-case
+# 实时跟踪，先显示最后 20 行
+python get_logs.py --port 8765 --follow --tail 20
+# 实时跟踪 + 只显示 Pyreact 相关日志
+python get_logs.py --port 8765 --follow --grep "Pyreact"
 ```
 
 ---
@@ -197,20 +202,19 @@ python get_ui_tree.py [--app-id APP_ID] [--node-id NODE_ID] [--subtree]
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `--app-id APP_ID` | 第一个已挂载的 app | 目标 app |
-| `--node-id NODE_ID` | 无（dump 整棵树） | 检查单个节点的 props |
-| `--subtree` | false | 与 `--node-id` 配合，dump 子树而非仅 props |
-| `--output FILE` | `%TEMP%/pyreact-debug/ui_tree.json` | 结果 JSON 保存路径（同时打印到 stdout） |
+| `--node-id NODE_ID` | 无（dump 整棵树） | 检查单个节点（含子树） |
+| `--subtree` | （已忽略，始终 dump 子树） | 保留兼容，无需传 |
+| `--output FILE` | `%TEMP%/pyreact-debug/ui_tree.json` | 结果 JSON 保存路径 |
 | `--timeout SECONDS` | `10` | 等待游戏响应的超时秒数 |
 | `--quiet` | false | 不打印 JSON 到 stdout（文件仍会保存） |
 
-> **编码注意**：Windows 默认 stdout 为 GBK。`get_ui_tree.py` 已使用 `sys.stdout.buffer.write(...encode('utf-8'))` 规避崩溃。
-> Agent 推荐工作流：用 `--quiet` 静默保存，再用 `print_ui_tree.py` 读文件打印，或直接读已保存的 JSON 文件分析。
+> **编码注意**：Windows 默认 stdout 为 GBK。`get_ui_tree.py` 已使用 `sys.stdout.buffer.write(...encode('utf-8'))` 规避崩溃。  
+> **Agent 推荐**：始终加 `--quiet` 静默保存，再用 `print_ui_tree.py` 读文件打印树形摘要。直接不加 `--quiet` 打印大型中文树会导致 GBK 崩溃。
 
 ```bash
-python get_ui_tree.py                                          # 整棵树
-python get_ui_tree.py --app-id my_app --output tree.json      # 指定 app，保存
-python get_ui_tree.py --node-id panel_0                       # 单节点 props
-python get_ui_tree.py --node-id panel_0 --subtree             # 子树
+python get_ui_tree.py --quiet                                  # 整棵树，保存到默认路径
+python get_ui_tree.py --quiet --output tree.json               # 指定输出
+python get_ui_tree.py --quiet --node-id panel_0                # 单节点子树
 ```
 
 节点结构：
@@ -230,7 +234,7 @@ python get_ui_tree.py --node-id panel_0 --subtree             # 子树
 
 ### print_ui_tree.py
 
-以 ASCII 安全的树形格式打印已保存的 UI 树 JSON，显示节点类型、id、layout 和交互标记。
+以 UTF-8 安全的树形格式打印已保存的 UI 树 JSON，显示节点类型、id、layout 和交互标记（`[clickable]`/`[input]`）。
 
 ```
 python print_ui_tree.py [FILE] [--node-id NODE_ID] [--depth N]
@@ -238,14 +242,14 @@ python print_ui_tree.py [FILE] [--node-id NODE_ID] [--depth N]
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `FILE` | `%TEMP%/pyreact-debug/ui_tree.json` | UI 树 JSON 文件（`get_ui_tree.py` 保存的默认位置） |
+| `FILE` | `%TEMP%/pyreact-debug/ui_tree.json` | UI 树 JSON 文件 |
 | `--node-id NODE_ID` | 无（从根打印） | 从指定节点开始打印子树 |
 | `--depth N` | 无限制 | 最多打印到第 N 层 |
 
 ```bash
-python print_ui_tree.py                              # 打印默认临时文件的树
-python print_ui_tree.py tree_before.json             # 打印指定文件
-python print_ui_tree.py --node-id panel_left         # 只打印 panel_left 子树
+python print_ui_tree.py                              # 打印默认文件的树
+python print_ui_tree.py tree.json                    # 打印指定文件
+python print_ui_tree.py --node-id panel_left         # 只打印子树
 python print_ui_tree.py --depth 2                    # 只打印前两层
 ```
 
@@ -262,7 +266,7 @@ python print_ui_tree.py --depth 2                    # 只打印前两层
 
 ### diff_ui_tree.py
 
-对比两个 UI 树 JSON 快照，输出新增/删除/变更的节点。用于验证交互后 UI 是否按预期更新。
+对比两个 UI 树 JSON 快照，输出新增/删除/变更的节点。节点以完整路径（`parent/child`）为 key，避免重复 id 覆盖。
 
 ```
 python diff_ui_tree.py <before.json> <after.json> [--props] [--layout]
@@ -275,24 +279,13 @@ python diff_ui_tree.py <before.json> <after.json> [--props] [--layout]
 | `--props` | 在 changed 输出中包含 props 对比 |
 | `--layout` | 在 changed 输出中包含 layout 对比 |
 
-```bash
-# 先保存交互前快照
-python get_ui_tree.py --quiet --output before.json
-# 执行交互
-python simulate.py click --node-id k_mode_skywar
-# 再保存交互后快照
-python get_ui_tree.py --quiet --output after.json
-# 对比
-python diff_ui_tree.py before.json after.json --props
-```
-
 输出（JSON 到 stdout，摘要到 stderr）：
 ```json
 {
-  "added": ["new_node_id"],
-  "removed": ["old_node_id"],
+  "added": ["root/panel_right/k_slot_f_nova"],
+  "removed": [],
   "changed": [
-    {"id": "label_mode", "before": {"type": "Text", "props": {"text": "床战"}}, "after": {"type": "Text", "props": {"text": "空岛战争"}}}
+    {"path": "root/panel_left/p_0_8", "before": {"type": "Button"}, "after": {"type": "Button"}}
   ]
 }
 ```
@@ -320,6 +313,60 @@ python simulate.py click --node-id submit_btn
 python simulate.py input --node-id search_input --text "hello world"
 python simulate.py click --node-id ok_btn --app-id my_app --timeout 10
 ```
+
+---
+
+### simulate_and_diff.py ⭐
+
+**一步完成：操作 + 等待 + diff**，是交互测试的推荐工具。内部自动完成 before 快照 → simulate → settle → after 快照 → diff，无需手动管理文件。
+
+```
+python simulate_and_diff.py <action> --node-id NODE_ID [--app-id APP_ID]
+                            [--text TEXT] [--timeout N] [--settle N]
+                            [--props] [--layout]
+                            [--output-before FILE] [--output-after FILE]
+```
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `action` | 必填 | `click` 或 `input` |
+| `--node-id NODE_ID` | 必填 | 目标节点 id |
+| `--app-id APP_ID` | 第一个挂载的 app | 目标 app |
+| `--text TEXT` | `""` | 输入内容（`input` 专用） |
+| `--timeout N` | `5.0` | 等待 ack/树响应的超时秒数 |
+| `--settle N` | `0.5` | 操作后等待 UI 稳定的秒数 |
+| `--props` | false | diff 输出包含 props 对比 |
+| `--layout` | false | diff 输出包含 layout 对比 |
+| `--output-before FILE` | 不保存 | 保存 before 快照到文件 |
+| `--output-after FILE` | 不保存 | 保存 after 快照到文件 |
+
+```bash
+# 点击按钮并查看 diff
+python simulate_and_diff.py click --node-id k_mode_skywar --props
+
+# 输入文本并查看 diff（含 layout 变化）
+python simulate_and_diff.py input --node-id search_input --text "Nova" --props --layout
+
+# 保存快照供后续分析
+python simulate_and_diff.py click --node-id ready_btn --output-before before.json --output-after after.json --props
+```
+
+输出（JSON 到 stdout，进度到 stderr）：
+```json
+{
+  "added": [],
+  "removed": [],
+  "changed": [
+    {
+      "path": "root/p_0/p_0_8/p_0_8_0",
+      "before": {"type": "Label", "props": {"content": "✔  准备", "color": "#ffffffff"}},
+      "after":  {"type": "Label", "props": {"content": "取消准备", "color": "#ffffffff"}}
+    }
+  ]
+}
+```
+
+> **props 自动过滤**：`buttonBuilder`/`onClick` 等序列化为 `<function ...>` 字符串的闭包 props 会被自动剔除，diff 输出只包含真实数据变化，不会被每次渲染重建的内存地址污染。
 
 ---
 
@@ -378,15 +425,33 @@ python simulate.py click --node-id ok_btn --app-id my_app --timeout 10
 
 ```bash
 # 1. 静默保存到文件（规避 Windows GBK stdout 崩溃）
-python get_ui_tree.py --quiet --output tree.json
-# 2. 用脚本打印可读格式（不会崩溃）
-python print_ui_tree.py tree.json
-# 或直接读 JSON 文件分析（推荐，最可靠）
+python get_ui_tree.py --quiet
+# 2. 用脚本打印可读树形摘要（UTF-8 安全，含交互标记）
+python print_ui_tree.py
+# 只看前两层结构
+python print_ui_tree.py --depth 2
+# 或直接读 JSON 文件分析
 ```
 
-> 不要直接 `python get_ui_tree.py` 不加 `--quiet` 在 Windows 上打印含中文的树——GBK stdout 会崩溃。
+> **禁止**直接 `python get_ui_tree.py`（不加 `--quiet`）——Windows GBK stdout 遇到中文节点会崩溃。
 
-### 交互后验证 UI 变更
+### 交互后验证 UI 变更（推荐）
+
+**用 `simulate_and_diff.py`，一条命令搞定**：
+
+```bash
+# 点击按钮，查看 props 变化
+python simulate_and_diff.py click --node-id k_mode_skywar --props
+
+# 输入文本，查看列表过滤结果
+python simulate_and_diff.py input --node-id search_input --text "Nova" --props
+
+# 保存快照供后续 debug
+python simulate_and_diff.py click --node-id ready_btn --props \
+    --output-before before.json --output-after after.json
+```
+
+如需手动分步（例如操作和验证之间有复杂交互）：
 
 ```bash
 python get_ui_tree.py --quiet --output before.json
@@ -398,8 +463,10 @@ python diff_ui_tree.py before.json after.json --props
 ### 续读日志（不重复拉取）
 
 ```bash
-# 第一次：记录最后行号
+# 第一次拉取，记录输出的 total 行号
 python get_logs.py --port 8765 --tail 50
-# 之后续读
-python get_logs.py --port 8765 --since 51
+# 之后从上次结束位置续读
+python get_logs.py --port 8765 --since <上次 total+1>
+# 只看 ERROR/WARNING
+python get_logs.py --port 8765 --tail 100 --grep "ERROR|WARNING" --ignore-case
 ```

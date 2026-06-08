@@ -14,10 +14,11 @@ import sys
 def _flatten(node, path="", out=None):
     if out is None:
         out = {}
-    node_id = node.get("id", path)
-    out[node_id] = node
+    node_id = node.get("id", "?")
+    full_path = (path + "/" + node_id) if path else node_id
+    out[full_path] = node
     for child in node.get("children", []):
-        _flatten(child, node_id, out)
+        _flatten(child, full_path, out)
     return out
 
 

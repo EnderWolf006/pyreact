@@ -16,10 +16,15 @@ import tempfile
 def _interactive(node):
     props = node.get("props", {})
     flags = []
-    if props.get("onClick"):
+    # onClick is serialized as true/string in JSON (not callable)
+    if "onClick" in props and props["onClick"] not in (None, False, ""):
         flags.append("clickable")
-    if node.get("type") == "Input":
+    node_type = node.get("type", "")
+    if node_type == "Input":
         flags.append("input")
+    elif node_type == "Button":
+        if "clickable" not in flags:
+            flags.append("clickable")
     return "|".join(flags)
 
 
