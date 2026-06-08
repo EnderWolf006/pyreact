@@ -1,46 +1,32 @@
 # -*- coding: utf-8 -*-
 """
-Send a studio command to connected game clients via the log server's TCP connection.
+Send a studio command to the game via log_server HTTP API.
 
 Usage:
-    python send_command.py --host HOST --port PORT <command> [args...]
-
-Common commands:
-    reload_pack                  Hot-reload behavior pack scripts
-    reload_cache                 Hot-reload from pack cache
-    restart_local_game           Reload the current world
-    begin_performance_profile    Start perf profiling
-    end_performance_profile      Stop perf profiling
-    log_performance_profile_data Print perf data to game log
-    start_profile                Start script profiling
-    stop_profile                 Stop script profiling
-    start_mem_profile            Start memory profiling
-    stop_mem_profile             Stop memory profiling
-    create_world                 Create a new world
-    release_mouse                Release mouse capture
-
-UI inspection commands (write result to clipboard in-game):
-    pyreact_dump_tree [app_id]           Dump full UI tree to clipboard
-    pyreact_dump_subtree <node_id> [app_id]  Dump subtree to clipboard
-    pyreact_dump_node <node_id> [app_id]     Dump single node props to clipboard
-
-Examples:
-    python send_command.py --port 8765 reload_pack
-    python send_command.py --port 8765 pyreact_dump_tree my_app_id
+    python send_command.py --port PORT <command> [args...]
 """
 
 import argparse
-import socket
+import json
 import sys
 
+try:
+    from urllib.request import urlopen, Request
+except ImportError:
+    from urllib2 import urlopen, Request
 
-def send_command(host, port, command):
-    payload = (command + "\x00").encode('utf-8')
+
+def send_command(port, command):
+    body = json.dumps({"command": command}).encode('utf-8')
+    req = Request(
+        "http://localhost:%d/send_command" % (port + 1),
+        data=body,
+        headers={"Content-Type": "application/json"},
+    )
     try:
-        sock = socket.create_connection((host, port), timeout=5)
-        sock.sendall(payload)
-        sock.close()
-        print("[send_command] sent: %r" % command)
+        resp = urlopen(req, timeout=5)
+        data = json.loads(resp.read().decode('utf-8'))
+        print("[send_command] sent: %r (delivered to %d client(s))" % (command, data.get("sent", 0)))
         return True
     except Exception as e:
         print("[send_command] ERROR: %s" % e)
@@ -48,14 +34,12 @@ def send_command(host, port, command):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Send studio command to game")
-    parser.add_argument("--host", default="localhost")
+    parser = argparse.ArgumentParser(description="Send studio command to game via log_server")
     parser.add_argument("--port", type=int, required=True)
-    parser.add_argument("command", nargs="+", help="Command and optional arguments")
+    parser.add_argument("command", nargs="+")
     args = parser.parse_args()
 
-    command = " ".join(args.command)
-    ok = send_command(args.host, args.port, command)
+    ok = send_command(args.port, " ".join(args.command))
     sys.exit(0 if ok else 1)
 
 

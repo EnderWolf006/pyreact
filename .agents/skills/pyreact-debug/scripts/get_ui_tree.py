@@ -2,67 +2,41 @@
 """
 Trigger in-game UI tree dump via clipboard, then read and print/save the result.
 
-The game must be running (launch_game.py). This script writes a trigger JSON
-to the clipboard; the game polls it each render tick, executes the dump, then
-writes the result JSON back to the clipboard.
-
 Usage:
     python get_ui_tree.py [--app-id APP_ID] [--output FILE] [--timeout SECONDS]
     python get_ui_tree.py --node-id NODE_ID [--app-id APP_ID] [--subtree] [--output FILE]
 
-Options:
-    --app-id    Target app_id (default: first mounted app)
-    --node-id   Inspect a specific node (props only, or subtree with --subtree)
-    --subtree   With --node-id: dump full subtree instead of props only
-    --output    Save result JSON to file
-    --timeout   Seconds to wait for clipboard update (default: 5)
+Notes:
+    - dump_node is NOT used: game-side serialization fails on non-JSON-serializable props
+      (e.g. buttonBuilder functions). Always use dump_subtree to get a node and its children.
+    - Default output: %TEMP%/pyreact-debug/ui_tree.json
+    - Use --quiet to suppress stdout (avoids GBK encoding issues on Windows terminals).
+      Then read the saved JSON file with open(path, 'rb').read().decode('utf-8').
 """
 
 import argparse
-import io
 import json
 import os
-import subprocess
-import sys
-
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 import sys
 import tempfile
 import time
 
-
-def _write_clipboard(text):
-    try:
-        proc = subprocess.Popen(
-            ['powershell', '-Command', '$input | Set-Clipboard'],
-            stdin=subprocess.PIPE
-        )
-        proc.communicate(input=text.encode('utf-8'))
-        return proc.returncode == 0
-    except Exception as e:
-        print("[get_ui_tree] clipboard write error: %s" % e)
-        return False
+from clipboard_ipc import read_clipboard, write_clipboard
 
 
-def _read_clipboard():
-    try:
-        result = subprocess.run(
-            ['powershell', '-Command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Clipboard'],
-            capture_output=True, timeout=5
-        )
-        return result.stdout.decode('utf-8', errors='replace').rstrip('\r\n')
-    except Exception as e:
-        print("[get_ui_tree] clipboard read error: %s" % e)
-        return None
+def _default_output():
+    d = os.path.join(tempfile.gettempdir(), 'pyreact-debug')
+    if not os.path.isdir(d):
+        os.makedirs(d)
+    return os.path.join(d, 'ui_tree.json')
 
 
 def _wait_for_json_response(timeout):
-    """Poll clipboard until it contains valid JSON different from our trigger, or timeout."""
     deadline = time.time() + timeout
     while time.time() < deadline:
         time.sleep(0.3)
-        content = _read_clipboard()
-        if content and '"pyreact_debug"' not in content:
+        content = read_clipboard()
+        if content and '"pyreact_debug"' not in content and content.strip() != '__pyreact_ack__':
             try:
                 return json.loads(content)
             except (ValueError, TypeError):
@@ -73,42 +47,49 @@ def _wait_for_json_response(timeout):
 def main():
     parser = argparse.ArgumentParser(description="Get Pyreact UI tree from game via clipboard")
     parser.add_argument("--app-id", default=None)
-    parser.add_argument("--node-id", default=None, help="Inspect a specific node")
-    parser.add_argument("--subtree", action="store_true", help="With --node-id: dump subtree")
-    parser.add_argument("--output", default=None, help="Save result JSON to file (default: %%TEMP%%/pyreact_ui_tree.json)")
-    parser.add_argument("--timeout", type=float, default=5.0)
+    parser.add_argument("--node-id", default=None)
+    parser.add_argument("--subtree", action="store_true",
+                        help="(ignored, always uses subtree dump for node queries)")
+    parser.add_argument("--output", default=None)
+    parser.add_argument("--timeout", type=float, default=10.0)
+    parser.add_argument("--quiet", action="store_true",
+                        help="suppress stdout output (file save still happens)")
     args = parser.parse_args()
 
     params = {}
     if args.app_id:
         params['app_id'] = args.app_id
-
     if args.node_id:
+        # Always use dump_subtree: dump_node fails when props contain non-serializable
+        # objects (e.g. buttonBuilder). dump_subtree returns the node + children.
         params['node_id'] = args.node_id
-        cmd = 'dump_subtree' if args.subtree else 'dump_node'
+        cmd = 'dump_subtree'
     else:
         cmd = 'dump_tree'
 
+    # Clear clipboard before writing trigger so stale ack/data doesn't interfere
+    write_clipboard('')
+    time.sleep(0.05)
+
     trigger = json.dumps({'pyreact_debug': cmd, 'params': params}, ensure_ascii=False)
-    print("[get_ui_tree] writing trigger to clipboard: %s" % trigger)
-    if not _write_clipboard(trigger):
-        print("[get_ui_tree] ERROR: failed to write clipboard")
-        sys.exit(1)
+    print("[get_ui_tree] trigger: %s" % trigger)
+    write_clipboard(trigger)
 
     print("[get_ui_tree] waiting for response (%.1fs)..." % args.timeout)
     data = _wait_for_json_response(args.timeout)
 
     if data is None:
-        print("[get_ui_tree] ERROR: no valid JSON response in clipboard within %.1fs" % args.timeout)
+        print("[get_ui_tree] ERROR: no valid JSON response within %.1fs" % args.timeout)
         sys.exit(1)
 
+    out_path = args.output or _default_output()
     formatted = json.dumps(data, ensure_ascii=False, indent=2)
-    print(formatted)
+    with open(out_path, 'wb') as f:
+        f.write(formatted.encode('utf-8'))
 
-    out_path = args.output or os.path.join(tempfile.gettempdir(), 'pyreact_ui_tree.json')
-    with open(out_path, 'w', encoding='utf-8') as f:
-        f.write(formatted)
-    print("\n[get_ui_tree] saved to %s" % out_path)
+    if not args.quiet:
+        sys.stdout.buffer.write((formatted + '\n').encode('utf-8'))
+    print("[get_ui_tree] saved to %s" % out_path, file=sys.stderr)
 
 
 if __name__ == "__main__":
