@@ -31,6 +31,20 @@ def _node_summary(node, include_props, include_layout):
     return parts
 
 
+def _count_prop_changes(before_flat, after_flat):
+    """Count nodes with props or layout changes (always computed)."""
+    props_changed = 0
+    layout_changed = 0
+    for path in set(before_flat) & set(after_flat):
+        b_node = before_flat[path]
+        a_node = after_flat[path]
+        if b_node.get("props") != a_node.get("props"):
+            props_changed += 1
+        if b_node.get("layout") != a_node.get("layout"):
+            layout_changed += 1
+    return props_changed, layout_changed
+
+
 def main():
     parser = argparse.ArgumentParser(description="Diff two Pyreact UI tree JSON files")
     parser.add_argument("before", help="before snapshot JSON file")
@@ -59,8 +73,14 @@ def main():
     result = {"added": added, "removed": removed, "changed": changed}
     sys.stdout.buffer.write((json.dumps(result, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
 
-    # summary to stderr
+    props_changed, layout_changed = _count_prop_changes(before, after)
     print("[diff_ui_tree] +%d added, -%d removed, ~%d changed" % (len(added), len(removed), len(changed)), file=sys.stderr)
+    no_structural_changes = not added and not removed and not changed
+    if no_structural_changes:
+        if not args.props and props_changed:
+            print("Note: props changed in %d node(s). Use --props to see details." % props_changed, file=sys.stderr)
+        if not args.layout and layout_changed:
+            print("Note: layout changed in %d node(s). Use --layout to see details." % layout_changed, file=sys.stderr)
 
 
 if __name__ == "__main__":

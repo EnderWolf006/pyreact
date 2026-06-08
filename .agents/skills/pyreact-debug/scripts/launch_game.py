@@ -14,6 +14,7 @@ import sys
 import time
 
 from _mcs import get_minecraft_exe, find_latest_cppconfig, setup_runtime
+from kill_game import kill_game
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.normpath(os.path.join(_SCRIPT_DIR, "..", "..", "..", ".."))
@@ -64,6 +65,9 @@ def main():
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--log-output", default=None)
     args = parser.parse_args()
+
+    print("[launch_game] killing existing game and log_server processes...")
+    kill_game(wait=True)
 
     exe = get_minecraft_exe()
     if not exe:

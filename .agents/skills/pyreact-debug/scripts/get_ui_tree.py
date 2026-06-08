@@ -3,15 +3,13 @@
 Trigger in-game UI tree dump via clipboard, then read and print/save the result.
 
 Usage:
-    python get_ui_tree.py [--app-id APP_ID] [--output FILE] [--timeout SECONDS]
-    python get_ui_tree.py --node-id NODE_ID [--app-id APP_ID] [--subtree] [--output FILE]
+    python get_ui_tree.py [--app-id APP_ID] [--node-id NODE_ID]
+                          [--output FILE] [--timeout SECONDS]
+                          [--quiet] [--json]
 
-Notes:
-    - dump_node is NOT used: game-side serialization fails on non-JSON-serializable props
-      (e.g. buttonBuilder functions). Always use dump_subtree to get a node and its children.
-    - Default output: %TEMP%/pyreact-debug/ui_tree.json
-    - Use --quiet to suppress stdout (avoids GBK encoding issues on Windows terminals).
-      Then read the saved JSON file with open(path, 'rb').read().decode('utf-8').
+Default (no flags): fetches tree and prints pretty tree view.
+--quiet: suppress stdout (file save still happens).
+--json:  print raw JSON instead of pretty tree (ignored when --quiet).
 """
 
 import argparse
@@ -22,6 +20,7 @@ import tempfile
 import time
 
 from clipboard_ipc import read_clipboard, write_clipboard
+from print_ui_tree import print_tree
 
 
 def _default_output():
@@ -32,19 +31,27 @@ def _default_output():
 
 
 def _wait_for_json_response(timeout):
-    # Read trigger that was just written; wait until clipboard changes to something different
     trigger = read_clipboard()
     deadline = time.time() + timeout
+    ack_received = False
     while time.time() < deadline:
-        time.sleep(0.2)
+        time.sleep(0.1)
         content = read_clipboard()
         if content == trigger:
-            continue  # game hasn't consumed trigger yet
-        if content and content.strip() != '__pyreact_ack__':
+            continue
+        if content and content.strip() == '__pyreact_ack__':
+            if not ack_received:
+                ack_received = True
+                # game consumed trigger; give it 3s to write the JSON result
+                deadline = min(deadline, time.time() + 3.0)
+            continue
+        if content:
             try:
                 return json.loads(content)
             except (ValueError, TypeError):
                 pass
+    if ack_received:
+        print("[get_ui_tree] ERROR: ack received but no JSON result (game-side dump may have failed)", file=sys.stderr)
     return None
 
 
@@ -58,20 +65,19 @@ def main():
     parser.add_argument("--timeout", type=float, default=10.0)
     parser.add_argument("--quiet", action="store_true",
                         help="suppress stdout output (file save still happens)")
+    parser.add_argument("--json", action="store_true",
+                        help="print raw JSON instead of pretty tree (ignored when --quiet)")
     args = parser.parse_args()
 
     params = {}
     if args.app_id:
         params['app_id'] = args.app_id
     if args.node_id:
-        # Always use dump_subtree: dump_node fails when props contain non-serializable
-        # objects (e.g. buttonBuilder). dump_subtree returns the node + children.
         params['node_id'] = args.node_id
         cmd = 'dump_subtree'
     else:
         cmd = 'dump_tree'
 
-    # Clear clipboard before writing trigger so stale ack/data doesn't interfere
     write_clipboard('')
     time.sleep(0.05)
 
@@ -90,10 +96,10 @@ def main():
     formatted = json.dumps(data, ensure_ascii=False, indent=2)
     with open(out_path, 'wb') as f:
         f.write(formatted.encode('utf-8'))
+    print("[get_ui_tree] saved to %s" % out_path, file=sys.stderr)
 
     if not args.quiet:
-        sys.stdout.buffer.write((formatted + '\n').encode('utf-8'))
-    print("[get_ui_tree] saved to %s" % out_path, file=sys.stderr)
+        print_tree(data, node_id=args.node_id, as_json=args.json)
 
 
 if __name__ == "__main__":

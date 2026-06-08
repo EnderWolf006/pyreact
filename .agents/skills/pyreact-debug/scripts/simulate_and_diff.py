@@ -44,19 +44,26 @@ def _wait_for_new_content(sentinel, timeout):
 
 def _wait_json(timeout):
     """Write trigger, then wait for game to respond with JSON."""
-    # Clipboard was just set to the trigger JSON; wait for it to change
     trigger = read_clipboard()
     deadline = time.time() + timeout
+    ack_received = False
     while time.time() < deadline:
-        time.sleep(0.2)
+        time.sleep(0.1)
         content = read_clipboard()
         if content == trigger:
-            continue  # game hasn't consumed trigger yet
-        if content and content.strip() != "__pyreact_ack__":
+            continue
+        if content and content.strip() == "__pyreact_ack__":
+            if not ack_received:
+                ack_received = True
+                deadline = min(deadline, time.time() + 3.0)
+            continue
+        if content:
             try:
                 return json.loads(content)
             except (ValueError, TypeError):
                 pass
+    if ack_received:
+        print("[simulate_and_diff] ERROR: ack received but no JSON result", file=sys.stderr)
     return None
 
 
@@ -174,15 +181,29 @@ def main():
     added = sorted(set(after_flat) - set(before_flat))
     removed = sorted(set(before_flat) - set(after_flat))
     changed = []
+    props_changed = 0
+    layout_changed = 0
     for path in sorted(set(before_flat) & set(after_flat)):
-        b = _node_summary(before_flat[path], args.props, args.layout)
-        a = _node_summary(after_flat[path], args.props, args.layout)
+        b_node = before_flat[path]
+        a_node = after_flat[path]
+        if not args.props and b_node.get("props") != a_node.get("props"):
+            props_changed += 1
+        if not args.layout and b_node.get("layout") != a_node.get("layout"):
+            layout_changed += 1
+        b = _node_summary(b_node, args.props, args.layout)
+        a = _node_summary(a_node, args.props, args.layout)
         if b != a:
             changed.append({"path": path, "before": b, "after": a})
 
     result = {"added": added, "removed": removed, "changed": changed}
     sys.stdout.buffer.write((json.dumps(result, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
     print("[simulate_and_diff] +%d added, -%d removed, ~%d changed" % (len(added), len(removed), len(changed)), file=sys.stderr)
+    no_structural_changes = not added and not removed and not changed
+    if no_structural_changes:
+        if not args.props and props_changed:
+            print("Note: props changed in %d node(s). Use --props to see details." % props_changed, file=sys.stderr)
+        if not args.layout and layout_changed:
+            print("Note: layout changed in %d node(s). Use --layout to see details." % layout_changed, file=sys.stderr)
 
 
 if __name__ == "__main__":

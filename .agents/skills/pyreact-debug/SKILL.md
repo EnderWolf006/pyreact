@@ -44,12 +44,6 @@ metadata:
 - log server **跟随游戏进程生命周期不关闭**（`--game-pid` 仅用于监控游戏状态，不触发退出）
 - HTTP API 监听在 `port+1`
 
-## 框架侧变更
-
-`PyreactRuntimeScript/` 已有以下调试支持（框架修改，非外部脚本）：
-- `PyreactNativeRuntime.py`：`_sanitize`、`_serialize_shadow_node`、`debug_get_ui_tree/subtree/node_props`
-- `PyreactRuntimeClientSystem.py`：`_poll_debug_clipboard`（每帧调用）、`DebugDumpUiTree/Subtree/NodeProps`、`DebugClickButton`、`DebugSetInput`
-- `native_runtime/lifecycle_mixin.py`：首次渲染完成后打印 `=====> PyreactRuntime AppReady: <app_id> <=====`
 
 ## 启用调试功能
 
@@ -73,7 +67,7 @@ python launch_game.py [--project DIR] [--config FILE] [--port PORT] [--log-outpu
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `--project DIR` | 自动检测 | addon 项目根目录，须含 `studio.json` |
+| `--project DIR` | 自动检测 | addon 项目根目录，须含 `studio.json`（注意：`studio.json` 在 addon **上一级**目录，即 addon 本体目录的父目录） |
 | `--config FILE` | 自动发现 | 直接指定 `.cppconfig` 路径，跳过自动生成 |
 | `--port PORT` | 随机 | log server 监听端口 |
 | `--log-output FILE` | `%TEMP%/pyreact-debug/pyreact_game_<port>.log` | 日志持久化路径 |
@@ -192,29 +186,28 @@ python get_logs.py --tail 100 --grep "profile"
 
 ### get_ui_tree.py
 
-通过剪切板触发游戏内 UI 树转储，等待结果写回后打印并保存。
+通过剪切板触发游戏内 UI 树转储，等待结果写回后打印并保存。默认输出美化树形（内部调用 `print_ui_tree.py`），`--json` 改为原始 JSON，`--quiet` 完全静默。
 
 ```
-python get_ui_tree.py [--app-id APP_ID] [--node-id NODE_ID] [--subtree]
-                      [--output FILE] [--timeout SECONDS] [--quiet]
+python get_ui_tree.py [--app-id APP_ID] [--node-id NODE_ID]
+                      [--output FILE] [--timeout SECONDS]
+                      [--quiet] [--json]
 ```
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `--app-id APP_ID` | 第一个已挂载的 app | 目标 app |
 | `--node-id NODE_ID` | 无（dump 整棵树） | 检查单个节点（含子树） |
-| `--subtree` | （已忽略，始终 dump 子树） | 保留兼容，无需传 |
 | `--output FILE` | `%TEMP%/pyreact-debug/ui_tree.json` | 结果 JSON 保存路径 |
 | `--timeout SECONDS` | `10` | 等待游戏响应的超时秒数 |
-| `--quiet` | false | 不打印 JSON 到 stdout（文件仍会保存） |
-
-> **编码注意**：Windows 默认 stdout 为 GBK。`get_ui_tree.py` 已使用 `sys.stdout.buffer.write(...encode('utf-8'))` 规避崩溃。  
-> **Agent 推荐**：始终加 `--quiet` 静默保存，再用 `print_ui_tree.py` 读文件打印树形摘要。直接不加 `--quiet` 打印大型中文树会导致 GBK 崩溃。
+| `--quiet` | false | 不打印到 stdout（文件仍会保存） |
+| `--json` | false | 输出原始 JSON 而非美化树形（`--quiet` 时忽略） |
 
 ```bash
-python get_ui_tree.py --quiet                                  # 整棵树，保存到默认路径
-python get_ui_tree.py --quiet --output tree.json               # 指定输出
-python get_ui_tree.py --quiet --node-id panel_0                # 单节点子树
+python get_ui_tree.py                          # 整棵树，打印美化树形
+python get_ui_tree.py --json                   # 整棵树，打印原始 JSON
+python get_ui_tree.py --quiet                  # 只保存文件，不打印
+python get_ui_tree.py --node-id panel_0        # 单节点子树，打印美化树形
 ```
 
 节点结构：
@@ -234,10 +227,10 @@ python get_ui_tree.py --quiet --node-id panel_0                # 单节点子树
 
 ### print_ui_tree.py
 
-以 UTF-8 安全的树形格式打印已保存的 UI 树 JSON，显示节点类型、id、layout 和交互标记（`[clickable]`/`[input]`）。
+以 UTF-8 安全的树形格式打印已保存的 UI 树 JSON，显示节点类型、id、关键 props（Label 的 `content`、Image 的 `src`、Item 的 `item_name`）、layout 和交互标记（`[clickable]`/`[input]`）。`--json` 输出原始 JSON。
 
 ```
-python print_ui_tree.py [FILE] [--node-id NODE_ID] [--depth N]
+python print_ui_tree.py [FILE] [--node-id NODE_ID] [--depth N] [--json]
 ```
 
 | 参数 | 默认值 | 说明 |
@@ -245,21 +238,25 @@ python print_ui_tree.py [FILE] [--node-id NODE_ID] [--depth N]
 | `FILE` | `%TEMP%/pyreact-debug/ui_tree.json` | UI 树 JSON 文件 |
 | `--node-id NODE_ID` | 无（从根打印） | 从指定节点开始打印子树 |
 | `--depth N` | 无限制 | 最多打印到第 N 层 |
+| `--json` | false | 输出原始 JSON 而非美化树形 |
 
 ```bash
 python print_ui_tree.py                              # 打印默认文件的树
-python print_ui_tree.py tree.json                    # 打印指定文件
+python print_ui_tree.py --json                       # 输出原始 JSON
 python print_ui_tree.py --node-id panel_left         # 只打印子树
 python print_ui_tree.py --depth 2                    # 只打印前两层
 ```
 
 输出示例：
 ```
-`-- root (Panel) 653x429 @(0,0)
-    |-- panel_left (Panel) 412x429 @(0,0)
+`-- root (Image) 609x429 @(0,0)
+    |-- p_0 (Panel) 368x429 @(0,0)
     |   |-- k_mode_bedwar (Button) 80x30 @(10,10) [clickable]
-    |   `-- search_input (Input) 200x28 @(10,50) [input]
-    `-- panel_right (Panel) 240x429 @(413,0)
+    |   |-- k_label_title (Label) "空岛战争 · 最后生还·4人" 200x20 @(10,50)
+    |   `-- p_0_8 (Button) 100x36 @(10,380) [clickable]
+    `-- p_2 (Panel) 240x429 @(369,0)
+        |-- p_2_2_1 (Input) 200x28 @(10,40) [input]
+        `-- k_inv_f_nova (Button) 220x36 @(10,100) [clickable]
 ```
 
 ---
@@ -421,19 +418,18 @@ python simulate_and_diff.py click --node-id ready_btn --output-before before.jso
 
 ## Agent 推荐工作流
 
-### UI 树检查（编码安全）
+### UI 树检查
 
 ```bash
-# 1. 静默保存到文件（规避 Windows GBK stdout 崩溃）
+# 直接打印美化树形（推荐）
+python get_ui_tree.py
+# 只看前两层
+python get_ui_tree.py --node-id p_0 --depth 2
+# 需要原始 JSON 时
+python get_ui_tree.py --json
+# 只保存文件不打印
 python get_ui_tree.py --quiet
-# 2. 用脚本打印可读树形摘要（UTF-8 安全，含交互标记）
-python print_ui_tree.py
-# 只看前两层结构
-python print_ui_tree.py --depth 2
-# 或直接读 JSON 文件分析
 ```
-
-> **禁止**直接 `python get_ui_tree.py`（不加 `--quiet`）——Windows GBK stdout 遇到中文节点会崩溃。
 
 ### 交互后验证 UI 变更（推荐）
 
