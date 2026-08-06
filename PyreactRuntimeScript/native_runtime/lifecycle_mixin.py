@@ -1525,8 +1525,26 @@ class RuntimeLifecycleMixin(object):
         show_scrollbar = props.get("showScrollbar", True)
 
         track_path = self._get_scrollbar_track_path(node_path)
-        if track_path:
-            self._safe_set_visible(track_path, show_scrollbar)
+        if not track_path:
+            return
+
+        # Native scrolling_panel does not reliably cascade SetVisible from
+        # bar_and_track to its track/scroll_box descendants. Hide all known
+        # layers so showScrollbar=False removes both the rail and thumb.
+        paths = [
+            track_path,
+            track_path + "/stack_panel",
+            track_path + "/stack_panel/panel",
+            track_path + "/stack_panel/panel/centered_panel",
+            track_path + "/stack_panel/panel/centered_panel/track",
+            track_path + "/stack_panel/panel/centered_panel/scroll_box",
+            track_path + "/panel",
+            track_path + "/panel/centered_panel",
+            track_path + "/panel/centered_panel/track",
+            track_path + "/panel/centered_panel/scroll_box",
+        ]
+        for path in paths:
+            self._safe_set_visible(path, show_scrollbar)
 
     def _get_real_scroll_view_path(self, scroll_node_path):
         if not scroll_node_path:
